@@ -10,8 +10,7 @@ from typing import Any
 
 # MVP 임시 저장소입니다.
 # 현재는 DB 없이 서버 메모리에 저장하므로 서버를 재시작하면 데이터가 초기화됩니다.
-users: dict[int, dict[str, Any]] = {}
-users_by_email: dict[str, int] = {}
+# (유저 계정은 이제 DB의 users 테이블에 저장 → auth_service.py 참고)
 materials: dict[int, dict[str, Any]] = {}
 timer_sessions: dict[int, dict[str, Any]] = {}
 study_logs: list[dict[str, Any]] = []
@@ -32,7 +31,6 @@ shop_items = [
 next_material_id = 1
 next_timer_session_id = 1
 next_quiz_id = 1
-next_user_id = 1
 
 
 def now_utc() -> datetime:

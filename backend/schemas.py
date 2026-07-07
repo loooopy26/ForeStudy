@@ -22,7 +22,7 @@ class UserLoginRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: int
+    id: str  # users.id 는 UUID (문자열로 직렬화)
     email: str
     nickname: str
     level: int

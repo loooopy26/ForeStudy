@@ -1,73 +1,112 @@
 """회원가입/로그인 처리 서비스.
 
 담당 탭: 로그인, 회원가입.
-역할: 사용자 메모리 저장, 비밀번호 해시, 더미 access_token 발급.
+역할: 유저 계정을 PostgreSQL users 테이블(UUID id)에 저장/조회, 비밀번호 해시, 더미 access_token 발급.
+      레벨/도토리(token) 값은 users 테이블 컬럼(level, acorn_balance)에서 그대로 읽는다.
+      (서버를 재시작해도 가입한 유저가 유지되도록 메모리가 아닌 DB에 저장한다.)
 """
 
 import hashlib
+import hmac
 import secrets
 
+import asyncpg
 from fastapi import HTTPException
 
-from services import memory_store
-from services.memory_store import users, users_by_email
-from services.reward_service import get_rewards
+from db import get_pool
+
+# PBKDF2-HMAC-SHA256: 표준 라이브러리만으로 솔트 + 반복 해싱을 적용한다.
+# 저장 형식: "pbkdf2_sha256$<iterations>$<salt_hex>$<hash_hex>"
+_HASH_ALGO = "pbkdf2_sha256"
+_ITERATIONS = 200_000
+
+# 조회할 계정 컬럼 (비밀번호 해시는 검증용으로 login 에서만 추가로 가져온다).
+_USER_FIELDS = "id, email, nickname, level, acorn_balance"
 
 
-def register_user(email: str, password: str, nickname: str) -> dict:
-    # MVP 회원가입입니다. DB 연동 전까지 메모리에 사용자 정보를 저장합니다.
+async def register_user(email: str, password: str, nickname: str) -> dict:
+    # 회원가입 화면에서 호출합니다. users 테이블에 새 계정을 만듭니다.
     normalized_email = email.lower()
     _validate_email(normalized_email)
-    if normalized_email in users_by_email:
+
+    pool = await get_pool()
+    try:
+        row = await pool.fetchrow(
+            f"""
+            INSERT INTO users (email, password_hash, nickname)
+            VALUES ($1, $2, $3)
+            RETURNING {_USER_FIELDS}
+            """,
+            normalized_email,
+            _hash_password(password),
+            nickname,
+        )
+    except asyncpg.UniqueViolationError:
+        # email 컬럼 UNIQUE 제약 위반 = 이미 가입된 이메일
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    user_id = memory_store.next_user_id
-    memory_store.next_user_id += 1
-
-    users[user_id] = {
-        "id": user_id,
-        "email": normalized_email,
-        "password_hash": _hash_password(password),
-        "nickname": nickname,
-    }
-    users_by_email[normalized_email] = user_id
-    rewards = get_rewards(user_id)
-
     return {
-        "user": _to_user_response(users[user_id], rewards),
+        "user": _to_user_response(row),
         "access_token": _create_dummy_token(),
         "message": "회원가입이 완료되었습니다.",
     }
 
 
-def login_user(email: str, password: str) -> dict:
-    # MVP 로그인입니다. 실제 서비스에서는 JWT와 보안 설정을 더 강화해야 합니다.
+async def login_user(email: str, password: str) -> dict:
+    # 로그인 화면에서 호출합니다. 이메일로 계정을 찾고 비밀번호 해시를 검증합니다.
     normalized_email = email.lower()
     _validate_email(normalized_email)
-    user_id = users_by_email.get(normalized_email)
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    user = users[user_id]
-    if user["password_hash"] != _hash_password(password):
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        f"SELECT {_USER_FIELDS}, password_hash FROM users WHERE email = $1",
+        normalized_email,
+    )
+    # 존재 여부와 비밀번호 오류를 같은 메시지로 응답해 계정 존재를 노출하지 않는다.
+    if row is None or not _verify_password(password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     return {
-        "user": _to_user_response(user, get_rewards(user_id)),
+        "user": _to_user_response(row),
         "access_token": _create_dummy_token(),
         "message": "로그인에 성공했습니다.",
     }
 
 
-def get_user(user_id: int) -> dict:
-    # 로그인 유지 확인이나 화면 초기 데이터 요청 시 사용할 수 있습니다.
-    if user_id not in users:
+async def get_user(user_id: str) -> dict:
+    # 로그인 유지 확인이나 화면 초기 데이터 요청 시 사용할 수 있습니다. user_id 는 UUID 문자열.
+    pool = await get_pool()
+    try:
+        row = await pool.fetchrow(
+            f"SELECT {_USER_FIELDS} FROM users WHERE id = $1",
+            user_id,
+        )
+    except (asyncpg.DataError, ValueError):
+        # UUID 형식이 아닌 잘못된 id 가 들어온 경우
         raise HTTPException(status_code=404, detail="User not found")
-    return _to_user_response(users[user_id], get_rewards(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _to_user_response(row)
 
 
 def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _ITERATIONS)
+    return f"{_HASH_ALGO}${_ITERATIONS}${salt.hex()}${digest.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, iterations, salt_hex, hash_hex = stored.split("$")
+        if algo != _HASH_ALGO:
+            return False
+        digest = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iterations)
+        )
+    except (ValueError, TypeError):
+        return False
+    # 타이밍 공격 방지를 위해 상수 시간 비교
+    return hmac.compare_digest(digest.hex(), hash_hex)
 
 
 def _validate_email(email: str) -> None:
@@ -79,11 +118,11 @@ def _create_dummy_token() -> str:
     return secrets.token_urlsafe(24)
 
 
-def _to_user_response(user: dict, rewards: dict) -> dict:
+def _to_user_response(user: asyncpg.Record) -> dict:
     return {
-        "id": user["id"],
+        "id": str(user["id"]),          # UUID → 문자열
         "email": user["email"],
         "nickname": user["nickname"],
-        "level": rewards["level"],
-        "token": rewards["token"],
+        "level": user["level"],
+        "token": user["acorn_balance"],  # 도토리 잔액을 token 으로 노출
     }
