@@ -1,18 +1,80 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from routers import goals, quests
+from routers import (
+    achievements,
+    auth,
+    character,
+    dashboard,
+    goals,
+    library,
+    quests,
+    quiz,
+    reports,
+    rewards,
+    room,
+    shop,
+    stats,
+    timer,
+    village,
+)
 
+# FastAPI 앱 기본 설정입니다.
 app = FastAPI(
-    title="QuestStudy AI Backend",
+    title="Forestudy Backend",
     description="Game-based certificate study management API MVP",
-    version="0.1.0",
+    version="0.2.0",
+)
+
+# MVP 단계에서는 프론트 개발 주소가 바뀔 수 있어 CORS를 전체 허용합니다.
+# 배포 단계에서는 allow_origins를 실제 프론트 도메인으로 제한하는 것이 좋습니다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
+# 서버가 정상 실행 중인지 확인하는 가장 단순한 체크 API입니다.
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "message": "QuestStudy AI backend is running"}
+    return {"status": "ok", "message": "Forestudy backend is running"}
 
 
-app.include_router(goals.router)
-app.include_router(quests.router)
+# 브라우저에서 루트 주소로 들어왔을 때 안내용 JSON을 반환합니다.
+@app.get("/")
+def root():
+    return {
+        "message": "Forestudy backend is running",
+        "docs": "http://127.0.0.1:8000/docs",
+        "health": "http://127.0.0.1:8000/health",
+    }
+
+
+def register_router(router):
+    # 현재 FastAPI 버전에서 include_router가 지연 등록 객체로 남는 경우가 있어
+    # MVP 실행 안정성을 위해 라우터의 실제 path operation을 직접 앱에 붙입니다.
+    app.router.routes.extend(router.routes)
+
+
+# 화면/기능 단위 라우터 등록 구간입니다.
+for api_router in [
+    auth.router,
+    goals.router,
+    dashboard.router,
+    village.router,
+    library.router,
+    quests.router,
+    timer.router,
+    quiz.router,
+    reports.router,
+    stats.router,
+    rewards.router,
+    achievements.router,
+    shop.router,
+    room.router,
+    character.router,
+]:
+    register_router(api_router)

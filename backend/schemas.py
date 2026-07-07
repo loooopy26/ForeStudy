@@ -1,6 +1,36 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
+# Auth: 회원가입/로그인 화면에서 사용하는 요청과 응답입니다.
+class UserRegisterRequest(BaseModel):
+    email: str = Field(..., example="student@example.com")
+    password: str = Field(..., min_length=4, example="1234")
+    nickname: str = Field(..., example="성실한 학습자")
+
+
+class UserLoginRequest(BaseModel):
+    email: str = Field(..., example="student@example.com")
+    password: str = Field(..., example="1234")
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    nickname: str
+    level: int
+    token: int
+
+
+class AuthResponse(BaseModel):
+    user: UserResponse
+    access_token: str
+    token_type: str = "bearer"
+    message: str
+
+
+# Goals: 사용자가 준비할 자격증 목표와 학습 기간을 설정합니다.
 class GoalCreate(BaseModel):
     user_id: int = Field(..., example=1)
     certificate_name: str = Field(..., example="정보처리기사")
@@ -14,6 +44,24 @@ class GoalResponse(GoalCreate):
     message: str = "목표가 저장되었습니다."
 
 
+# Library: AI 도서관 화면에서 학습 자료 분석 결과를 보여줍니다.
+class LibraryAnalyzeRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    material_title: str = Field(..., example="정보처리기사 소프트웨어 설계 요약")
+    material_type: str = Field("text", example="PDF")
+    content: str = Field(..., example="요구사항 확인, 화면 설계, 애플리케이션 설계")
+
+
+class LibraryAnalyzeResponse(BaseModel):
+    material_id: int
+    summary: str
+    key_concepts: list[str]
+    recommended_quiz_count: int
+    study_report: str
+    agent: str = "RAG + Study Agent"
+
+
+# Quests: 퀘스트 게시판의 하루 퀘스트 생성과 완료 처리입니다.
 class QuestGenerateRequest(BaseModel):
     user_id: int = Field(..., example=1)
     goal_id: int = Field(..., example=1)
@@ -25,3 +73,227 @@ class QuestResponse(BaseModel):
     quest_type: str
     target_value: int
     reward_token: int
+    difficulty: str = "normal"
+
+
+class QuestCompleteRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    quest_type: str = Field(..., example="study_time")
+    achieved_value: int = Field(..., ge=0, example=40)
+    target_value: int = Field(..., gt=0, example=40)
+    reward_token: int = Field(..., ge=0, example=30)
+
+
+class QuestCompleteResponse(BaseModel):
+    user_id: int
+    quest_type: str
+    completed: bool
+    progress_percent: float
+    reward_token: int
+    message: str
+
+
+# Timer: 도서관 공부 시작, 이탈/정지, 종료 이벤트를 기록합니다.
+class TimerStartRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+
+
+class TimerStartResponse(BaseModel):
+    session_id: int
+    user_id: int
+    started_at: datetime
+    status: str
+
+
+class TimerPauseRequest(BaseModel):
+    session_id: int = Field(..., example=1)
+    reason: str = Field("leave_library", example="leave_library")
+
+
+class TimerPauseResponse(BaseModel):
+    session_id: int
+    user_id: int
+    paused_at: datetime
+    studied_minutes: int
+    status: str
+    reason: str
+
+
+class TimerEndRequest(BaseModel):
+    session_id: int = Field(..., example=1)
+    studied_minutes: int | None = Field(None, ge=0, example=40)
+
+
+class TimerEndResponse(BaseModel):
+    session_id: int
+    user_id: int
+    started_at: datetime
+    ended_at: datetime
+    studied_minutes: int
+    reward_token: int
+    status: str
+    final_quiz_recommended: bool
+    next_action: str
+
+
+# Quiz: AI 퀴즈 생성, 제출, 자동 채점 결과입니다.
+class QuizGenerateRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    goal_id: int = Field(..., example=1)
+    count: int = Field(5, ge=1, le=10, example=5)
+
+
+class QuizQuestion(BaseModel):
+    question_id: int
+    question: str
+    choices: list[str]
+
+
+class QuizGenerateResponse(BaseModel):
+    quiz_id: int
+    user_id: int
+    goal_id: int
+    questions: list[QuizQuestion]
+
+
+class QuizAnswer(BaseModel):
+    question_id: int
+    selected_choice: str
+
+
+class QuizSubmitRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    quiz_id: int = Field(..., example=1)
+    answers: list[QuizAnswer]
+
+
+class QuizSubmitResponse(BaseModel):
+    quiz_id: int
+    user_id: int
+    total_questions: int
+    correct_count: int
+    score_percent: float
+    reward_token: int
+    passed: bool
+
+
+# Stats/Reports: 공부 시간, 연속 학습일, 퀴즈 점수 기반 능력치입니다.
+class StatsResponse(BaseModel):
+    user_id: int
+    focus: int
+    comprehension: int
+    persistence: int
+    growth_score: int
+    pass_rate: float
+    total_study_minutes: int
+    current_streak_days: int
+    recent_quiz_average: float
+    ai_feedback: str
+    agent: str = "Status Agent + Evaluator"
+
+
+# Rewards: 성장 시스템의 레벨, EXP, 토큰, 업적, 테마 해금 상태입니다.
+class RewardsResponse(BaseModel):
+    user_id: int
+    level: int
+    exp: int
+    token: int
+    achievements: list[str]
+    unlocked_themes: list[str]
+    agent: str = "Growth Agent"
+
+
+# Shop: 상점 화면의 아이템 목록과 구매 결과입니다.
+class ShopItemResponse(BaseModel):
+    item_id: int
+    name: str
+    item_type: str
+    price_token: int
+    theme_required: str | None = None
+
+
+class PurchaseItemRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    item_id: int = Field(..., example=1)
+
+
+class PurchaseItemResponse(BaseModel):
+    user_id: int
+    item: ShopItemResponse
+    remaining_token: int
+    message: str
+
+
+# Room: 내 방 꾸미기 화면에서 구매한 아이템을 배치합니다.
+class RoomResponse(BaseModel):
+    user_id: int
+    equipped_items: list[ShopItemResponse]
+    natural_language_prompt: str | None = None
+
+
+class RoomDecorateRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    item_ids: list[int] = Field(default_factory=list, example=[1, 2])
+    prompt: str | None = Field(None, example="책상 옆에 초록 식물을 배치해줘")
+
+
+# Dashboard/Village: 홈 화면과 마을 허브 화면에서 한 번에 보여줄 요약 데이터입니다.
+class DashboardQuest(BaseModel):
+    title: str
+    target_minutes: int
+    progress_percent: float
+    exp_reward: int
+    token_reward: int
+
+
+class DashboardResponse(BaseModel):
+    user_id: int
+    nickname: str
+    level: int
+    exp: int
+    next_level_exp: int
+    token: int
+    gem: int
+    streak_days: int
+    stats: StatsResponse
+    today_quest: DashboardQuest
+
+
+class VillageLocation(BaseModel):
+    key: str
+    name: str
+    path: str
+    unlocked: bool
+
+
+class VillageResponse(BaseModel):
+    user_id: int
+    token: int
+    gem: int
+    locations: list[VillageLocation]
+    weekly_exam: str
+    weekly_progress_percent: float
+
+
+# Achievements/Character: 업적 화면과 캐릭터 장착 화면에 사용합니다.
+class AchievementResponse(BaseModel):
+    title: str
+    description: str
+    progress_current: int
+    progress_target: int
+    completed: bool
+    reward_token: int
+
+
+class CharacterResponse(BaseModel):
+    user_id: int
+    level: int
+    token: int
+    gem: int
+    equipped_items: list[ShopItemResponse]
+    owned_item_ids: list[int]
+
+
+class CharacterEquipRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    item_ids: list[int] = Field(default_factory=list, example=[1])
