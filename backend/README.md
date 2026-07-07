@@ -92,7 +92,7 @@ backend/
 
 ## 참고 (Upstage API)
 
-- Chat: `POST /v1/chat/completions`, `solar-pro2` (JSON Mode 사용 중)
+- Chat: `POST /v1/chat/completions`, `solar-pro3` (JSON Mode 사용 중, 2026-01 출시된 현재 플래그십 — 이전 `solar-pro2`도 아직 유효)
 - Embeddings: `solar-embedding-2-passage`(저장) / `-query`(검색), **1024차원**, 배치 최대 100개
 - Document Parse: `POST /v1/document-digitization`, `model=document-parse`, 동기 최대 100페이지
 - 임베딩 차원을 바꾸면 `db/schema.sql`의 `VECTOR(1024)`도 함께 변경할 것
