@@ -48,3 +48,8 @@ Forestudy는 단순히 공부를 기록하는 서비스를 넘어, AI 기반 학
 - **팀 스터디 파티**: `parties`, `party_members`, `party_goals`, `party_contributions`, `party_checkins`
 - **미래의 나 리포트**: `pass_probability_snapshots`, `simulation_scenarios`
 - **알림**: `notifications`, `notification_weekly_send_log` (주 최대 3회 제한)
+
+
+## 백엔드 실행
+
+FastAPI 백엔드 설치/실행 방법과 전체 API 목록은 [backend/README.md](backend/README.md)를 참고하세요.
