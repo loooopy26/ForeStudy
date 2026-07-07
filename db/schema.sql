@@ -1,0 +1,539 @@
+-- Forestudy - PostgreSQL schema
+-- MVP 4대 기능: AI 도서관(RAG+Study Agent), AI 퀘스트 게시판(Planner Agent),
+-- AI 상태창(Status Agent+Evaluator), 성장 시스템(Growth Agent: EXP/도토리/업적/레벨 -> 캐릭터·방·숲 성장/상점/테마해금)
+-- + 확장: 팀 스터디 파티 모드, 미래의 나 리포트, 알림, 자격증/스케줄, 튜터 챗봇
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- =====================================================================
+-- 1. USERS & ACTIVITY (학습 지속성 = 연속 접속일)
+-- =====================================================================
+
+CREATE TABLE users (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email                TEXT UNIQUE NOT NULL,
+    password_hash        TEXT NOT NULL,
+    nickname             TEXT NOT NULL,
+    avatar_url           TEXT,
+    level                INT NOT NULL DEFAULT 1,
+    current_xp           INT NOT NULL DEFAULT 0,
+    acorn_balance        INT NOT NULL DEFAULT 0,   -- 도토리(재화)
+    current_streak_days  INT NOT NULL DEFAULT 0,
+    longest_streak_days  INT NOT NULL DEFAULT 0,
+    last_active_date     DATE,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 하루 1건씩 기록, 연속 접속일(streak) 계산의 근거 데이터
+CREATE TABLE user_activity_days (
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    activity_date DATE NOT NULL,
+    PRIMARY KEY (user_id, activity_date)
+);
+
+-- =====================================================================
+-- 2. AI 상태창 (스탯) & 특성/타이틀
+-- =====================================================================
+
+-- 입력: 공부시간, 퀴즈점수, 연속학습일, 퀘스트완료율 (Status Agent + Evaluator)
+CREATE TABLE user_stats (
+    user_id           UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    focus             INT NOT NULL DEFAULT 0 CHECK (focus BETWEEN 0 AND 100),          -- 집중력
+    comprehension     INT NOT NULL DEFAULT 0 CHECK (comprehension BETWEEN 0 AND 100),  -- 이해도
+    persistence       INT NOT NULL DEFAULT 0 CHECK (persistence BETWEEN 0 AND 100),    -- 학습 지속성
+    growth_score      INT NOT NULL DEFAULT 0 CHECK (growth_score BETWEEN 0 AND 100),   -- 성장도
+    pass_rate         NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (pass_rate BETWEEN 0 AND 100), -- 합격 가능성
+    ai_feedback       TEXT,                                                            -- AI 피드백
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 성장 그래프용 일별 스냅샷
+CREATE TABLE user_stat_snapshots (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    snapshot_date     DATE NOT NULL,
+    focus             INT NOT NULL,
+    comprehension     INT NOT NULL,
+    persistence       INT NOT NULL,
+    growth_score      INT NOT NULL,
+    pass_rate         NUMERIC(5,2) NOT NULL,
+    ai_feedback       TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, snapshot_date)
+);
+
+-- 꾸준한 성장가 / 새벽형 집중러 / 벼락치기 마스터 / 팀 기여자 등
+CREATE TABLE trait_definitions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code            TEXT UNIQUE NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    condition_type  TEXT NOT NULL,
+    condition_value NUMERIC
+);
+
+CREATE TABLE user_traits (
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    trait_id    UUID NOT NULL REFERENCES trait_definitions(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, trait_id)
+);
+
+-- =====================================================================
+-- 3. 자격증 & 학습 목표
+-- =====================================================================
+
+CREATE TABLE certifications (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT NOT NULL,
+    category     TEXT,
+    issuing_body TEXT,
+    description  TEXT,
+    exam_scope   JSONB,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE cert_exam_schedules (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    certification_id   UUID NOT NULL REFERENCES certifications(id) ON DELETE CASCADE,
+    round_name         TEXT NOT NULL,
+    application_start  DATE,
+    application_end    DATE,
+    exam_date          DATE,
+    result_date        DATE
+);
+
+CREATE TABLE user_cert_goals (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    certification_id      UUID NOT NULL REFERENCES certifications(id),
+    cert_exam_schedule_id UUID REFERENCES cert_exam_schedules(id),
+    current_level         TEXT NOT NULL DEFAULT 'beginner' CHECK (current_level IN ('beginner','intermediate','advanced')),
+    prep_duration_weeks   INT NOT NULL,
+    target_exam_date      DATE,
+    status                TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','abandoned')),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =====================================================================
+-- 4. AI 커리큘럼 (주차별/일별 학습 계획)
+-- =====================================================================
+
+CREATE TABLE curricula (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_cert_goal_id  UUID NOT NULL REFERENCES user_cert_goals(id) ON DELETE CASCADE,
+    version            INT NOT NULL DEFAULT 1,
+    generated_by       TEXT NOT NULL DEFAULT 'ai' CHECK (generated_by IN ('ai','user')),
+    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE curriculum_weeks (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    curriculum_id  UUID NOT NULL REFERENCES curricula(id) ON DELETE CASCADE,
+    week_number    INT NOT NULL,
+    theme          TEXT,
+    planned_hours  NUMERIC(5,2),
+    UNIQUE (curriculum_id, week_number)
+);
+
+CREATE TABLE curriculum_days (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    curriculum_week_id   UUID NOT NULL REFERENCES curriculum_weeks(id) ON DELETE CASCADE,
+    day_date             DATE NOT NULL,
+    focus_topic          TEXT,
+    planned_minutes      INT,
+    progress_status      TEXT NOT NULL DEFAULT 'not_started' CHECK (progress_status IN ('not_started','in_progress','completed')),
+    UNIQUE (curriculum_week_id, day_date)
+);
+
+-- =====================================================================
+-- 5. 퀘스트 게시판
+-- =====================================================================
+
+CREATE TABLE quests (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    curriculum_day_id  UUID REFERENCES curriculum_days(id) ON DELETE SET NULL,
+    quest_date         DATE NOT NULL,
+    quest_type         TEXT NOT NULL CHECK (quest_type IN ('main','sub','bonus')),
+    title              TEXT NOT NULL,
+    description        TEXT,
+    difficulty         TEXT NOT NULL DEFAULT 'normal' CHECK (difficulty IN ('easy','normal','hard')),
+    target_type        TEXT NOT NULL CHECK (target_type IN ('study_minutes','quiz_complete','daily_100_percent','custom')),
+    target_value       NUMERIC,
+    progress_value     NUMERIC NOT NULL DEFAULT 0,
+    xp_reward          INT NOT NULL DEFAULT 0,
+    acorn_reward       INT NOT NULL DEFAULT 0,
+    status             TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('not_started','in_progress','completed','skipped')),
+    generated_by       TEXT NOT NULL DEFAULT 'ai' CHECK (generated_by IN ('ai','user')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at       TIMESTAMPTZ
+);
+CREATE INDEX idx_quests_user_date ON quests(user_id, quest_date);
+
+-- =====================================================================
+-- 6. 도서관 - 공부시간 타이머
+-- =====================================================================
+
+CREATE TABLE study_sessions (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quest_id       UUID REFERENCES quests(id) ON DELETE SET NULL,
+    started_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at       TIMESTAMPTZ,
+    active_seconds INT NOT NULL DEFAULT 0,
+    status         TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','completed','abandoned'))
+);
+CREATE INDEX idx_study_sessions_user ON study_sessions(user_id, started_at);
+
+-- 이탈/다른 활동 감지로 타이머가 멈춘 구간 기록
+CREATE TABLE study_session_interruptions (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    study_session_id   UUID NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
+    paused_at          TIMESTAMPTZ NOT NULL,
+    resumed_at         TIMESTAMPTZ,
+    reason             TEXT NOT NULL DEFAULT 'tab_hidden' CHECK (reason IN ('tab_hidden','left_site','manual_pause'))
+);
+
+-- =====================================================================
+-- 7. 퀴즈 & 자동 채점 & 약점 분석
+-- =====================================================================
+
+CREATE TABLE quizzes (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quest_id      UUID REFERENCES quests(id) ON DELETE SET NULL,
+    quiz_date     DATE NOT NULL,
+    title         TEXT,
+    difficulty    TEXT NOT NULL DEFAULT 'normal' CHECK (difficulty IN ('easy','normal','hard')),
+    generated_by  TEXT NOT NULL DEFAULT 'ai' CHECK (generated_by IN ('ai','user')),
+    status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','graded')),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE quiz_questions (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id        UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    question_order INT NOT NULL,
+    question_text  TEXT NOT NULL,
+    question_type  TEXT NOT NULL DEFAULT 'multiple_choice' CHECK (question_type IN ('multiple_choice','ox','short_answer')),
+    options        JSONB,
+    correct_answer TEXT NOT NULL,
+    explanation    TEXT,
+    topic_tag      TEXT
+);
+
+CREATE TABLE quiz_attempts (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id       UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    submitted_at  TIMESTAMPTZ,
+    correct_count INT,
+    total_count   INT,
+    score_pct     NUMERIC(5,2)
+);
+
+CREATE TABLE quiz_answers (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_attempt_id  UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+    quiz_question_id UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    user_answer      TEXT,
+    is_correct       BOOLEAN,
+    UNIQUE (quiz_attempt_id, quiz_question_id)
+);
+
+CREATE TABLE weak_point_reports (
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    topic_tag                TEXT NOT NULL,
+    weakness_score           NUMERIC(5,2) NOT NULL,
+    recommendation           TEXT,
+    source_quiz_attempt_id   UUID REFERENCES quiz_attempts(id) ON DELETE SET NULL,
+    generated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 사용자 업로드 학습자료(PDF/PPT/DOCX) + 약점 재학습용 튜터 챗봇(선생-학생 대화)
+-- RAG + Study Agent: 요약, 핵심 개념 추출
+CREATE TABLE study_materials (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    certification_id  UUID REFERENCES certifications(id) ON DELETE SET NULL,
+    title             TEXT NOT NULL,
+    file_url          TEXT NOT NULL,
+    file_type         TEXT CHECK (file_type IN ('pdf','ppt','docx','other')),
+    ai_summary        TEXT,        -- AI 요약
+    key_concepts      JSONB,       -- 핵심 개념 목록
+    processed_status  TEXT NOT NULL DEFAULT 'pending' CHECK (processed_status IN ('pending','processing','ready','failed')),
+    uploaded_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 도서관 학습 리포트: 요약 + 퀴즈 결과 + 오답 분석을 묶은 종합 리포트
+CREATE TABLE study_reports (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    study_material_id      UUID REFERENCES study_materials(id) ON DELETE SET NULL,
+    quiz_attempt_id        UUID REFERENCES quiz_attempts(id) ON DELETE SET NULL,
+    summary                TEXT,
+    wrong_answer_analysis  TEXT,
+    recommendation         TEXT,
+    generated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE tutor_chat_sessions (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    study_material_id      UUID REFERENCES study_materials(id) ON DELETE SET NULL,
+    weak_point_report_id   UUID REFERENCES weak_point_reports(id) ON DELETE SET NULL,
+    started_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at               TIMESTAMPTZ
+);
+
+CREATE TABLE tutor_chat_messages (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tutor_chat_session_id     UUID NOT NULL REFERENCES tutor_chat_sessions(id) ON DELETE CASCADE,
+    role                      TEXT NOT NULL CHECK (role IN ('user','assistant')),
+    content                   TEXT NOT NULL,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =====================================================================
+-- 8. 게임화: XP / 레벨 / 업적 / 도토리(재화) / 숲 성장
+-- =====================================================================
+
+CREATE TABLE level_definitions (
+    level_number           INT PRIMARY KEY,
+    title                  TEXT NOT NULL,          -- 입문자 / 성실한 학습자 / 자격증 전사 / 성장 마스터
+    required_cumulative_xp INT NOT NULL
+);
+
+CREATE TABLE xp_transactions (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL CHECK (source_type IN ('quest','achievement','levelup_bonus','party_bonus')),
+    source_id   UUID,
+    xp_amount   INT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE achievements (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code            TEXT UNIQUE NOT NULL,
+    name            TEXT NOT NULL,           -- 첫 퀘스트 완료 / 7일 연속 학습 / 30일 연속 학습 / 첫 자격증 취득 / 팀 스터디 MVP / 프로젝트 완료
+    description     TEXT,
+    condition_type  TEXT NOT NULL,
+    condition_value NUMERIC,
+    reward_acorn    INT NOT NULL DEFAULT 0,
+    icon_url        TEXT
+);
+
+CREATE TABLE user_achievements (
+    user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    achievement_id UUID NOT NULL REFERENCES achievements(id) ON DELETE CASCADE,
+    achieved_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, achievement_id)
+);
+
+CREATE TABLE acorn_transactions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_type   TEXT NOT NULL CHECK (source_type IN ('quest_complete','achievement','level_up','shop_purchase','theme_unlock','admin_adjust')),
+    source_id     UUID,
+    amount        INT NOT NULL,          -- 양수= 적립, 음수 = 사용
+    balance_after INT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 숲 성장: EXP/도토리/업적/레벨에 연동되는 시각적 숲 성장 (Growth Agent)
+CREATE TABLE forests (
+    user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    growth_stage  INT NOT NULL DEFAULT 0,   -- 씨앗 -> 새싹 -> 나무 -> 숲 단계
+    tree_count    INT NOT NULL DEFAULT 0,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE forest_growth_events (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_type  TEXT NOT NULL CHECK (source_type IN ('quest_complete','achievement','level_up','streak_bonus')),
+    source_id    UUID,
+    growth_delta INT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =====================================================================
+-- 9. 내 방 / 상점 / 캐릭터 꾸미기
+-- =====================================================================
+
+CREATE TABLE themes (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                   TEXT NOT NULL,
+    description            TEXT,
+    unlock_condition_type  TEXT NOT NULL,     -- e.g. achievement_count, level, specific_achievement
+    unlock_condition_value TEXT,
+    preview_image_url      TEXT
+);
+
+CREATE TABLE user_unlocked_themes (
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    theme_id    UUID NOT NULL REFERENCES themes(id) ON DELETE CASCADE,
+    unlocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, theme_id)
+);
+
+CREATE TABLE shop_items (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT NOT NULL,
+    category     TEXT NOT NULL CHECK (category IN ('furniture','wallpaper','flooring','character_outfit','character_accessory')),
+    price_acorns INT NOT NULL,
+    image_url    TEXT,
+    is_active    BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE TABLE user_inventory (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    shop_item_id UUID NOT NULL REFERENCES shop_items(id) ON DELETE CASCADE,
+    source       TEXT NOT NULL DEFAULT 'purchase' CHECK (source IN ('purchase','reward')),
+    acquired_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE rooms (
+    user_id          UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    active_theme_id  UUID REFERENCES themes(id) ON DELETE SET NULL,
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE room_placements (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_user_id  UUID NOT NULL REFERENCES rooms(user_id) ON DELETE CASCADE,
+    inventory_id  UUID NOT NULL REFERENCES user_inventory(id) ON DELETE CASCADE,
+    position_x    NUMERIC NOT NULL DEFAULT 0,
+    position_y    NUMERIC NOT NULL DEFAULT 0,
+    z_index       INT NOT NULL DEFAULT 0,
+    rotation      NUMERIC NOT NULL DEFAULT 0
+);
+
+CREATE TABLE characters (
+    user_id          UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    name             TEXT,
+    base_appearance  JSONB
+);
+
+CREATE TABLE character_equipment (
+    character_user_id UUID NOT NULL REFERENCES characters(user_id) ON DELETE CASCADE,
+    inventory_id      UUID NOT NULL REFERENCES user_inventory(id) ON DELETE CASCADE,
+    slot              TEXT NOT NULL CHECK (slot IN ('hair','outfit','accessory','background')),
+    PRIMARY KEY (character_user_id, slot)
+);
+
+-- 자연어로 방/캐릭터 꾸미기를 요청한 LLM 호출 기록
+CREATE TABLE llm_decoration_requests (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target          TEXT NOT NULL CHECK (target IN ('room','character')),
+    prompt_text     TEXT NOT NULL,
+    applied_changes JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =====================================================================
+-- 10. 팀 스터디 파티 모드
+-- =====================================================================
+
+CREATE TABLE parties (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name             TEXT NOT NULL,
+    leader_user_id   UUID NOT NULL REFERENCES users(id),
+    goal_description TEXT,
+    status           TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','disbanded')),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE party_members (
+    party_id  UUID NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+    user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role      TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('leader','member')),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (party_id, user_id)
+);
+
+CREATE TABLE party_goals (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    party_id      UUID NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+    title         TEXT NOT NULL,       -- 보스 클리어 목표
+    target_metric TEXT NOT NULL,       -- e.g. quest_count
+    target_value  NUMERIC NOT NULL,
+    start_date    DATE NOT NULL,
+    end_date      DATE NOT NULL
+);
+
+CREATE TABLE party_contributions (
+    party_goal_id      UUID NOT NULL REFERENCES party_goals(id) ON DELETE CASCADE,
+    user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    contributed_value  NUMERIC NOT NULL DEFAULT 0,
+    contribution_pct   NUMERIC(5,2) NOT NULL DEFAULT 0,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (party_goal_id, user_id)
+);
+
+CREATE TABLE party_checkins (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    party_id     UUID NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    checkin_date DATE NOT NULL,
+    summary      TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (party_id, user_id, checkin_date)
+);
+
+-- =====================================================================
+-- 11. 미래의 나 리포트 & 시뮬레이션
+-- =====================================================================
+
+CREATE TABLE pass_probability_snapshots (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_cert_goal_id   UUID NOT NULL REFERENCES user_cert_goals(id) ON DELETE CASCADE,
+    snapshot_date       DATE NOT NULL,
+    pass_probability    NUMERIC(5,2) NOT NULL,
+    model_version       TEXT,
+    factors             JSONB,
+    UNIQUE (user_cert_goal_id, snapshot_date)
+);
+
+CREATE TABLE simulation_scenarios (
+    id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_cert_goal_id           UUID NOT NULL REFERENCES user_cert_goals(id) ON DELETE CASCADE,
+    scenario_label              TEXT NOT NULL,   -- 선택 A / 선택 B
+    action_description          TEXT,
+    projected_pass_probability  NUMERIC(5,2),
+    projected_xp                INT,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- =====================================================================
+-- 12. 맥락 인지형 알림 (주 최대 3회 제한)
+-- =====================================================================
+
+CREATE TABLE notifications (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    notif_type TEXT NOT NULL CHECK (notif_type IN ('motivation','quest_reminder','achievement','party')),
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    context    JSONB,
+    sent_at    TIMESTAMPTZ,
+    read_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id) WHERE read_at IS NULL;
+
+-- 주간 발송 횟수 캡 체크용 카운터
+CREATE TABLE notification_weekly_send_log (
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    week_start_date DATE NOT NULL,
+    send_count      INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, week_start_date)
+);
