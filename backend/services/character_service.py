@@ -1,3 +1,9 @@
+"""캐릭터 장착 서비스.
+
+담당 탭: 캐릭터.
+역할: 캐릭터 정보 조회, 구매한 아이템 장착 처리.
+"""
+
 from fastapi import HTTPException
 
 from services.memory_store import shop_items, user_inventories, user_rooms

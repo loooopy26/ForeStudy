@@ -1,3 +1,9 @@
+"""상점 구매 서비스.
+
+담당 탭: 상점.
+역할: 판매 아이템 목록 조회, 토큰 차감, 구매 아이템 인벤토리 등록.
+"""
+
 from fastapi import HTTPException
 
 from services.memory_store import shop_items, user_inventories

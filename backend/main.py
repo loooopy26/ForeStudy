@@ -1,3 +1,9 @@
+"""Forestudy 백엔드 시작 파일.
+
+담당: 전체 FastAPI 앱 실행, CORS 설정, 화면별 API 라우터 연결.
+프론트 탭: 전체 앱 공통 진입점.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

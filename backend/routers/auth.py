@@ -1,3 +1,9 @@
+"""회원가입/로그인 API 라우터.
+
+담당 탭: 로그인, 회원가입, 사용자 세션 확인.
+주요 API: POST /auth/register, POST /auth/login, GET /auth/me/{user_id}
+"""
+
 from fastapi import APIRouter
 
 from schemas import AuthResponse, UserLoginRequest, UserRegisterRequest, UserResponse

@@ -1,3 +1,9 @@
+"""사용자 능력치 계산 서비스.
+
+담당 탭: 상태창, AI 분석 리포트.
+역할: 집중력, 이해도, 학습 지속성, 성장도, 현재 합격률 계산.
+"""
+
 from services.memory_store import get_current_streak_days, quiz_results, study_logs
 
 

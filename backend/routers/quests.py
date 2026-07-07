@@ -1,3 +1,9 @@
+"""퀘스트 게시판 API 라우터.
+
+담당 탭: 퀘스트 게시판 화면, 하루 퀘스트 생성과 완료 처리.
+주요 API: POST /quests/generate, POST /quests/complete
+"""
+
 from fastapi import APIRouter
 
 from schemas import (

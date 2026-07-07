@@ -1,3 +1,9 @@
+"""내 방 API 라우터.
+
+담당 탭: 내 방 화면, 구매한 아이템 배치와 자연어 꾸미기 요청 저장.
+주요 API: GET /room/{user_id}, POST /room/decorate
+"""
+
 from fastapi import APIRouter
 
 from schemas import RoomDecorateRequest, RoomResponse

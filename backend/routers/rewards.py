@@ -1,3 +1,9 @@
+"""성장 보상 API 라우터.
+
+담당 탭: 상태창, 캐릭터, 상점에서 사용하는 레벨/EXP/토큰/해금 테마 조회.
+주요 API: GET /rewards/{user_id}
+"""
+
 from fastapi import APIRouter
 
 from schemas import RewardsResponse

@@ -1,3 +1,9 @@
+"""API 요청/응답 데이터 형식 모음.
+
+담당: 회원가입, 홈, 마을, 도서관, 퀘스트, 퀴즈, 리포트, 상점, 내 방, 캐릭터 탭의 데이터 구조 정의.
+프론트 탭: 전체 탭 공통.
+"""
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field

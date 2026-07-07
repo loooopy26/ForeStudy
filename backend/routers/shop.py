@@ -1,3 +1,9 @@
+"""상점 API 라우터.
+
+담당 탭: 상점 화면, 아이템 목록 조회와 토큰 구매 처리.
+주요 API: GET /shop/items, POST /shop/purchase
+"""
+
 from fastapi import APIRouter
 
 from schemas import PurchaseItemRequest, PurchaseItemResponse, ShopItemResponse

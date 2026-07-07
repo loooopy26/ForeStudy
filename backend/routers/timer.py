@@ -1,3 +1,9 @@
+"""도서관 공부 타이머 API 라우터.
+
+담당 탭: 도서관 화면, 공부 시작/이탈 정지/공부 종료.
+주요 API: POST /timer/start, POST /timer/pause, POST /timer/end
+"""
+
 from fastapi import APIRouter
 
 from schemas import (

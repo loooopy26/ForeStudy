@@ -1,3 +1,9 @@
+"""회원가입/로그인 처리 서비스.
+
+담당 탭: 로그인, 회원가입.
+역할: 사용자 메모리 저장, 비밀번호 해시, 더미 access_token 발급.
+"""
+
 import hashlib
 import secrets
 

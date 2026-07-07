@@ -1,3 +1,10 @@
+"""MVP 공용 메모리 저장소.
+
+담당 탭: 전체 탭 공통.
+역할: DB 연동 전까지 사용자, 퀘스트, 타이머, 퀴즈, 보상, 상점, 내 방 데이터를 임시 저장.
+주의: 서버를 재시작하면 저장된 데이터가 초기화됩니다.
+"""
+
 from datetime import date, datetime
 from typing import Any
 

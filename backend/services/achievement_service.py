@@ -1,3 +1,9 @@
+"""업적 진행도 계산 서비스.
+
+담당 탭: 업적.
+역할: 연속 학습, 첫 퀘스트 완료, 퀴즈 만점 등 업적 진행도 반환.
+"""
+
 from services.memory_store import get_current_streak_days, quest_results, quiz_results
 
 

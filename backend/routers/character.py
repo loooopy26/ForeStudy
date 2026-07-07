@@ -1,3 +1,9 @@
+"""캐릭터 API 라우터.
+
+담당 탭: 캐릭터 화면, 보유 아이템 조회와 캐릭터 장착 처리.
+주요 API: GET /character/{user_id}, POST /character/equip
+"""
+
 from fastapi import APIRouter
 
 from schemas import CharacterEquipRequest, CharacterResponse

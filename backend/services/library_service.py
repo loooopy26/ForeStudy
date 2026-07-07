@@ -1,3 +1,9 @@
+"""AI 도서관 자료 분석 서비스.
+
+담당 탭: 도서관.
+역할: MVP 더미 자료 분석, 요약, 핵심 개념 추출, 추천 퀴즈 수 생성.
+"""
+
 from services import memory_store
 from services.memory_store import mark_activity, materials
 

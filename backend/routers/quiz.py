@@ -1,3 +1,9 @@
+"""AI 퀴즈 API 라우터.
+
+담당 탭: AI 퀴즈 화면, 문제 생성, 답안 제출, 자동 채점.
+주요 API: POST /quiz/generate, POST /quiz/submit
+"""
+
 from fastapi import APIRouter
 
 from schemas import QuizGenerateRequest, QuizGenerateResponse, QuizSubmitRequest, QuizSubmitResponse

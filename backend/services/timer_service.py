@@ -1,3 +1,9 @@
+"""도서관 공부 타이머 서비스.
+
+담당 탭: 도서관.
+역할: 공부 시작, 사이트 이탈 정지, 공부 종료, 공부 시간 보상 지급.
+"""
+
 from fastapi import HTTPException
 
 from services import memory_store

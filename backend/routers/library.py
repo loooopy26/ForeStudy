@@ -1,3 +1,9 @@
+"""AI 도서관 API 라우터.
+
+담당 탭: 도서관 화면, 학습 자료 분석, 요약/핵심 개념/추천 퀴즈 수 제공.
+주요 API: POST /library/analyze
+"""
+
 from fastapi import APIRouter
 
 from schemas import LibraryAnalyzeRequest, LibraryAnalyzeResponse

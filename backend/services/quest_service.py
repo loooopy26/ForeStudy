@@ -1,3 +1,9 @@
+"""퀘스트 게시판 서비스.
+
+담당 탭: 퀘스트 게시판.
+역할: 하루 퀘스트 더미 생성, 퀘스트 완료율 계산, 완료 보상 지급.
+"""
+
 from services.memory_store import quest_results
 from services.reward_service import add_reward
 from schemas import QuestResponse

@@ -1,3 +1,9 @@
+"""홈/상태창 요약 데이터 조합 서비스.
+
+담당 탭: 홈 화면.
+역할: 보상, 능력치, 오늘의 퀘스트 요약을 한 번에 반환.
+"""
+
 from services.reward_service import get_rewards
 from services.stat_service import get_user_stats
 

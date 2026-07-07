@@ -1,3 +1,9 @@
+"""사용자 능력치 API 라우터.
+
+담당 탭: 상태창, 리포트, 홈 요약에서 사용하는 집중력/이해도/지속성/합격률 조회.
+주요 API: GET /stats/{user_id}
+"""
+
 from fastapi import APIRouter
 
 from schemas import StatsResponse

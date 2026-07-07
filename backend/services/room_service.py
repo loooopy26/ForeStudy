@@ -1,3 +1,9 @@
+"""내 방 꾸미기 서비스.
+
+담당 탭: 내 방.
+역할: 구매한 아이템 배치, 자연어 꾸미기 prompt 저장.
+"""
+
 from fastapi import HTTPException
 
 from services.memory_store import shop_items, user_inventories, user_rooms

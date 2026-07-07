@@ -1,3 +1,9 @@
+"""성장 보상 서비스.
+
+담당 탭: 상태창, 업적, 상점, 캐릭터.
+역할: EXP, 레벨, 토큰, 업적, 테마 해금 상태 관리.
+"""
+
 from services.memory_store import user_rewards
 
 

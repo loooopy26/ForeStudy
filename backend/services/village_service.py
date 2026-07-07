@@ -1,3 +1,9 @@
+"""마을 허브 데이터 서비스.
+
+담당 탭: 마을 화면.
+역할: 건물 이동 정보, 재화, 주간 시험 진행률 요약 반환.
+"""
+
 from services.reward_service import get_rewards
 from services.stat_service import get_user_stats
 

@@ -1,3 +1,9 @@
+"""AI 퀴즈 생성/채점 서비스.
+
+담당 탭: AI 퀴즈.
+역할: 더미 문제 생성, 제출 답안 자동 채점, 퀴즈 보상 지급.
+"""
+
 from fastapi import HTTPException
 
 from services import memory_store
