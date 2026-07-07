@@ -15,7 +15,14 @@ from config import settings
 EMBEDDING_DIM = 1024
 _EMBED_BATCH_SIZE = 100
 
-_headers = {"Authorization": f"Bearer {settings.upstage_api_key}"}
+
+def _auth_headers() -> dict:
+    if not settings.upstage_api_key:
+        raise RuntimeError(
+            "UPSTAGE_API_KEY가 설정되지 않았습니다. backend/.env에 값을 넣어주세요 "
+            "(.env.example 참고). AI 도서관 기능(파싱/임베딩/챗) 호출 시에만 필요합니다."
+        )
+    return {"Authorization": f"Bearer {settings.upstage_api_key}"}
 
 
 async def chat(
@@ -40,7 +47,7 @@ async def chat(
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
             f"{settings.upstage_base_url}/chat/completions",
-            headers={**_headers, "Content-Type": "application/json"},
+            headers={**_auth_headers(), "Content-Type": "application/json"},
             json=body,
         )
         resp.raise_for_status()
@@ -70,7 +77,7 @@ async def embed(texts: list[str], *, kind: str = "passage") -> list[list[float]]
             batch = texts[i : i + _EMBED_BATCH_SIZE]
             resp = await client.post(
                 f"{settings.upstage_base_url}/embeddings",
-                headers={**_headers, "Content-Type": "application/json"},
+                headers={**_auth_headers(), "Content-Type": "application/json"},
                 json={"model": model, "input": batch},
             )
             resp.raise_for_status()
@@ -86,7 +93,7 @@ async def parse_document(file_path: Path) -> dict:
         with open(file_path, "rb") as f:
             resp = await client.post(
                 f"{settings.upstage_base_url}/document-digitization",
-                headers=_headers,
+                headers=_auth_headers(),
                 files={"document": (file_path.name, f)},
                 data={"model": settings.upstage_doc_parse_model, "ocr": "auto"},
             )
