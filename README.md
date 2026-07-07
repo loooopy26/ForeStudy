@@ -1,5 +1,3 @@
-# QuestStudy (Forestudy)
-
 # 🌳 Forestudy
 
 ## 프로젝트 소개
