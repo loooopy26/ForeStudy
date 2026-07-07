@@ -6,11 +6,12 @@
 
 from services.reward_service import get_rewards
 from services.stat_service import get_user_stats
+from sqlalchemy.orm import Session
 
 
-def get_dashboard(user_id: int) -> dict:
+def get_dashboard(db: Session, user_id: int) -> dict:
     rewards = get_rewards(user_id)
-    stats = get_user_stats(user_id)
+    stats = get_user_stats(db=db, user_id=user_id)
 
     return {
         "user_id": user_id,

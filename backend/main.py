@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from database import init_db
 from db import close_pool
 from routers import (
     achievements,
@@ -44,6 +45,8 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+init_db()
 
 # MVP 단계에서는 프론트 개발 주소가 바뀔 수 있어 CORS를 전체 허용합니다.
 # 배포 단계에서는 allow_origins를 실제 프론트 도메인으로 제한하는 것이 좋습니다.

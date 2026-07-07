@@ -41,7 +41,7 @@ Forestudy는 단순히 공부를 기록하는 서비스를 넘어, AI 기반 학
 - **AI 커리큘럼**: `curricula`, `curriculum_weeks`, `curriculum_days`
 - **퀘스트 게시판**: `quests` (main/sub/bonus, 난이도 자동 조절)
 - **도서관 타이머**: `study_sessions`, `study_session_interruptions` (이탈 시 타이머 정지)
-- **퀴즈/채점/약점 분석**: `quizzes`, `quiz_questions`, `quiz_attempts`, `quiz_answers`, `weak_point_reports`
+- **퀴즈/채점/약점 분석/오답노트**: `quizzes`, `quiz_questions`, `quiz_attempts`, `quiz_answers`, `weak_point_reports`, `wrong_answer_notes`, `wrong_answer_review_sessions`, `wrong_answer_review_items`
 - **학습자료 + 리포트 + 튜터 챗봇**: `study_materials` (AI 요약/핵심 개념), `study_reports`, `tutor_chat_sessions`, `tutor_chat_messages`
 - **게임화**: `level_definitions`, `xp_transactions`, `achievements`, `user_achievements`, `acorn_transactions`(도토리), `forests`/`forest_growth_events`(숲 성장)
 - **내 방/상점/캐릭터**: `themes`, `user_unlocked_themes`, `shop_items`, `user_inventory`, `rooms`, `room_placements`, `characters`, `character_equipment`, `llm_decoration_requests` (자연어 꾸미기)

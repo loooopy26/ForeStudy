@@ -4,8 +4,10 @@
 주요 API: GET /village/{user_id}
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+from database import get_db
 from schemas import VillageResponse
 from services.village_service import get_village
 
@@ -13,5 +15,5 @@ router = APIRouter(prefix="/village", tags=["village"])
 
 
 @router.get("/{user_id}", response_model=VillageResponse)
-def read_village(user_id: int):
-    return get_village(user_id=user_id)
+def read_village(user_id: int, db: Session = Depends(get_db)):
+    return get_village(db=db, user_id=user_id)

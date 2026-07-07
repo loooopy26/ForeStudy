@@ -136,6 +136,7 @@ class TimerEndResponse(BaseModel):
     started_at: datetime
     ended_at: datetime
     studied_minutes: int
+    max_uninterrupted_minutes: int
     reward_token: int
     status: str
     final_quiz_recommended: bool

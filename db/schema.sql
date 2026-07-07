@@ -259,6 +259,47 @@ CREATE TABLE weak_point_reports (
 
 -- 사용자 업로드 학습자료(PDF/PPT/DOCX) + 약점 재학습용 튜터 챗봇(선생-학생 대화)
 -- RAG + Study Agent: 요약, 핵심 개념 추출
+CREATE TABLE wrong_answer_notes (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quiz_attempt_id    UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+    quiz_question_id   UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    question_text      TEXT NOT NULL,
+    user_answer        TEXT,
+    correct_answer     TEXT NOT NULL,
+    explanation        TEXT,
+    topic_tag          TEXT,
+    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewing','mastered')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_reviewed_at   TIMESTAMPTZ,
+    UNIQUE (quiz_attempt_id, quiz_question_id)
+);
+
+CREATE TABLE wrong_answer_review_sessions (
+    id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_quiz_attempt_id          UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+    started_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at                    TIMESTAMPTZ,
+    total_questions                 INT NOT NULL,
+    time_limit_seconds_per_question INT NOT NULL DEFAULT 120,
+    status                          TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress','completed','abandoned'))
+);
+
+CREATE TABLE wrong_answer_review_items (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    review_session_id     UUID NOT NULL REFERENCES wrong_answer_review_sessions(id) ON DELETE CASCADE,
+    wrong_answer_note_id  UUID NOT NULL REFERENCES wrong_answer_notes(id) ON DELETE CASCADE,
+    item_order            INT NOT NULL,
+    started_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    submitted_at          TIMESTAMPTZ,
+    time_limit_seconds    INT NOT NULL DEFAULT 120,
+    elapsed_seconds       INT,
+    user_answer           TEXT,
+    is_correct            BOOLEAN,
+    UNIQUE (review_session_id, wrong_answer_note_id)
+);
+
 CREATE TABLE study_materials (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

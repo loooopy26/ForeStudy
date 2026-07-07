@@ -4,8 +4,10 @@
 주요 API: GET /dashboard/{user_id}
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+from database import get_db
 from schemas import DashboardResponse
 from services.dashboard_service import get_dashboard
 
@@ -13,5 +15,5 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/{user_id}", response_model=DashboardResponse)
-def read_dashboard(user_id: int):
-    return get_dashboard(user_id=user_id)
+def read_dashboard(user_id: int, db: Session = Depends(get_db)):
+    return get_dashboard(db=db, user_id=user_id)
