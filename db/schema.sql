@@ -4,6 +4,7 @@
 -- + 확장: 팀 스터디 파티 모드, 미래의 나 리포트, 알림, 자격증/스케줄, 튜터 챗봇
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS vector;  -- pgvector: RAG 임베딩 검색용
 
 -- =====================================================================
 -- 1. USERS & ACTIVITY (학습 지속성 = 연속 접속일)
@@ -202,9 +203,10 @@ CREATE TABLE study_session_interruptions (
 -- =====================================================================
 
 CREATE TABLE quizzes (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    quest_id      UUID REFERENCES quests(id) ON DELETE SET NULL,
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quest_id          UUID REFERENCES quests(id) ON DELETE SET NULL,
+    study_material_id UUID,  -- FK는 study_materials 정의 후 ALTER로 추가 (아래 참조)
     quiz_date     DATE NOT NULL,
     title         TEXT,
     difficulty    TEXT NOT NULL DEFAULT 'normal' CHECK (difficulty IN ('easy','normal','hard')),
@@ -269,6 +271,28 @@ CREATE TABLE study_materials (
     processed_status  TEXT NOT NULL DEFAULT 'pending' CHECK (processed_status IN ('pending','processing','ready','failed')),
     uploaded_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- quizzes.study_material_id FK (study_materials가 quizzes보다 뒤에 정의되므로 여기서 연결)
+ALTER TABLE quizzes ADD CONSTRAINT fk_quizzes_study_material
+    FOREIGN KEY (study_material_id) REFERENCES study_materials(id) ON DELETE SET NULL;
+
+-- RAG 검색용 청크 + 임베딩 (Document Parse로 파싱한 자료를 섹션/토큰 단위로 분할)
+-- solar-embedding-2-passage/query: 1024차원 (Upstage 콘솔 문서에서 확인)
+CREATE TABLE document_chunks (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    study_material_id UUID NOT NULL REFERENCES study_materials(id) ON DELETE CASCADE,
+    chunk_index       INT NOT NULL,
+    section_title     TEXT,
+    page_number       INT,
+    content           TEXT NOT NULL,
+    token_count       INT,
+    embedding         VECTOR(1024),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (study_material_id, chunk_index)
+);
+-- 코사인 유사도 검색용 ANN 인덱스 (자료가 어느 정도 쌓인 뒤 생성해도 무방)
+CREATE INDEX idx_document_chunks_embedding ON document_chunks
+    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- 도서관 학습 리포트: 요약 + 퀴즈 결과 + 오답 분석을 묶은 종합 리포트
 CREATE TABLE study_reports (

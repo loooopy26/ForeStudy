@@ -13,6 +13,7 @@ env/
 # Environment files
 .env
 .env.*
+!.env.example
 
 # Database files
 *.db
@@ -35,3 +36,6 @@ Thumbs.db
 # Codex workspace scratch/output folders
 work/
 outputs/
+
+# Uploaded study material files (AI 도서관)
+backend/uploads/
