@@ -46,6 +46,7 @@
   border-radius: 18px;
   border: 1px solid var(--card-border);
   background: var(--card-bg);
+  text-align: left;
 }
 
 .summary-block-heading {
@@ -93,6 +94,7 @@
   border-radius: 18px;
   border: 1px solid var(--card-border);
   background: var(--card-bg);
+  text-align: left;
 }
 
 .bullet-num {
