@@ -7,8 +7,9 @@ import './Summary.css'
 
 const POLL_STATUSES = new Set(['pending', 'processing'])
 
-// ai_summary는 "**소제목**" / "- 항목" 같은 마크다운 스타일 텍스트로 오므로
-// 별도 라이브러리 없이 줄 단위로 소제목/리스트/문단만 구분해 렌더링한다.
+// ai_summary는 "### 제목" / "**소제목**" / "**굵게** 섞인 문장" / "- 항목" / "1. 항목" /
+// "---" 구분선 같은 마크다운 스타일 텍스트로 오므로, 별도 라이브러리 없이
+// 줄 단위로 제목 레벨/리스트/구분선/문단을 구분하고 문장 내 **굵게**만 인라인 처리한다.
 function parseSummaryBlocks(text) {
   const blocks = []
   let list = null
@@ -18,18 +19,39 @@ function parseSummaryBlocks(text) {
       list = null
       continue
     }
-    const heading = line.match(/^\*\*(.+?)\*\*$/)
-    if (heading) {
+    if (/^-{3,}$/.test(line)) {
       list = null
-      blocks.push({ type: 'heading', text: heading[1] })
+      blocks.push({ type: 'hr' })
       continue
     }
-    if (line.startsWith('- ')) {
-      if (!list) {
-        list = { type: 'list', items: [] }
+    const mdHeading = line.match(/^(#{1,6})\s+(.*)$/)
+    if (mdHeading) {
+      list = null
+      blocks.push({ type: 'heading', level: mdHeading[1].length, text: mdHeading[2] })
+      continue
+    }
+    const boldLineHeading = line.match(/^\*\*(.+?)\*\*$/)
+    if (boldLineHeading) {
+      list = null
+      blocks.push({ type: 'heading', level: 3, text: boldLineHeading[1] })
+      continue
+    }
+    const bullet = line.match(/^[-*]\s+(.*)$/)
+    if (bullet) {
+      if (!list || list.ordered) {
+        list = { type: 'list', ordered: false, items: [] }
         blocks.push(list)
       }
-      list.items.push(line.slice(2))
+      list.items.push(bullet[1])
+      continue
+    }
+    const numbered = line.match(/^\d+[.)]\s+(.*)$/)
+    if (numbered) {
+      if (!list || !list.ordered) {
+        list = { type: 'list', ordered: true, items: [] }
+        blocks.push(list)
+      }
+      list.items.push(numbered[1])
       continue
     }
     list = null
@@ -38,29 +60,42 @@ function parseSummaryBlocks(text) {
   return blocks
 }
 
+// "**굵게**"만 <strong>으로 바꾸고 나머지는 그대로 둔다.
+function renderInline(text) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+    const m = part.match(/^\*\*([^*]+)\*\*$/)
+    return m ? <strong key={i}>{m[1]}</strong> : <span key={i}>{part}</span>
+  })
+}
+
 function SummaryBody({ text }) {
   return (
     <div className="summary-block">
       {parseSummaryBlocks(text).map((block, i) => {
+        if (block.type === 'hr') {
+          return <hr className="summary-block-hr" key={i} />
+        }
         if (block.type === 'heading') {
+          const className = block.level <= 2 ? 'summary-block-heading-lg' : 'summary-block-heading'
           return (
-            <h4 className="summary-block-heading" key={i}>
-              {block.text}
-            </h4>
+            <p className={className} key={i}>
+              {renderInline(block.text)}
+            </p>
           )
         }
         if (block.type === 'list') {
+          const ListTag = block.ordered ? 'ol' : 'ul'
           return (
-            <ul className="summary-block-list" key={i}>
+            <ListTag className="summary-block-list" key={i}>
               {block.items.map((item, j) => (
-                <li key={j}>{item}</li>
+                <li key={j}>{renderInline(item)}</li>
               ))}
-            </ul>
+            </ListTag>
           )
         }
         return (
           <p className="summary-block-p" key={i}>
-            {block.text}
+            {renderInline(block.text)}
           </p>
         )
       })}
@@ -150,8 +185,8 @@ function Summary({ onNavigate, materialId }) {
                   <div className="bullet-card" key={i}>
                     <div className="bullet-num">{i + 1}</div>
                     <div>
-                      <div className="bullet-term">{c.concept}</div>
-                      <div className="bullet-desc">{c.description}</div>
+                      <div className="bullet-term">{renderInline(c.concept)}</div>
+                      <div className="bullet-desc">{renderInline(c.description)}</div>
                     </div>
                   </div>
                 ))}
