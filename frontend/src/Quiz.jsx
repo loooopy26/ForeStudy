@@ -6,33 +6,58 @@ import { apiRequest, getMaterialId, normalizeOptions, setLastAttemptId } from '.
 import './Shell.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
+const PROGRESS_KEY = 'forestudy_quiz_progress'
+
+function loadProgress(materialId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null')
+    return saved && saved.materialId === materialId ? saved : null
+  } catch {
+    return null
+  }
+}
+
+function saveProgress(materialId, quiz, answers, idx) {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify({ materialId, quiz, answers, idx }))
+}
+
+function clearProgress() {
+  localStorage.removeItem(PROGRESS_KEY)
+}
 
 function Quiz({ onNavigate }) {
   const materialId = useMemo(() => getMaterialId(), [])
-  const [quiz, setQuiz] = useState(null)
-  const [idx, setIdx] = useState(0)
-  const [answers, setAnswers] = useState({})
+  const initial = useMemo(() => loadProgress(materialId), [materialId])
+  const [quiz, setQuiz] = useState(initial?.quiz || null)
+  const [idx, setIdx] = useState(initial?.idx || 0)
+  const [answers, setAnswers] = useState(initial?.answers || {})
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const loadQuiz = async () => {
+  const fetchQuiz = async () => {
     if (!materialId) {
-      setError('자료 ID가 필요합니다. localStorage에 forestudy_material_id를 저장하거나 VITE_MATERIAL_ID를 설정해 주세요.')
-      return
+      throw new Error('자료 ID가 필요합니다. localStorage에 forestudy_material_id를 저장하거나 VITE_MATERIAL_ID를 설정해 주세요.')
     }
-    setLoading(true)
-    setError('')
+    return apiRequest(`/api/materials/${materialId}/review-quiz`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+  }
+
+  const startNewQuiz = async () => {
+    clearProgress()
     setResult(null)
     setIdx(0)
     setAnswers({})
+    setQuiz(null)
+    setLoading(true)
+    setError('')
     try {
-      const data = await apiRequest(`/api/materials/${materialId}/review-quiz`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      })
+      const data = await fetchQuiz()
       setQuiz(data)
+      saveProgress(materialId, data, {}, 0)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -40,9 +65,36 @@ function Quiz({ onNavigate }) {
     }
   }
 
+  // 이미 진행 중인 퀴즈가 있으면(다른 화면 갔다 돌아온 경우) 그대로 이어서 보여주고,
+  // 없을 때만 새로 생성한다. StrictMode의 mount→unmount→mount 이중 호출 시 두 번째
+  // 생성 요청이 첫 번째 응답을 덮어써 "문제가 갑자기 바뀌는" 현상을 막기 위해, 취소된
+  // (ignore) 쪽은 loading/error/quiz 어느 것도 건드리지 않고 조용히 결과를 버린다.
   useEffect(() => {
-    loadQuiz()
+    if (quiz) return
+    let ignore = false
+    setLoading(true)
+    setError('')
+    ;(async () => {
+      try {
+        const data = await fetchQuiz()
+        if (ignore) return
+        setQuiz(data)
+        saveProgress(materialId, data, {}, 0)
+      } catch (err) {
+        if (!ignore) setError(err.message)
+      } finally {
+        if (!ignore) setLoading(false)
+      }
+    })()
+    return () => {
+      ignore = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (quiz && !result) saveProgress(materialId, quiz, answers, idx)
+  }, [materialId, quiz, answers, idx, result])
 
   const questions = quiz?.questions || []
   const current = questions[idx]
@@ -72,6 +124,7 @@ function Quiz({ onNavigate }) {
       })
       setLastAttemptId(data.attempt_id)
       setResult(data)
+      clearProgress()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -94,7 +147,7 @@ function Quiz({ onNavigate }) {
           <div className="done-desc">{loading ? 'AI가 학습자 수준에 맞춘 실전 문제를 만들고 있습니다.' : error}</div>
         </div>
         <div className="cta-area">
-          <button type="button" className="cta-button" onClick={loadQuiz} disabled={loading}>
+          <button type="button" className="cta-button" onClick={startNewQuiz} disabled={loading}>
             다시 시도
           </button>
         </div>
@@ -144,7 +197,7 @@ function Quiz({ onNavigate }) {
           </div>
         </div>
         <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={loadQuiz}>
+          <button type="button" className="cta-button" onClick={startNewQuiz}>
             새 퀴즈 풀기
           </button>
         </div>

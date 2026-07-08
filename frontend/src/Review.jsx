@@ -1,24 +1,54 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import { ReviewIcon, CheckIcon, CrossIcon, CheckBigIcon } from './icons'
-import { apiRequest, getLastAttemptId, normalizeOptions } from './api'
+import { apiRequest, getLastAttemptId, getMaterialAttempts, getMaterialId, normalizeOptions } from './api'
 import './Shell.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 
+function formatDateHeading(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`)
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+}
+
+function formatTime(isoStr) {
+  const d = new Date(isoStr)
+  return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function groupByDate(attempts) {
+  const groups = []
+  const byDate = new Map()
+  for (const attempt of attempts) {
+    if (!byDate.has(attempt.date)) {
+      const group = { date: attempt.date, attempts: [] }
+      byDate.set(attempt.date, group)
+      groups.push(group)
+    }
+    byDate.get(attempt.date).attempts.push(attempt)
+  }
+  return groups
+}
+
 function Review({ onNavigate }) {
+  const materialId = useMemo(() => getMaterialId(), [])
   const [attemptId] = useState(() => getLastAttemptId())
   const [session, setSession] = useState(null)
   const [idx, setIdx] = useState(0)
   const [selected, setSelected] = useState(null)
   const [feedback, setFeedback] = useState(null)
   const [done, setDone] = useState(false)
-  const [notes, setNotes] = useState([])
-  const [showNotes, setShowNotes] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const startedAtRef = useRef(Date.now())
+
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyView, setHistoryView] = useState('dates')
+  const [historyAttempts, setHistoryAttempts] = useState(null)
+  const [historyNotes, setHistoryNotes] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
 
   const startReview = async () => {
     if (!attemptId) {
@@ -45,23 +75,45 @@ function Review({ onNavigate }) {
     }
   }
 
-  const loadWrongNotes = async () => {
-    if (!attemptId) {
-      setError('지난번 오답을 보려면 먼저 AI 퀴즈를 풀어야 합니다.')
+  const openHistory = async () => {
+    const opening = !historyOpen
+    setHistoryOpen(opening)
+    if (!opening) return
+    setHistoryView('dates')
+    if (historyAttempts) return
+    if (!materialId) {
+      setHistoryError('자료 ID가 필요합니다.')
       return
     }
-    setError('')
+    setHistoryLoading(true)
+    setHistoryError('')
     try {
-      const data = await apiRequest(`/api/attempts/${attemptId}/wrong-notes`)
-      setNotes(data.wrong_notes || [])
-      setShowNotes((value) => !value)
+      const data = await getMaterialAttempts(materialId)
+      setHistoryAttempts(data.attempts || [])
     } catch (err) {
-      setError(err.message)
+      setHistoryError(err.message)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const selectHistoryAttempt = async (targetAttemptId) => {
+    setHistoryLoading(true)
+    setHistoryError('')
+    try {
+      const data = await apiRequest(`/api/attempts/${targetAttemptId}/wrong-notes`)
+      setHistoryNotes(data.wrong_notes || [])
+      setHistoryView('notes')
+    } catch (err) {
+      setHistoryError(err.message)
+    } finally {
+      setHistoryLoading(false)
     }
   }
 
   useEffect(() => {
     startReview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const items = session?.items || []
@@ -95,6 +147,62 @@ function Review({ onNavigate }) {
     setFeedback(null)
     startedAtRef.current = Date.now()
   }
+
+  const historyPanel = historyOpen && (
+    <div className="note-panel">
+      {historyView === 'notes' && (
+        <button type="button" className="history-back" onClick={() => setHistoryView('dates')}>
+          ← 날짜 목록으로
+        </button>
+      )}
+      <div className="note-title">{historyView === 'dates' ? '지난 응시 기록' : '오답노트'}</div>
+
+      {historyLoading && <div className="note-empty">불러오는 중...</div>}
+      {historyError && <div className="note-empty">{historyError}</div>}
+
+      {!historyLoading && !historyError && historyView === 'dates' && (
+        <div className="history-list">
+          {(historyAttempts || []).length === 0 && <div className="note-empty">지난 응시 기록이 없습니다.</div>}
+          {groupByDate(historyAttempts || []).map((group) => (
+            <div key={group.date}>
+              <div className="history-date-heading">{formatDateHeading(group.date)}</div>
+              {group.attempts.map((attempt) => (
+                <button
+                  type="button"
+                  key={attempt.attempt_id}
+                  className="history-item"
+                  onClick={() => selectHistoryAttempt(attempt.attempt_id)}
+                >
+                  <span className="history-item-time">{formatTime(attempt.submitted_at)}</span>
+                  <span>
+                    <span className="history-item-score">{attempt.correct_count}/{attempt.total_count}</span>
+                    {attempt.wrong_count > 0 && <span className="history-item-wrong">오답 {attempt.wrong_count}개</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!historyLoading && !historyError && historyView === 'notes' && (
+        <div className="note-list">
+          {historyNotes.length === 0 ? (
+            <div className="note-empty">이 회차에는 오답이 없습니다.</div>
+          ) : (
+            historyNotes.map((note, index) => (
+              <div className="note-card" key={note.wrong_note_id}>
+                <div className="note-question">{index + 1}. {note.question_text}</div>
+                <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
+                <div className="note-answer correct">정답: {note.correct_answer}</div>
+                {note.explanation && <div className="note-explain">{note.explanation}</div>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
 
   if (loading || error || !session) {
     return (
@@ -150,7 +258,7 @@ function Review({ onNavigate }) {
         <div className="progress-row">
           <div className="progress-top">
             <span className="progress-count">복습 {idx + 1} / {items.length}</span>
-            <button type="button" className="progress-tag tag-button" onClick={loadWrongNotes}>
+            <button type="button" className="progress-tag tag-button" onClick={openHistory}>
               지난번 오답
             </button>
           </div>
@@ -159,23 +267,7 @@ function Review({ onNavigate }) {
           </div>
         </div>
 
-        {showNotes && (
-          <div className="note-panel">
-            <div className="note-title">오답노트</div>
-            {notes.length === 0 ? (
-              <div className="note-empty">저장된 오답이 없습니다.</div>
-            ) : (
-              notes.map((note, index) => (
-                <div className="note-card" key={note.wrong_note_id}>
-                  <div className="note-question">{index + 1}. {note.question_text}</div>
-                  <div className="note-answer">내 답: {note.user_answer || '미응답'}</div>
-                  <div className="note-answer">정답: {note.correct_answer}</div>
-                  {note.explanation && <div className="note-explain">{note.explanation}</div>}
-                </div>
-              ))
-            )}
-          </div>
-        )}
+        {historyPanel}
 
         <p className="question-text">{current.question_text}</p>
 

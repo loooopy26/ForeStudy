@@ -49,6 +49,10 @@ export function normalizeOptions(options) {
   }
 }
 
+export async function getMaterialAttempts(materialId) {
+  return apiRequest(`/api/materials/${materialId}/attempts`)
+}
+
 export async function listMaterials() {
   const res = await fetch(`${API_BASE}/api/materials`)
   if (!res.ok) throw new Error('자료 목록을 불러오지 못했습니다')

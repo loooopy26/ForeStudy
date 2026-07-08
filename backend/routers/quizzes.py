@@ -441,6 +441,49 @@ async def get_attempt_learning_evaluation(attempt_id: str):
     return item
 
 
+@router.get("/materials/{material_id}/attempts")
+async def list_material_attempts(material_id: str, user_id: str | None = None):
+    """지난 퀴즈 응시 기록을 날짜별로 조회 (오답노트 히스토리 화면용)."""
+    pool = await get_pool()
+    await _ensure_wrong_answer_tables(pool)
+    material = await pool.fetchrow("SELECT id, user_id FROM study_materials WHERE id = $1", material_id)
+    if material is None:
+        raise HTTPException(404, "학습 자료를 찾을 수 없습니다")
+    resolved_user_id = user_id or str(material["user_id"])
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            a.id AS attempt_id, a.submitted_at, a.correct_count, a.total_count, a.score_pct,
+            q.quiz_type, q.difficulty,
+            COUNT(n.id) AS wrong_count
+        FROM quiz_attempts a
+        JOIN quizzes q ON q.id = a.quiz_id
+        LEFT JOIN wrong_answer_notes n ON n.quiz_attempt_id = a.id
+        WHERE q.study_material_id = $1 AND a.user_id = $2
+        GROUP BY a.id, a.submitted_at, a.correct_count, a.total_count, a.score_pct, q.quiz_type, q.difficulty
+        ORDER BY a.submitted_at DESC
+        """,
+        material_id,
+        resolved_user_id,
+    )
+    attempts = [
+        {
+            "attempt_id": str(row["attempt_id"]),
+            "submitted_at": row["submitted_at"],
+            "date": row["submitted_at"].date().isoformat(),
+            "correct_count": row["correct_count"],
+            "total_count": row["total_count"],
+            "score_pct": float(row["score_pct"]) if row["score_pct"] is not None else None,
+            "quiz_type": row["quiz_type"],
+            "difficulty": row["difficulty"],
+            "wrong_count": row["wrong_count"],
+        }
+        for row in rows
+    ]
+    return {"material_id": material_id, "attempts": attempts}
+
+
 @router.get("/attempts/{attempt_id}/wrong-notes")
 async def get_wrong_answer_notes(attempt_id: str):
     pool = await get_pool()
