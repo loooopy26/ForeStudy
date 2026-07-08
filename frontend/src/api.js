@@ -77,6 +77,10 @@ export function setCurrentUser(user) {
   localStorage.setItem('forestudy_user', JSON.stringify(user))
 }
 
+export function clearCurrentUser() {
+  localStorage.removeItem('forestudy_user')
+}
+
 export async function getStats(userId) {
   return apiRequest(`/stats/${userId}`)
 }

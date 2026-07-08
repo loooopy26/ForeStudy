@@ -3,7 +3,7 @@ import MainNav from './MainNav'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
-import { getDemoUser, getStats } from './api'
+import { clearCurrentUser, getDemoUser, getStats } from './api'
 import {
   AcornIcon,
   BellIcon,
@@ -31,6 +31,11 @@ function Profile({ onNavigate }) {
     getStats(TIMER_DEMO_USER_ID).then(setStats).catch(() => {})
     getDemoUser().then((user) => setDotori(user.dotori)).catch(() => {})
   }, [])
+
+  const handleLogout = () => {
+    clearCurrentUser()
+    onNavigate('auth')
+  }
 
   const statRows = [
     { key: 'focus', label: '집중력', value: stats?.focus, Icon: FocusIcon, suffix: '%' },
@@ -66,9 +71,14 @@ function Profile({ onNavigate }) {
           </span>
         </div>
 
-        <button type="button" className="icon-button forest-bell" aria-label="알림">
-          <BellIcon />
-        </button>
+        <div className="profile-topbar-actions">
+          <button type="button" className="profile-logout-button" onClick={handleLogout}>
+            로그아웃
+          </button>
+          <button type="button" className="icon-button forest-bell" aria-label="알림">
+            <BellIcon />
+          </button>
+        </div>
       </header>
 
       <div className="body-scroll profile-body forest-home-body">

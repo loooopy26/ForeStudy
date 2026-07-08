@@ -50,6 +50,35 @@
   padding-left: 2px;
 }
 
+.profile-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-logout-button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(221, 201, 164, 0.72);
+  border-radius: 12px;
+  background: rgba(255, 251, 243, 0.86);
+  color: #564634;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -16px rgba(84, 71, 34, 0.4);
+}
+
+.profile-logout-button:hover {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.profile-logout-button:focus-visible {
+  outline: 3px solid rgba(61, 134, 102, 0.28);
+  outline-offset: 2px;
+}
+
 .brand-wordmark {
   display: inline-flex;
   align-items: flex-end;

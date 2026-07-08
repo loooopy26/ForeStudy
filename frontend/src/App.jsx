@@ -40,9 +40,10 @@ const PATH_ALIASES = {
 
 function resolveRouteFromPath() {
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
+  if (!path) return { page: 'auth', sub: undefined }
   if (path in SCREENS) return { page: path, sub: undefined }
   if (path in PATH_ALIASES) return PATH_ALIASES[path]
-  return { page: 'profile', sub: undefined }
+  return { page: 'auth', sub: undefined }
 }
 
 function App() {
@@ -52,7 +53,7 @@ function App() {
 
   const navigate = (page) => {
     setRoute({ page, sub: undefined })
-    window.history.pushState({}, '', `/${page}`)
+    window.history.pushState({}, '', page === 'auth' ? '/' : `/${page}`)
   }
 
   const selectMaterial = (id) => {
