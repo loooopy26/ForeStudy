@@ -28,9 +28,19 @@ def start_study_timer(request: TimerStartRequest, db: Session = Depends(get_db))
 
 @router.post("/pause", response_model=TimerPauseResponse)
 def pause_study_timer(request: TimerPauseRequest, db: Session = Depends(get_db)):
-    return pause_timer(db=db, session_id=request.session_id, reason=request.reason)
+    return pause_timer(
+        db=db,
+        session_id=request.session_id,
+        segment_minutes=request.segment_minutes,
+        reason=request.reason,
+    )
 
 
 @router.post("/end", response_model=TimerEndResponse)
 def end_study_timer(request: TimerEndRequest, db: Session = Depends(get_db)):
-    return end_timer(db=db, session_id=request.session_id, studied_minutes=request.studied_minutes)
+    return end_timer(
+        db=db,
+        session_id=request.session_id,
+        studied_minutes=request.studied_minutes,
+        max_uninterrupted_minutes=request.max_uninterrupted_minutes,
+    )

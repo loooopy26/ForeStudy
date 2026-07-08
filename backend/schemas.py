@@ -100,6 +100,7 @@ class QuestCompleteResponse(BaseModel):
 
 
 # Timer: 도서관 공부 시작, 이탈/정지, 종료 이벤트를 기록합니다.
+# 시간 측정은 프론트에서 하고, 백엔드는 그 값을 받아 DB에 저장만 합니다.
 class TimerStartRequest(BaseModel):
     user_id: int = Field(..., example=1)
 
@@ -113,6 +114,7 @@ class TimerStartResponse(BaseModel):
 
 class TimerPauseRequest(BaseModel):
     session_id: int = Field(..., example=1)
+    segment_minutes: int = Field(..., ge=0, example=15, description="프론트에서 측정한, 시작(또는 직전 재개) 이후 이번 구간 동안 집중한 분")
     reason: str = Field("leave_library", example="leave_library")
 
 
@@ -120,14 +122,16 @@ class TimerPauseResponse(BaseModel):
     session_id: int
     user_id: int
     paused_at: datetime
-    studied_minutes: int
+    segment_minutes: int
+    total_studied_minutes: int
     status: str
     reason: str
 
 
 class TimerEndRequest(BaseModel):
     session_id: int = Field(..., example=1)
-    studied_minutes: int | None = Field(None, ge=0, example=40)
+    studied_minutes: int = Field(..., ge=0, example=40, description="프론트에서 측정한 총 공부 시간(분)")
+    max_uninterrupted_minutes: int = Field(..., ge=0, example=40, description="프론트에서 측정한, 이탈 없이 이어간 최대 구간(분)")
 
 
 class TimerEndResponse(BaseModel):
