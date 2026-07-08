@@ -8,6 +8,7 @@ import Review from './Review'
 import Summary from './Summary'
 import Chat from './Chat'
 import ForestGame from './ForestGame'
+import Auth from './Auth'
 import { getMaterialId, setMaterialId as persistMaterialId } from './api'
 import './theme.css'
 import './Shell.css'
@@ -23,6 +24,7 @@ const SCREENS = {
   summary: Summary,
   chat: Chat,
   forest: ForestGame,
+  auth: Auth,
 }
 
 // 실제 화면 키(SCREENS) 외에 URL로 바로 들어갈 수 있는 별칭들.
@@ -32,6 +34,8 @@ const PATH_ALIASES = {
   quests: { page: 'forest', sub: 'quests' },
   achievement: { page: 'forest', sub: 'achievements' },
   achievements: { page: 'forest', sub: 'achievements' },
+  login: { page: 'auth', sub: 'login' },
+  signup: { page: 'auth', sub: 'signup' },
 }
 
 function resolveRouteFromPath() {

@@ -57,6 +57,26 @@ export async function getDemoUser() {
   return apiRequest('/auth/demo')
 }
 
+export async function login(email, password) {
+  return apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+}
+
+export async function register(email, password, nickname) {
+  return apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, nickname }) })
+}
+
+export function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem('forestudy_user') || 'null')
+  } catch {
+    return null
+  }
+}
+
+export function setCurrentUser(user) {
+  localStorage.setItem('forestudy_user', JSON.stringify(user))
+}
+
 export async function getStats(userId) {
   return apiRequest(`/stats/${userId}`)
 }
