@@ -227,8 +227,7 @@ function Quiz({ onNavigate }) {
 
         {isShortAnswer ? (
           <textarea
-            className="option-button"
-            style={{ width: '100%', minHeight: '96px', resize: 'vertical' }}
+            className="short-answer-input"
             placeholder="답을 입력하세요"
             value={selected || ''}
             onChange={(e) => selectOption(e.target.value)}

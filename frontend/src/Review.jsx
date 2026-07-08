@@ -47,11 +47,14 @@ function Review({ onNavigate }) {
   const [historyView, setHistoryView] = useState('dates')
   const [historyAttempts, setHistoryAttempts] = useState(null)
   const [historyNotes, setHistoryNotes] = useState([])
+  const [historyAttemptId, setHistoryAttemptId] = useState(null)
+  const [expandedNoteId, setExpandedNoteId] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState('')
 
-  const startReview = async () => {
-    if (!attemptId) {
+  const startReview = async (targetAttemptId) => {
+    const useAttemptId = targetAttemptId || attemptId
+    if (!useAttemptId) {
       setError('먼저 AI 퀴즈를 풀어야 지난 오답으로 복습할 수 있어요.')
       return
     }
@@ -62,11 +65,12 @@ function Review({ onNavigate }) {
     setSelected(null)
     setFeedback(null)
     try {
-      const data = await apiRequest(`/api/attempts/${attemptId}/review/start`, {
+      const data = await apiRequest(`/api/attempts/${useAttemptId}/review/start`, {
         method: 'POST',
         body: JSON.stringify({ time_limit_seconds_per_question: 120 }),
       })
       setSession(data)
+      setHistoryOpen(false)
       startedAtRef.current = Date.now()
     } catch (err) {
       setError(err.message)
@@ -100,15 +104,21 @@ function Review({ onNavigate }) {
   const selectHistoryAttempt = async (targetAttemptId) => {
     setHistoryLoading(true)
     setHistoryError('')
+    setExpandedNoteId(null)
     try {
       const data = await apiRequest(`/api/attempts/${targetAttemptId}/wrong-notes`)
       setHistoryNotes(data.wrong_notes || [])
+      setHistoryAttemptId(targetAttemptId)
       setHistoryView('notes')
     } catch (err) {
       setHistoryError(err.message)
     } finally {
       setHistoryLoading(false)
     }
+  }
+
+  const toggleNoteExpanded = (noteId) => {
+    setExpandedNoteId((current) => (current === noteId ? null : noteId))
   }
 
   useEffect(() => {
@@ -186,20 +196,42 @@ function Review({ onNavigate }) {
       )}
 
       {!historyLoading && !historyError && historyView === 'notes' && (
-        <div className="note-list">
-          {historyNotes.length === 0 ? (
-            <div className="note-empty">이 회차에는 오답이 없습니다.</div>
-          ) : (
-            historyNotes.map((note, index) => (
-              <div className="note-card" key={note.wrong_note_id}>
-                <div className="note-question">{index + 1}. {note.question_text}</div>
-                <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
-                <div className="note-answer correct">정답: {note.correct_answer}</div>
-                {note.explanation && <div className="note-explain">{note.explanation}</div>}
-              </div>
-            ))
+        <>
+          <div className="note-list">
+            {historyNotes.length === 0 ? (
+              <div className="note-empty">이 회차에는 오답이 없습니다.</div>
+            ) : (
+              historyNotes.map((note, index) => {
+                const expanded = expandedNoteId === note.wrong_note_id
+                return (
+                  <button
+                    type="button"
+                    className={`note-card${expanded ? ' expanded' : ''}`}
+                    key={note.wrong_note_id}
+                    onClick={() => toggleNoteExpanded(note.wrong_note_id)}
+                  >
+                    <div className="note-question">
+                      <span>{index + 1}. {note.question_text}</span>
+                      <span className="note-question-chevron">▸</span>
+                    </div>
+                    {expanded && (
+                      <div className="note-detail">
+                        <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
+                        <div className="note-answer correct">정답: {note.correct_answer}</div>
+                        {note.explanation && <div className="note-explain">{note.explanation}</div>}
+                      </div>
+                    )}
+                  </button>
+                )
+              })
+            )}
+          </div>
+          {historyNotes.length > 0 && (
+            <button type="button" className="cta-button" onClick={() => startReview(historyAttemptId)}>
+              이 회차 복습하기
+            </button>
           )}
-        </div>
+        </>
       )}
     </div>
   )
@@ -213,7 +245,7 @@ function Review({ onNavigate }) {
           <div className="done-desc">{loading ? '지난 퀴즈의 오답을 불러오고 있습니다.' : error}</div>
         </div>
         <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={startReview} disabled={loading}>
+          <button type="button" className="cta-button" onClick={() => startReview()} disabled={loading}>
             다시 불러오기
           </button>
         </div>
@@ -239,7 +271,7 @@ function Review({ onNavigate }) {
           </div>
         </div>
         <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={startReview}>
+          <button type="button" className="cta-button" onClick={() => startReview()}>
             다시 복습하기
           </button>
         </div>
