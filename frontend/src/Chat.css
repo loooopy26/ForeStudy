@@ -7,6 +7,24 @@
   gap: 15px;
 }
 
+.chat-empty {
+  font-size: 14px;
+  color: var(--ink-softer);
+  text-align: left;
+  margin: 0;
+}
+
+.composer input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.send-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  background: var(--green);
+}
+
 .chat-log::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -140,6 +158,6 @@
   cursor: pointer;
 }
 
-.send-button:hover {
+.send-button:hover:not(:disabled) {
   background: var(--green-hover);
 }

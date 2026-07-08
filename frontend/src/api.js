@@ -71,3 +71,23 @@ export async function uploadMaterial(file) {
   }
   return res.json()
 }
+
+export async function createTutorSession(materialId) {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ study_material_id: materialId }),
+  })
+  if (!res.ok) throw new Error('채팅 세션을 시작하지 못했습니다')
+  return res.json()
+}
+
+export async function sendTutorMessage(sessionId, content) {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!res.ok) throw new Error('답변을 받지 못했습니다')
+  return res.json()
+}
