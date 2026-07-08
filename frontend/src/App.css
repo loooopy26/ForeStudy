@@ -1,0 +1,24 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  background: var(--page-bg);
+  box-sizing: border-box;
+  font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.phone-frame {
+  width: min(384px, 94vw);
+  aspect-ratio: 384 / 772;
+  background: var(--phone-bg);
+  border-radius: 36px;
+  box-shadow: 0 24px 55px -14px var(--phone-shadow);
+  border: 1px solid var(--phone-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}

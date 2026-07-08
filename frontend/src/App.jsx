@@ -1,0 +1,32 @@
+import { useState } from 'react'
+import Library from './Library'
+import Quiz from './Quiz'
+import Review from './Review'
+import Summary from './Summary'
+import Chat from './Chat'
+import './theme.css'
+import './Shell.css'
+import './App.css'
+
+const SCREENS = {
+  library: Library,
+  quiz: Quiz,
+  review: Review,
+  summary: Summary,
+  chat: Chat,
+}
+
+function App() {
+  const [page, setPage] = useState('library')
+  const Screen = SCREENS[page]
+
+  return (
+    <div className="app-shell">
+      <div className="phone-frame">
+        <Screen onNavigate={setPage} />
+      </div>
+    </div>
+  )
+}
+
+export default App

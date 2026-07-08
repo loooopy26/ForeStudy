@@ -39,3 +39,7 @@ outputs/
 
 # Uploaded study material files (AI 도서관)
 backend/uploads/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
