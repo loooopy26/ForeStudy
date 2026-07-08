@@ -49,6 +49,17 @@
   text-align: left;
 }
 
+.summary-block-heading-lg {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.summary-block-heading-lg:not(:first-child) {
+  margin-top: 10px;
+}
+
 .summary-block-heading {
   font-size: 14.5px;
   font-weight: 700;
@@ -60,6 +71,12 @@
   margin-top: 6px;
 }
 
+.summary-block-hr {
+  border: none;
+  border-top: 1px solid var(--card-border);
+  margin: 2px 0;
+}
+
 .summary-block-p {
   font-size: 13.5px;
   color: var(--ink-soft);
@@ -69,10 +86,18 @@
 
 .summary-block-list {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.summary-block-list:where(ol) {
+  list-style: decimal;
+}
+
+.summary-block-list:where(ul) {
+  list-style: disc;
 }
 
 .summary-block-list li {
