@@ -77,13 +77,7 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
   }, [])
 
   const offset = RING_LENGTH * ((TOTAL_SEC - remaining) / TOTAL_SEC)
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      window.history.back()
-      return
-    }
-    onNavigate('library')
-  }
+  const handleBack = () => onNavigate('village')
 
   return (
     <div className="library-page">
