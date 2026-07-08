@@ -25,10 +25,31 @@ const SCREENS = {
   forest: ForestGame,
 }
 
+// 실제 화면 키(SCREENS) 외에 URL로 바로 들어갈 수 있는 별칭들.
+// quest/achievement는 둘 다 forest 화면으로 들어가되 내부 서브탭만 다르게 연다.
+const PATH_ALIASES = {
+  quest: { page: 'forest', sub: 'quests' },
+  quests: { page: 'forest', sub: 'quests' },
+  achievement: { page: 'forest', sub: 'achievements' },
+  achievements: { page: 'forest', sub: 'achievements' },
+}
+
+function resolveRouteFromPath() {
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
+  if (path in SCREENS) return { page: path, sub: undefined }
+  if (path in PATH_ALIASES) return PATH_ALIASES[path]
+  return { page: 'profile', sub: undefined }
+}
+
 function App() {
-  const [page, setPage] = useState('profile')
+  const [route, setRoute] = useState(resolveRouteFromPath)
   const [materialId, setMaterialId] = useState(() => getMaterialId() || null)
-  const Screen = SCREENS[page]
+  const Screen = SCREENS[route.page] || Profile
+
+  const navigate = (page) => {
+    setRoute({ page, sub: undefined })
+    window.history.pushState({}, '', `/${page}`)
+  }
 
   const selectMaterial = (id) => {
     persistMaterialId(id)
@@ -38,7 +59,12 @@ function App() {
   return (
     <div className="app-shell">
       <div className="phone-frame">
-        <Screen onNavigate={setPage} materialId={materialId} onSelectMaterial={selectMaterial} />
+        <Screen
+          onNavigate={navigate}
+          materialId={materialId}
+          onSelectMaterial={selectMaterial}
+          initialSub={route.sub}
+        />
       </div>
     </div>
   )

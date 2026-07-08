@@ -1,13 +1,13 @@
 """회원가입/로그인 API 라우터.
 
 담당 탭: 로그인, 회원가입, 사용자 세션 확인.
-주요 API: POST /auth/register, POST /auth/login, GET /auth/me/{user_id}
+주요 API: POST /auth/register, POST /auth/login, GET /auth/me/{user_id}, GET /auth/demo
 """
 
 from fastapi import APIRouter
 
 from schemas import AuthResponse, UserLoginRequest, UserRegisterRequest, UserResponse
-from services.auth_service import get_user, login_user, register_user
+from services.auth_service import get_demo_user, get_user, login_user, register_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -20,6 +20,12 @@ async def register(request: UserRegisterRequest):
         password=request.password,
         nickname=request.nickname,
     )
+
+
+@router.get("/demo", response_model=UserResponse)
+async def read_demo_user():
+    # 로그인 없이 도토리 등 실제 값을 보여줘야 하는 화면(홈)에서 사용하는 데모 유저.
+    return await get_demo_user()
 
 
 @router.post("/login", response_model=AuthResponse)

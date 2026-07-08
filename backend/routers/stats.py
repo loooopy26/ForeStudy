@@ -15,5 +15,5 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @router.get("/{user_id}", response_model=StatsResponse)
-def read_user_stats(user_id: int, db: Session = Depends(get_db)):
-    return get_user_stats(db=db, user_id=user_id)
+async def read_user_stats(user_id: int, db: Session = Depends(get_db)):
+    return await get_user_stats(db=db, user_id=user_id)

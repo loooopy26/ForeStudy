@@ -27,7 +27,7 @@ const initialAchievements = [
   { id: 'a5', title: '첫 AI 퀴즈 만점', description: 'AI 퀴즈에서 만점 받기', current: 0, target: 1, claimed: false, rewardAcorns: 150, rarity: 'bronze' }
 ]
 
-function ForestGame({ onNavigate }) {
+function ForestGame({ onNavigate, initialSub }) {
   const [level, setLevel] = useState(() => {
     const saved = localStorage.getItem('forestudy_level_v4')
     return saved ? parseInt(saved) : 12
@@ -50,7 +50,7 @@ function ForestGame({ onNavigate }) {
   })
 
   // 'quests' | 'achievements' — 게시판 내부 화면 전환
-  const [sub, setSub] = useState('quests')
+  const [sub, setSub] = useState(initialSub === 'achievements' ? 'achievements' : 'quests')
 
   // Persist state in localStorage
   useEffect(() => {
