@@ -1,5 +1,7 @@
 """Study Agent helpers for summary, quiz generation, grading, and tutoring."""
 
+import asyncio
+
 from . import upstage
 
 _SYSTEM = (
@@ -40,24 +42,67 @@ async def generate_quiz(
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
 ) -> list[dict]:
+    """Generate a quiz matching question_mix exactly.
+
+    Each question type is requested in its own model call instead of one mixed
+    call. A single shared JSON example biases the model toward whatever shape
+    that example shows (multiple_choice options), so mixed-type requests were
+    silently coming back as all multiple_choice regardless of the requested
+    mix. Splitting by type removes that ambiguity."""
+    mix = question_mix or {"multiple_choice": num_questions}
+    batches = await asyncio.gather(
+        *[
+            _generate_quiz_batch(
+                context,
+                question_type=question_type,
+                count=count,
+                difficulty=difficulty,
+                weak_topics=weak_topics,
+                quiz_kind=quiz_kind,
+                learner_profile=learner_profile,
+            )
+            for question_type, count in mix.items()
+            if count > 0
+        ]
+    )
+    return [question for batch in batches for question in batch]
+
+
+async def _generate_quiz_batch(
+    context: str,
+    *,
+    question_type: str,
+    count: int,
+    difficulty: str,
+    weak_topics: list[str] | None,
+    quiz_kind: str,
+    learner_profile: dict | None,
+) -> list[dict]:
     weak_hint = (
         f"\nPrioritize these weak topics when relevant: {', '.join(weak_topics)}."
         if weak_topics
         else ""
     )
-    if question_mix:
-        mix_text = ", ".join(f"{question_type} {count}" for question_type, count in question_mix.items())
+
+    if question_type == "multiple_choice":
         type_instruction = (
-            f"The question mix must be exactly: {mix_text}. "
-            "For multiple_choice, provide exactly 4 options and set correct_answer to the exact option text. "
-            "For short_answer, set options to an empty array and put a model answer in correct_answer. "
-            "Do not create ox questions unless the requested mix includes ox."
+            "Every question's question_type must be exactly \"multiple_choice\". "
+            "Provide exactly 4 options and set correct_answer to the exact option text."
         )
+        example_fields = '"question_type": "multiple_choice",\n      "options": ["option1", "option2", "option3", "option4"],\n      "correct_answer": "the exact matching option text",'
+    elif question_type == "short_answer":
+        type_instruction = (
+            "Every question's question_type must be exactly \"short_answer\". "
+            "Set options to an empty array [] and put a concise model answer in correct_answer. "
+            "Do not generate multiple-choice options for these questions."
+        )
+        example_fields = '"question_type": "short_answer",\n      "options": [],\n      "correct_answer": "concise model answer",'
     else:
         type_instruction = (
-            "Prefer multiple_choice questions, with 1~2 ox or short_answer questions mixed in. "
-            "Only multiple_choice questions should have options."
+            f"Every question's question_type must be exactly \"{question_type}\". "
+            "Set options to [\"O\", \"X\"] and correct_answer to \"O\" or \"X\"."
         )
+        example_fields = f'"question_type": "{question_type}",\n      "options": ["O", "X"],\n      "correct_answer": "O",'
 
     if quiz_kind == "placement":
         level_instruction = (
@@ -71,7 +116,7 @@ async def generate_quiz(
             f"{_format_profile_for_prompt(learner_profile)}"
         )
 
-    prompt = f"""Create {num_questions} quiz questions from the study-material context below.
+    prompt = f"""Create {count} {question_type} quiz questions from the study-material context below.
 Overall requested difficulty: {difficulty}.{weak_hint}
 
 {context}
@@ -85,9 +130,7 @@ Return JSON only:
   "questions": [
     {{
       "question_text": "Korean question",
-      "question_type": "multiple_choice | ox | short_answer",
-      "options": ["option1", "option2", "option3", "option4"],
-      "correct_answer": "answer",
+      {example_fields}
       "explanation": "Korean explanation with evidence from the material",
       "topic_tag": "topic keyword",
       "question_difficulty": "easy | normal | hard",
@@ -96,14 +139,35 @@ Return JSON only:
     }}
   ]
 }}
-The questions array length must be exactly {num_questions}.
+The questions array length must be exactly {count}.
 difficulty_score must be an integer from 1 to 100."""
-    result = await upstage.chat_json(
-        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
-        temperature=0.5,
-    )
-    questions = result["questions"][:num_questions]
-    return [_normalize_question(question) for question in questions]
+    messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
+
+    last_normalized: list[dict] = []
+    for attempt in range(3):
+        result = await upstage.chat_json(messages, temperature=0.5)
+        questions = result["questions"][:count]
+        normalized = [_normalize_question(question) for question in questions]
+        for question in normalized:
+            if question_type == "short_answer":
+                question["question_type"] = "short_answer"
+                question["options"] = []
+            elif question_type == "multiple_choice":
+                question["question_type"] = "multiple_choice"
+                question["options"] = (question.get("options") or [])[:4]
+            else:
+                question["question_type"] = question.get("question_type") or question_type
+        last_normalized = normalized
+        broken = [
+            q for q in normalized
+            if q["question_type"] == "multiple_choice" and len(q["options"]) < 2
+        ]
+        if not broken and len(normalized) == count:
+            return normalized
+        # The model sometimes drops the "options" array for a question (more common on
+        # "hard" items) or returns fewer items than requested. Retry generation instead
+        # of silently shipping an incomplete/unanswerable batch.
+    return last_normalized
 
 
 async def grade_short_answer(question: str, correct_answer: str, user_answer: str) -> bool:

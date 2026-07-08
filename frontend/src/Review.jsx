@@ -1,43 +1,117 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import { ReviewIcon, CheckIcon, CrossIcon, CheckBigIcon } from './icons'
+import { apiRequest, getLastAttemptId, normalizeOptions } from './api'
 import './Shell.css'
-
-const QUESTIONS = [
-  {
-    q: '다음 중 외래 키(Foreign Key)에 대한 설명으로 옳은 것은?',
-    options: ['각 행을 고유하게 식별하는 키', '다른 테이블의 기본 키를 참조하는 키', '중복을 절대 허용하지 않는 키', '반드시 숫자여야 하는 키'],
-    answer: 1,
-    explain: '외래 키는 다른 테이블의 기본 키를 참조해 테이블 간 관계를 맺어주는 키예요. 중복과 NULL도 가능합니다.',
-  },
-  {
-    q: '정규화(Normalization)를 하는 목적으로 가장 적절한 것은?',
-    options: ['검색 속도만 최대로 높이기 위해', '데이터 중복을 줄이고 무결성을 높이기 위해', '테이블 개수를 무조건 줄이기 위해', '저장 공간을 늘리기 위해'],
-    answer: 1,
-    explain: '정규화는 데이터 중복과 이상 현상을 줄이고 무결성을 높이기 위해 테이블을 구조화하는 과정이에요.',
-  },
-  {
-    q: '트랜잭션의 원자성(Atomicity)에 대한 설명으로 옳은 것은?',
-    options: ['트랜잭션은 부분적으로만 성공할 수 있다', '실행 순서는 항상 무시된다', '모두 성공하거나 모두 취소된다', '실행 중 언제든 자유롭게 중단된다'],
-    answer: 2,
-    explain: '원자성은 트랜잭션의 모든 연산이 전부 성공하거나 전부 취소됨을 보장해 데이터 일관성을 지켜줘요.',
-  },
-]
 
 const LETTERS = ['A', 'B', 'C', 'D']
 
 function Review({ onNavigate }) {
+  const [attemptId] = useState(() => getLastAttemptId())
+  const [session, setSession] = useState(null)
   const [idx, setIdx] = useState(0)
   const [selected, setSelected] = useState(null)
-  const [revealed, setRevealed] = useState(false)
+  const [feedback, setFeedback] = useState(null)
   const [done, setDone] = useState(false)
+  const [notes, setNotes] = useState([])
+  const [showNotes, setShowNotes] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const startedAtRef = useRef(Date.now())
 
-  const restart = () => {
+  const startReview = async () => {
+    if (!attemptId) {
+      setError('먼저 AI 퀴즈를 풀어야 지난 오답으로 복습할 수 있어요.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setDone(false)
     setIdx(0)
     setSelected(null)
-    setRevealed(false)
-    setDone(false)
+    setFeedback(null)
+    try {
+      const data = await apiRequest(`/api/attempts/${attemptId}/review/start`, {
+        method: 'POST',
+        body: JSON.stringify({ time_limit_seconds_per_question: 120 }),
+      })
+      setSession(data)
+      startedAtRef.current = Date.now()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadWrongNotes = async () => {
+    if (!attemptId) {
+      setError('지난번 오답을 보려면 먼저 AI 퀴즈를 풀어야 합니다.')
+      return
+    }
+    setError('')
+    try {
+      const data = await apiRequest(`/api/attempts/${attemptId}/wrong-notes`)
+      setNotes(data.wrong_notes || [])
+      setShowNotes((value) => !value)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  useEffect(() => {
+    startReview()
+  }, [])
+
+  const items = session?.items || []
+  const current = items[idx]
+  const isLast = idx >= items.length - 1
+  const progress = items.length ? Math.round(((idx + 1) / items.length) * 100) : 0
+
+  const selectOption = async (answer) => {
+    if (!current || feedback) return
+    setSelected(answer)
+    const elapsed = Math.max(0, Math.round((Date.now() - startedAtRef.current) / 1000))
+    try {
+      const data = await apiRequest(`/api/review-sessions/${session.review_session_id}/items/${current.review_item_id}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ answer, elapsed_seconds: elapsed }),
+      })
+      setFeedback(data)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const next = () => {
+    if (!feedback) return
+    if (isLast) {
+      setDone(true)
+      return
+    }
+    setIdx((value) => value + 1)
+    setSelected(null)
+    setFeedback(null)
+    startedAtRef.current = Date.now()
+  }
+
+  if (loading || error || !session) {
+    return (
+      <>
+        <Header title="복습하기" icon={<ReviewIcon />} onBack={() => onNavigate('library')} />
+        <div className="done-screen">
+          <div className="done-title">{loading ? '복습 준비 중' : '복습할 오답이 없어요'}</div>
+          <div className="done-desc">{loading ? '지난 퀴즈의 오답을 불러오고 있습니다.' : error}</div>
+        </div>
+        <div className="cta-area tight">
+          <button type="button" className="cta-button" onClick={startReview} disabled={loading}>
+            다시 불러오기
+          </button>
+        </div>
+        <BottomNav active="review" onNavigate={onNavigate} />
+      </>
+    )
   }
 
   if (done) {
@@ -51,13 +125,13 @@ function Review({ onNavigate }) {
           <div>
             <div className="done-title">복습 완료!</div>
             <div className="done-desc">
-              틀렸던 {QUESTIONS.length}문제를 모두 다시 풀었어요.
-              <br />이 개념들을 확실하게 기억해 두세요!
+              지난 오답 {items.length}문제를 다시 확인했어요.
+              <br />오답노트에서 남은 항목을 계속 점검할 수 있습니다.
             </div>
           </div>
         </div>
         <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={restart}>
+          <button type="button" className="cta-button" onClick={startReview}>
             다시 복습하기
           </button>
         </div>
@@ -66,24 +140,7 @@ function Review({ onNavigate }) {
     )
   }
 
-  const current = QUESTIONS[idx]
-  const isLast = idx >= QUESTIONS.length - 1
-  const progress = Math.round(((idx + 1) / QUESTIONS.length) * 100)
-
-  const selectOption = (i) => {
-    if (revealed) return
-    setSelected(i)
-    setRevealed(true)
-  }
-  const next = () => {
-    if (!revealed) return
-    if (isLast) setDone(true)
-    else {
-      setIdx((i) => i + 1)
-      setSelected(null)
-      setRevealed(false)
-    }
-  }
+  const options = normalizeOptions(current.options)
 
   return (
     <>
@@ -92,35 +149,67 @@ function Review({ onNavigate }) {
       <div className="body-scroll">
         <div className="progress-row">
           <div className="progress-top">
-            <span className="progress-count">복습 {idx + 1} / {QUESTIONS.length}</span>
-            <span className="progress-tag">지난번 오답</span>
+            <span className="progress-count">복습 {idx + 1} / {items.length}</span>
+            <button type="button" className="progress-tag tag-button" onClick={loadWrongNotes}>
+              지난번 오답
+            </button>
           </div>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: `${progress}%` }} />
           </div>
         </div>
 
-        <p className="question-text">{current.q}</p>
+        {showNotes && (
+          <div className="note-panel">
+            <div className="note-title">오답노트</div>
+            {notes.length === 0 ? (
+              <div className="note-empty">저장된 오답이 없습니다.</div>
+            ) : (
+              notes.map((note, index) => (
+                <div className="note-card" key={note.wrong_note_id}>
+                  <div className="note-question">{index + 1}. {note.question_text}</div>
+                  <div className="note-answer">내 답: {note.user_answer || '미응답'}</div>
+                  <div className="note-answer">정답: {note.correct_answer}</div>
+                  {note.explanation && <div className="note-explain">{note.explanation}</div>}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        <p className="question-text">{current.question_text}</p>
+
+        {options.length === 0 && (
+          <div className="done-desc" style={{ color: 'oklch(0.55 0.15 25)' }}>
+            이 문제의 선택지를 불러오지 못했습니다.
+          </div>
+        )}
 
         <div className="option-list">
-          {current.options.map((text, i) => {
-            const isCorrect = i === current.answer
-            const isWrongPick = revealed && selected === i && !isCorrect
-            let background, borderColor, color, mark
-            if (revealed && isCorrect) {
-              background = 'oklch(0.93 0.03 148)'; borderColor = 'oklch(0.75 0.06 148)'; mark = 'check'
+          {options.map((text, i) => {
+            const isCorrect = feedback && text === feedback.correct_answer
+            const isWrongPick = feedback && selected === text && !isCorrect
+            let background
+            let borderColor
+            let color
+            let mark = 'idle'
+            if (isCorrect) {
+              background = 'oklch(0.93 0.03 148)'
+              borderColor = 'oklch(0.75 0.06 148)'
+              mark = 'check'
             } else if (isWrongPick) {
-              background = 'oklch(0.95 0.03 25)'; borderColor = 'oklch(0.8 0.08 25)'; color = 'oklch(0.45 0.1 25)'; mark = 'cross'
-            } else {
-              mark = 'idle'
+              background = 'oklch(0.95 0.03 25)'
+              borderColor = 'oklch(0.8 0.08 25)'
+              color = 'oklch(0.45 0.1 25)'
+              mark = 'cross'
             }
             return (
               <button
                 key={text}
                 type="button"
                 className="option-button"
-                style={{ background, borderColor, cursor: revealed ? 'default' : 'pointer' }}
-                onClick={() => selectOption(i)}
+                style={{ background, borderColor, cursor: feedback ? 'default' : 'pointer' }}
+                onClick={() => selectOption(text)}
               >
                 <span className={`option-mark ${mark}`}>
                   {mark === 'check' && <CheckIcon />}
@@ -132,11 +221,17 @@ function Review({ onNavigate }) {
           })}
         </div>
 
-        {revealed && <div className="explain-box">{current.explain}</div>}
+        {feedback && (
+          <div className="explain-box">
+            {feedback.is_correct ? '정답입니다.' : '다시 확인해 볼 문제예요.'}
+            {feedback.timed_out && ' 제한 시간을 초과했습니다.'}
+            {feedback.explanation && <><br />{feedback.explanation}</>}
+          </div>
+        )}
       </div>
 
       <div className="cta-area tight">
-        <button type="button" className="cta-button" disabled={!revealed} onClick={next}>
+        <button type="button" className="cta-button" disabled={!feedback} onClick={next}>
           {isLast ? '복습 완료' : '다음 문제'}
         </button>
       </div>
