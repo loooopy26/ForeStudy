@@ -1,0 +1,18 @@
+/* 퀘스트/업적 화면 전용 색·폰트 토큰.
+   기존 theme.css(--ink, --green 등)와 변수명이 겹치지 않아 다른 화면에 영향 없음. */
+:root {
+  --color-primary: #2d6c4d;
+  --color-primary-light: #5f7a43;
+  --color-accent: #f0c04a;
+  --color-accent-light: #f3ddc0;
+  --color-bg-main: #fbf7ee;
+  --color-bg-card: #f4eddb;
+  --color-bg-card-light: #fdfbf4;
+  --color-text-dark: #4a4436;
+  --color-text-muted: #a49b88;
+  --color-border: #efe7d5;
+  --color-success: #8bb069;
+
+  --font-sans: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-quick: 'Quicksand', sans-serif;
+}

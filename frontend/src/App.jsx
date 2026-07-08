@@ -4,6 +4,7 @@ import Quiz from './Quiz'
 import Review from './Review'
 import Summary from './Summary'
 import Chat from './Chat'
+import ForestGame from './ForestGame'
 import './theme.css'
 import './Shell.css'
 import './App.css'
@@ -14,6 +15,7 @@ const SCREENS = {
   review: Review,
   summary: Summary,
   chat: Chat,
+  forest: ForestGame,
 }
 
 function App() {
