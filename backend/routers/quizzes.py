@@ -1,8 +1,4 @@
-"""AI quiz routes.
-
-Flow: create a quiz from study material, grade a completed submission,
-create wrong-answer notes, and run timed review sessions.
-"""
+"""AI quiz routes for placement, study review, grading, and wrong-note review."""
 
 import json
 from datetime import date
@@ -17,7 +13,7 @@ router = APIRouter(prefix="/api", tags=["AI quiz"])
 
 
 class QuizCreateRequest(BaseModel):
-    num_questions: int = Field(5, ge=1, le=20)
+    num_questions: int = Field(10, ge=1, le=25)
     difficulty: str = Field("normal", pattern="^(easy|normal|hard)$")
     focus_query: str | None = None
     user_id: str | None = None
@@ -45,6 +41,39 @@ class ReviewSubmitRequest(BaseModel):
 
 @router.post("/materials/{material_id}/quiz", status_code=201)
 async def create_quiz(material_id: str, req: QuizCreateRequest):
+    """Create the initial placement quiz: 10 multiple-choice questions."""
+    return await _create_material_quiz(
+        material_id,
+        req,
+        quiz_kind="placement",
+        forced_num_questions=10,
+        question_mix={"multiple_choice": 10},
+        title_suffix="placement quiz",
+    )
+
+
+@router.post("/materials/{material_id}/review-quiz", status_code=201)
+async def create_review_quiz(material_id: str, req: QuizCreateRequest):
+    """Create the post-study review quiz: 20 MCQ + 5 short-answer questions."""
+    return await _create_material_quiz(
+        material_id,
+        req,
+        quiz_kind="study_review",
+        forced_num_questions=25,
+        question_mix={"multiple_choice": 20, "short_answer": 5},
+        title_suffix="review quiz",
+    )
+
+
+async def _create_material_quiz(
+    material_id: str,
+    req: QuizCreateRequest,
+    *,
+    quiz_kind: str,
+    forced_num_questions: int,
+    question_mix: dict[str, int],
+    title_suffix: str,
+):
     pool = await get_pool()
     material = await pool.fetchrow(
         "SELECT id, user_id, title, processed_status FROM study_materials WHERE id = $1",
@@ -71,31 +100,38 @@ async def create_quiz(material_id: str, req: QuizCreateRequest):
     query = req.focus_query or f"{material['title']} 핵심 개념"
     chunks = await rag.retrieve_chunks(material_id, query, top_k=8)
     if not chunks:
-        raise HTTPException(409, "검색 가능한 자료 청크가 없습니다")
+        raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
     questions = await study_agent.generate_quiz(
         rag.format_context(chunks),
-        num_questions=req.num_questions,
+        num_questions=forced_num_questions,
         difficulty=req.difficulty,
         weak_topics=weak_topics or None,
+        question_mix=question_mix,
     )
+    if len(questions) < forced_num_questions:
+        raise HTTPException(
+            502,
+            f"AI generated only {len(questions)} questions. Expected {forced_num_questions}.",
+        )
 
     async with pool.acquire() as conn:
         async with conn.transaction():
             quiz_row = await conn.fetchrow(
                 """
-                INSERT INTO quizzes (user_id, study_material_id, quiz_date, title, difficulty, generated_by, status)
-                VALUES ($1, $2, $3, $4, $5, 'ai', 'pending') RETURNING id
+                INSERT INTO quizzes (user_id, study_material_id, quiz_date, title, difficulty, generated_by, status, quiz_type)
+                VALUES ($1, $2, $3, $4, $5, 'ai', 'pending', $6) RETURNING id
                 """,
                 user_id,
                 material_id,
                 date.today(),
-                f"{material['title']} 퀴즈",
+                f"{material['title']} {title_suffix}",
                 req.difficulty,
+                quiz_kind,
             )
             quiz_id = str(quiz_row["id"])
             out_questions = []
-            for index, question in enumerate(questions, start=1):
+            for index, question in enumerate(questions[:forced_num_questions], start=1):
                 q_row = await conn.fetchrow(
                     """
                     INSERT INTO quiz_questions
@@ -124,7 +160,13 @@ async def create_quiz(material_id: str, req: QuizCreateRequest):
                     }
                 )
 
-    return {"quiz_id": quiz_id, "difficulty": req.difficulty, "questions": out_questions}
+    return {
+        "quiz_id": quiz_id,
+        "quiz_kind": quiz_kind,
+        "difficulty": req.difficulty,
+        "question_mix": question_mix,
+        "questions": out_questions,
+    }
 
 
 @router.post("/quizzes/{quiz_id}/submit")
@@ -132,7 +174,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     pool = await get_pool()
     await _ensure_wrong_answer_tables(pool)
     quiz = await pool.fetchrow(
-        "SELECT id, user_id, study_material_id FROM quizzes WHERE id = $1",
+        "SELECT id, user_id, study_material_id, COALESCE(quiz_type, 'study_review') AS quiz_type FROM quizzes WHERE id = $1",
         quiz_id,
     )
     if quiz is None:
@@ -208,48 +250,49 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
             )
             await conn.execute("UPDATE quizzes SET status = 'graded' WHERE id = $1", quiz_id)
 
-            for result in results:
-                if result["is_correct"]:
-                    continue
-                note = await conn.fetchrow(
-                    """
-                    INSERT INTO wrong_answer_notes
-                        (user_id, quiz_attempt_id, quiz_question_id, question_text,
-                         user_answer, correct_answer, explanation, topic_tag, status)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
-                    ON CONFLICT (quiz_attempt_id, quiz_question_id) DO UPDATE SET
-                        user_answer = EXCLUDED.user_answer,
-                        correct_answer = EXCLUDED.correct_answer,
-                        explanation = EXCLUDED.explanation,
-                        topic_tag = EXCLUDED.topic_tag,
-                        status = 'pending'
-                    RETURNING id, status, created_at
-                    """,
-                    user_id,
-                    attempt_id,
-                    result["question_id"],
-                    result["question_text"],
-                    result["user_answer"],
-                    result["correct_answer"],
-                    result["explanation"],
-                    result["topic_tag"],
-                )
-                wrong_note_rows.append(
-                    {
-                        "wrong_note_id": str(note["id"]),
-                        "question_id": result["question_id"],
-                        "question_text": result["question_text"],
-                        "user_answer": result["user_answer"],
-                        "correct_answer": result["correct_answer"],
-                        "explanation": result["explanation"],
-                        "topic_tag": result["topic_tag"],
-                        "status": note["status"],
-                    }
-                )
+            if quiz["quiz_type"] != "placement":
+                for result in results:
+                    if result["is_correct"]:
+                        continue
+                    note = await conn.fetchrow(
+                        """
+                        INSERT INTO wrong_answer_notes
+                            (user_id, quiz_attempt_id, quiz_question_id, question_text,
+                             user_answer, correct_answer, explanation, topic_tag, status)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+                        ON CONFLICT (quiz_attempt_id, quiz_question_id) DO UPDATE SET
+                            user_answer = EXCLUDED.user_answer,
+                            correct_answer = EXCLUDED.correct_answer,
+                            explanation = EXCLUDED.explanation,
+                            topic_tag = EXCLUDED.topic_tag,
+                            status = 'pending'
+                        RETURNING id, status, created_at
+                        """,
+                        user_id,
+                        attempt_id,
+                        result["question_id"],
+                        result["question_text"],
+                        result["user_answer"],
+                        result["correct_answer"],
+                        result["explanation"],
+                        result["topic_tag"],
+                    )
+                    wrong_note_rows.append(
+                        {
+                            "wrong_note_id": str(note["id"]),
+                            "question_id": result["question_id"],
+                            "question_text": result["question_text"],
+                            "user_answer": result["user_answer"],
+                            "correct_answer": result["correct_answer"],
+                            "explanation": result["explanation"],
+                            "topic_tag": result["topic_tag"],
+                            "status": note["status"],
+                        }
+                    )
 
     wrong = [result for result in results if not result["is_correct"]]
     analysis = None
-    if wrong:
+    if wrong and quiz["quiz_type"] != "placement":
         context = ""
         if quiz["study_material_id"]:
             topics = ", ".join(str(item["topic_tag"]) for item in wrong if item["topic_tag"])
@@ -291,6 +334,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
         "score_pct": score_pct,
         "correct_count": correct_count,
         "total_count": total_count,
+        "quiz_type": quiz["quiz_type"],
         "results": results,
         "wrong_answer_notes": wrong_note_rows,
         "review": {

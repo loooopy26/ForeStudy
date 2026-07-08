@@ -1,15 +1,13 @@
-"""Document Parse 결과(elements[])를 RAG용 청크로 변환.
-
-전략: heading 요소를 만나면 새 섹션 시작(섹션 기준 청킹), 섹션이 chunk_max_chars를
-넘으면 overlap을 두고 재분할. 표(table)는 구조 보존을 위해 HTML 그대로 싣는다.
-"""
+"""Convert Upstage Document Parse results into RAG chunks."""
 
 import re
 from dataclasses import dataclass
+from html import unescape
 
 from config import settings
 
 _TAG_RE = re.compile(r"<[^>]+>")
+_ALT_RE = re.compile(r"""alt=(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE | re.DOTALL)
 _HEADING_CATEGORIES = {"heading1", "heading2", "heading3"}
 
 
@@ -22,12 +20,25 @@ class Chunk:
 
 
 def _element_text(element: dict) -> str:
-    html = element.get("content", {}).get("html", "")
+    content = element.get("content", {})
+    text_content = (content.get("text") or content.get("markdown") or "").strip()
+    if text_content:
+        return _normalize_text(text_content)
+
+    html = content.get("html", "")
     if element.get("category") == "table":
-        return html  # 표는 HTML 구조 유지
-    text = _TAG_RE.sub(" ", html)
-    text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-    return re.sub(r"\s+", " ", text).strip()
+        return html
+
+    alt_matches = _ALT_RE.findall(html)
+    alt_text = " ".join(match[0] or match[1] for match in alt_matches).strip()
+    if alt_text:
+        return _normalize_text(alt_text)
+
+    return _normalize_text(_TAG_RE.sub(" ", html))
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", unescape(text)).strip()
 
 
 def _split_long(text: str, max_chars: int, overlap: int) -> list[str]:
@@ -37,7 +48,6 @@ def _split_long(text: str, max_chars: int, overlap: int) -> list[str]:
     start = 0
     while start < len(text):
         end = min(start + max_chars, len(text))
-        # 문장 경계에서 자르기 시도
         if end < len(text):
             cut = max(text.rfind(". ", start, end), text.rfind("다.", start, end))
             if cut > start + max_chars // 2:
@@ -46,7 +56,7 @@ def _split_long(text: str, max_chars: int, overlap: int) -> list[str]:
         if end >= len(text):
             break
         start = end - overlap
-    return [p for p in parts if p]
+    return [part for part in parts if part]
 
 
 def build_chunks(parse_result: dict) -> list[Chunk]:

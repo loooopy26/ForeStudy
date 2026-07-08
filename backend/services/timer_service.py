@@ -129,5 +129,5 @@ def _to_end_response(session: StudySession) -> dict:
         "reward_token": session.reward_token,
         "status": session.status,
         "final_quiz_recommended": session.studied_minutes > 0,
-        "next_action": "POST /quiz/generate to create a wrap-up quiz.",
+        "next_action": "POST /api/materials/{material_id}/review-quiz to create a post-study review quiz.",
     }

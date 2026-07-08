@@ -226,6 +226,7 @@ CREATE TABLE quizzes (
     title         TEXT,
     difficulty    TEXT NOT NULL DEFAULT 'normal' CHECK (difficulty IN ('easy','normal','hard')),
     generated_by  TEXT NOT NULL DEFAULT 'ai' CHECK (generated_by IN ('ai','user')),
+    quiz_type     TEXT NOT NULL DEFAULT 'study_review' CHECK (quiz_type IN ('placement','study_review')),
     status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','graded')),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
