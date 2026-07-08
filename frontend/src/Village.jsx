@@ -6,10 +6,35 @@ import { AcornIcon } from './icons'
 import './Village.css'
 
 const PLACES = [
-  { key: 'board', label: '테스트 게시판', top: '28%', left: '21%' },
-  { key: 'library', label: '도서관', top: '24%', left: '84%', target: 'library' },
-  { key: 'shop', label: '상점', top: '51%', left: '18%' },
-  { key: 'room', label: '내 방', top: '48%', left: '75%' },
+  {
+    key: 'board',
+    label: '테스트 게시판',
+    top: '19%',
+    left: '21%',
+    hotspot: { top: '31%', left: '20%', width: '32%', height: '13%' },
+  },
+  {
+    key: 'library',
+    label: '도서관',
+    top: '18%',
+    left: '85%',
+    target: 'library',
+    hotspot: { top: '31%', left: '83%', width: '34%', height: '20%' },
+  },
+  {
+    key: 'shop',
+    label: '상점',
+    top: '55%',
+    left: '18%',
+    hotspot: { top: '56%', left: '18%', width: '32%', height: '17%' },
+  },
+  {
+    key: 'room',
+    label: '내 방',
+    top: '53%',
+    left: '75%',
+    hotspot: { top: '55%', left: '76%', width: '37%', height: '23%' },
+  },
 ]
 
 function Village({ onNavigate }) {
@@ -30,6 +55,22 @@ function Village({ onNavigate }) {
       </header>
 
       <div className="village-map">
+        {PLACES.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            className="house-hotspot"
+            aria-label={p.label}
+            style={{
+              top: p.hotspot.top,
+              left: p.hotspot.left,
+              width: p.hotspot.width,
+              height: p.hotspot.height,
+            }}
+            onClick={p.target ? () => onNavigate(p.target) : undefined}
+          />
+        ))}
+
         {PLACES.map((p) => (
           <button
             key={p.key}

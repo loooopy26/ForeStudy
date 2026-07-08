@@ -61,6 +61,15 @@
   flex: 1;
 }
 
+.house-hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .place-pin {
   position: absolute;
   transform: translate(-50%, -50%);

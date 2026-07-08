@@ -8,7 +8,7 @@ function MainNav({ active, onNavigate }) {
         className={active === 'profile' ? 'active' : ''}
         onClick={() => onNavigate('profile')}
       >
-        <HomeIcon size={28} />
+        <HomeIcon size={22} />
         <span>홈</span>
       </button>
       <span className="main-nav-divider" aria-hidden="true" />
@@ -17,7 +17,7 @@ function MainNav({ active, onNavigate }) {
         className={active === 'village' ? 'active' : ''}
         onClick={() => onNavigate('village')}
       >
-        <VillageIcon size={28} />
+        <VillageIcon size={22} />
         <span>마을</span>
       </button>
     </nav>
