@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     upstage_doc_parse_model: str = "document-parse"
 
     upload_dir: Path = BASE_DIR / "uploads"
+    # Upstage Document Parse 사전 검증용. 동기 API는 50MB, 비동기 API는 200MB까지 지원
+    # (50MB 초과 시 services/upstage.py에서 자동으로 비동기 API로 전환)
+    max_upload_mb: int = 200
 
     # 청킹: 한국어 기준 대략 2~3자 = 1토큰, 임베딩 8k 컨텍스트 내에서 여유 있게
     chunk_max_chars: int = 1600

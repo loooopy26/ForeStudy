@@ -6,6 +6,8 @@ import json
 import logging
 from pathlib import Path
 
+import httpx
+
 from db import get_pool, vector_literal
 from services import study_agent, upstage
 from services.chunking import build_chunks
@@ -20,7 +22,7 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
     pool = await get_pool()
     try:
         await pool.execute(
-            "UPDATE study_materials SET processed_status = 'processing' WHERE id = $1",
+            "UPDATE study_materials SET processed_status = 'processing', processing_error = NULL WHERE id = $1",
             study_material_id,
         )
 
@@ -83,9 +85,15 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
         )
         logger.info("ingest 완료: material=%s chunks=%d", study_material_id, len(chunks))
 
-    except Exception:
+    except Exception as exc:
         logger.exception("ingest 실패: material=%s", study_material_id)
+        if isinstance(exc, httpx.HTTPStatusError):
+            error_message = f"Upstage API 오류 ({exc.response.status_code}): {exc.response.text[:300]}"
+        else:
+            # httpcore.ReadTimeout 등 일부 예외는 str(exc)가 빈 문자열이라 예외 타입명으로 대체
+            error_message = str(exc)[:500] or f"{type(exc).__name__} (메시지 없음)"
         await pool.execute(
-            "UPDATE study_materials SET processed_status = 'failed' WHERE id = $1",
+            "UPDATE study_materials SET processed_status = 'failed', processing_error = $2 WHERE id = $1",
             study_material_id,
+            error_message,
         )

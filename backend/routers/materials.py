@@ -5,6 +5,8 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import Path as PathParam
+from fastapi import Query
 
 from config import settings
 from db import get_or_create_demo_user, get_pool
@@ -16,13 +18,42 @@ router = APIRouter(prefix="/api/materials", tags=["AI 도서관"])
 _ALLOWED_EXTENSIONS = {".pdf": "pdf", ".ppt": "ppt", ".pptx": "ppt", ".docx": "docx", ".doc": "docx"}
 
 
+def _parse_optional_uuid(value: str | None, field_name: str) -> str | None:
+    """Swagger 멀티파트 폼은 빈 값도 ''/'string' 같은 문자열로 보낼 수 있어 None으로 정규화한다."""
+    if value is None or value.strip() == "":
+        return None
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise HTTPException(400, f"{field_name}는 올바른 UUID 형식이어야 합니다: {value!r}")
+
+
+@router.get("")
+async def list_materials(user_id: str | None = Query(None, description="필터링할 소유자 user_id(UUID). 비워두면 전체 조회")):
+    """자료 목록 조회 (최신 업로드 순). 프론트 자료 선택 화면에서 사용."""
+    pool = await get_pool()
+    if user_id:
+        rows = await pool.fetch(
+            """
+            SELECT id, title, file_type, processed_status, uploaded_at
+            FROM study_materials WHERE user_id = $1 ORDER BY uploaded_at DESC
+            """,
+            user_id,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, title, file_type, processed_status, uploaded_at FROM study_materials ORDER BY uploaded_at DESC"
+        )
+    return [dict(row) for row in rows]
+
+
 @router.post("", status_code=202)
 async def upload_material(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    title: str | None = Form(None),
-    user_id: str | None = Form(None),
-    certification_id: str | None = Form(None),
+    file: UploadFile = File(..., description="업로드할 학습 자료 파일 (pdf/ppt/pptx/doc/docx)"),
+    title: str | None = Form(None, description="자료 제목. 비워두면 파일명에서 확장자를 뺀 값을 사용"),
+    user_id: str | None = Form(None, description="자료 소유자 user_id(UUID). 비워두면 데모 사용자로 처리"),
+    certification_id: str | None = Form(None, description="연관된 자격증 id(UUID). 없으면 비워둠"),
 ):
     """자료 업로드. 202 반환 후 백그라운드에서 파싱→임베딩→요약 진행.
     processed_status가 'ready'가 될 때까지 GET /api/materials/{id} 로 폴링."""
@@ -30,8 +61,20 @@ async def upload_material(
     if ext not in _ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"지원하지 않는 파일 형식입니다: {ext} (pdf/ppt/pptx/doc/docx)")
 
+    user_id = _parse_optional_uuid(user_id, "user_id")
+    certification_id = _parse_optional_uuid(certification_id, "certification_id")
+
+    content = await file.read()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(
+            400,
+            f"파일이 너무 큽니다 ({len(content) / 1024 / 1024:.1f}MB). "
+            f"최대 {settings.max_upload_mb}MB까지 업로드할 수 있습니다.",
+        )
+
     saved_path = settings.upload_dir / f"{uuid.uuid4().hex}{ext}"
-    saved_path.write_bytes(await file.read())
+    saved_path.write_bytes(content)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -56,13 +99,15 @@ async def upload_material(
 
 
 @router.get("/{material_id}")
-async def get_material(material_id: str):
+async def get_material(
+    material_id: str = PathParam(..., description="조회할 자료의 id(UUID). POST /api/materials 응답의 material_id"),
+):
     """자료 상태/요약/핵심개념 조회."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """
         SELECT m.id, m.title, m.file_type, m.processed_status, m.ai_summary,
-               m.key_concepts, m.uploaded_at,
+               m.key_concepts, m.uploaded_at, m.processing_error,
                (SELECT count(*) FROM document_chunks c WHERE c.study_material_id = m.id) AS chunk_count
         FROM study_materials m WHERE m.id = $1
         """,
@@ -77,7 +122,11 @@ async def get_material(material_id: str):
 
 
 @router.get("/{material_id}/search")
-async def search_material(material_id: str, query: str, top_k: int | None = None):
+async def search_material(
+    material_id: str = PathParam(..., description="검색 대상 자료의 id(UUID)"),
+    query: str = Query(..., description="검색할 질의문(자연어)"),
+    top_k: int | None = Query(None, description="반환할 최대 청크 수. 비워두면 settings.rag_top_k 기본값 사용"),
+):
     """자료 내 의미 검색 (RAG 검색 디버그/미리보기용)."""
     chunks = await rag.retrieve_chunks(material_id, query, top_k)
     return {"query": query, "chunks": chunks}

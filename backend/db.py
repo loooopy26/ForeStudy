@@ -35,6 +35,9 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
         END $$;
         """
     )
+    await pool.execute(
+        "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS processing_error text"
+    )
 
 
 async def close_pool() -> None:
