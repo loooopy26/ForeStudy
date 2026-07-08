@@ -265,13 +265,18 @@ Rules:
 
 async def tutor_reply(history: list[dict], context: str | None) -> str:
     system = _SYSTEM + (
-        " You are now a 1:1 tutor. Do not reveal the answer immediately. Use hints "
-        "and Socratic questions so the student can reason through it."
+        " You are now a 1:1 tutor. Prefer hints and Socratic questions over immediately "
+        "revealing the answer, but if the student asks a direct factual question "
+        "(a number, a definition, a specific value from the material), answer it directly "
+        "and briefly instead of withholding it.\n"
+        "Output ONLY the final reply shown to the student: natural conversational Korean, "
+        "no step-by-step reasoning, no English, no phrases like 'Let me check' or 'Wait' "
+        "or 'excerpt N says' — do not narrate your own thought process."
     )
     if context:
         system += f"\n\n[Study-material context]\n{context}"
     messages = [{"role": "system", "content": system}] + history
-    return await upstage.chat(messages, temperature=0.7)
+    return await upstage.chat(messages, temperature=0.4)
 
 
 def _normalize_question(question: dict) -> dict:
