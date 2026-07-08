@@ -9,18 +9,18 @@ _SYSTEM = (
 
 
 async def summarize(material_title: str, sample_text: str) -> dict:
-    prompt = f"""다음은 학습 자료 "{material_title}"의 내용입니다.
+    prompt = f"""Analyze the study material titled "{material_title}".
 
 {sample_text}
 
-자료를 분석해서 아래 형식의 JSON으로 답하세요.
+Return JSON only:
 {{
-  "summary": "자료 전체 요약 (5~8문장)",
+  "summary": "5~8 Korean sentences summarizing the material",
   "key_concepts": [
-    {{"concept": "핵심 개념명", "description": "1~2문장 설명"}}
+    {{"concept": "core concept name", "description": "1~2 Korean sentences"}}
   ]
 }}
-핵심 개념은 5~10개를 추출하세요."""
+Extract 5~10 key concepts."""
     return await upstage.chat_json(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
     )
@@ -33,46 +33,67 @@ async def generate_quiz(
     difficulty: str,
     weak_topics: list[str] | None = None,
     question_mix: dict[str, int] | None = None,
+    quiz_kind: str = "study_review",
+    learner_profile: dict | None = None,
 ) -> list[dict]:
     weak_hint = (
-        f"\n사용자의 취약 주제는 {', '.join(weak_topics)} 입니다. 이 주제를 우선 출제하세요."
+        f"\nPrioritize these weak topics when relevant: {', '.join(weak_topics)}."
         if weak_topics
         else ""
     )
     if question_mix:
-        mix_text = ", ".join(f"{question_type} {count}개" for question_type, count in question_mix.items())
+        mix_text = ", ".join(f"{question_type} {count}" for question_type, count in question_mix.items())
         type_instruction = (
-            f"문항 구성은 반드시 {mix_text}로 맞추세요. "
-            "multiple_choice는 보기 4개를 제공하고 correct_answer는 보기 문자열 그대로 쓰세요. "
-            "short_answer는 options를 빈 배열로 두고 서술형 모범 답안을 correct_answer에 쓰세요. "
-            "ox 문항은 만들지 마세요."
+            f"The question mix must be exactly: {mix_text}. "
+            "For multiple_choice, provide exactly 4 options and set correct_answer to the exact option text. "
+            "For short_answer, set options to an empty array and put a model answer in correct_answer. "
+            "Do not create ox questions unless the requested mix includes ox."
         )
     else:
         type_instruction = (
-            "객관식 위주로 내되 1~2개는 ox 또는 short_answer로 섞으세요. "
-            "multiple_choice에만 options를 넣으세요."
+            "Prefer multiple_choice questions, with 1~2 ox or short_answer questions mixed in. "
+            "Only multiple_choice questions should have options."
         )
 
-    prompt = f"""다음 학습 자료 발췌를 근거로 퀴즈 {num_questions}개를 만드세요. 난이도: {difficulty}.{weak_hint}
+    if quiz_kind == "placement":
+        level_instruction = (
+            "This is a placement test. Create a balanced set across easy, normal, and hard levels "
+            "so the learner's starting mastery can be diagnosed."
+        )
+    else:
+        level_instruction = (
+            "This is a post-study review quiz. Adjust the difficulty to the learner profile below, "
+            "while still checking weak topics.\n"
+            f"{_format_profile_for_prompt(learner_profile)}"
+        )
+
+    prompt = f"""Create {num_questions} quiz questions from the study-material context below.
+Overall requested difficulty: {difficulty}.{weak_hint}
 
 {context}
 
 {type_instruction}
 
-아래 형식의 JSON으로만 답하세요.
+{level_instruction}
+
+Return JSON only:
 {{
   "questions": [
     {{
-      "question_text": "문제",
+      "question_text": "Korean question",
       "question_type": "multiple_choice | ox | short_answer",
-      "options": ["보기1", "보기2", "보기3", "보기4"],
-      "correct_answer": "정답",
-      "explanation": "해설. 자료 발췌 근거를 포함",
-      "topic_tag": "문제가 다루는 주제 키워드"
+      "options": ["option1", "option2", "option3", "option4"],
+      "correct_answer": "answer",
+      "explanation": "Korean explanation with evidence from the material",
+      "topic_tag": "topic keyword",
+      "question_difficulty": "easy | normal | hard",
+      "difficulty_score": 1,
+      "difficulty_reason": "Korean reason why this question has that difficulty"
     }}
   ]
 }}
-반드시 questions 배열 길이는 {num_questions}개여야 합니다."""
+The questions array length must be exactly {num_questions}.
+difficulty_score must be an integer from 1 to 100."""
     result = await upstage.chat_json(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
         temperature=0.5,
@@ -82,37 +103,96 @@ async def generate_quiz(
 
 
 async def grade_short_answer(question: str, correct_answer: str, user_answer: str) -> bool:
-    prompt = f"""문제: {question}
-모범 답안: {correct_answer}
-학생 답안: {user_answer}
+    prompt = f"""Question: {question}
+Model answer: {correct_answer}
+Student answer: {user_answer}
 
-학생 답안이 모범 답안과 의미상 일치하면 정답입니다. JSON으로 답하세요: {{"correct": true 또는 false}}"""
+Return JSON only: {{"correct": true or false}}
+Mark true if the student's meaning matches the model answer, even if wording differs."""
     result = await upstage.chat_json([{"role": "user", "content": prompt}], temperature=0.0)
     return bool(result.get("correct"))
 
 
 async def analyze_wrong_answers(wrong_items: list[dict], context: str) -> dict:
     wrong_text = "\n".join(
-        f"- 문제: {item['question_text']} / 정답: {item['correct_answer']} / 학생 답: {item['user_answer']} / 주제: {item['topic_tag']}"
+        f"- question: {item['question_text']} / correct: {item['correct_answer']} / "
+        f"student: {item['user_answer']} / topic: {item['topic_tag']}"
         for item in wrong_items
     )
-    prompt = f"""학생이 틀린 문제들입니다.
+    prompt = f"""These are the learner's wrong answers.
 
 {wrong_text}
 
-관련 학습 자료 발췌:
+Related study-material context:
 {context}
 
-오답 패턴을 분석해 JSON으로 답하세요.
+Return JSON only:
 {{
-  "analysis": "왜 틀렸는지, 어떤 개념이 부족한지 종합 분석",
+  "analysis": "Korean analysis of why the learner missed these questions",
   "weak_topics": [
-    {{"topic_tag": "주제", "weakness_score": 0~100 숫자, "recommendation": "이 주제 보완 방법"}}
+    {{"topic_tag": "topic", "weakness_score": 0, "recommendation": "Korean recommendation"}}
   ]
 }}"""
     return await upstage.chat_json(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
     )
+
+
+async def evaluate_learning_level(
+    *,
+    quiz_type: str,
+    quiz_difficulty: str,
+    results: list[dict],
+    previous_profile: dict | None = None,
+) -> dict:
+    result_text = "\n".join(
+        (
+            f"- order={item['question_order']}, type={item['question_type']}, "
+            f"question_difficulty={item.get('question_difficulty') or 'normal'}, "
+            f"difficulty_score={item.get('difficulty_score') or 50}, "
+            f"topic={item.get('topic_tag') or 'general'}, correct={item['is_correct']}, "
+            f"question={item['question_text']}"
+        )
+        for item in results
+    )
+    prompt = f"""Evaluate this learner's mastery from the quiz result.
+
+Quiz type: {quiz_type}
+Quiz overall difficulty: {quiz_difficulty}
+Previous learner profile:
+{_format_profile_for_prompt(previous_profile)}
+
+Question results:
+{result_text}
+
+Return JSON only:
+{{
+  "mastery_score": 0,
+  "mastery_level": "beginner | intermediate | advanced",
+  "recommended_difficulty": "easy | normal | hard",
+  "confidence_score": 0,
+  "difficulty_breakdown": {{
+    "easy": {{"correct": 0, "total": 0}},
+    "normal": {{"correct": 0, "total": 0}},
+    "hard": {{"correct": 0, "total": 0}}
+  }},
+  "strengths": ["Korean strength topic"],
+  "weaknesses": ["Korean weakness topic"],
+  "analysis": "Korean explanation of mastery and next quiz difficulty"
+}}
+
+Rules:
+- Placement tests estimate the starting level. Do not mention wrong-answer notes.
+- Review quizzes update the level based on whether the learner improved.
+- Consider both correct count and the difficulty of questions answered correctly.
+- If the learner mostly misses easy/normal questions, recommend easy.
+- If the learner handles normal questions but misses hard questions, recommend normal.
+- If the learner handles hard questions consistently, recommend hard."""
+    result = await upstage.chat_json(
+        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
+        temperature=0.1,
+    )
+    return _normalize_level_evaluation(result)
 
 
 async def tutor_reply(history: list[dict], context: str | None) -> str:
@@ -121,7 +201,7 @@ async def tutor_reply(history: list[dict], context: str | None) -> str:
         "and Socratic questions so the student can reason through it."
     )
     if context:
-        system += f"\n\n[학습 자료 발췌]\n{context}"
+        system += f"\n\n[Study-material context]\n{context}"
     messages = [{"role": "system", "content": system}] + history
     return await upstage.chat(messages, temperature=0.7)
 
@@ -135,4 +215,51 @@ def _normalize_question(question: dict) -> dict:
     else:
         question["question_type"] = "multiple_choice"
         question["options"] = (question.get("options") or [])[:4]
+    if question.get("question_difficulty") not in ("easy", "normal", "hard"):
+        question["question_difficulty"] = "normal"
+    try:
+        score = int(question.get("difficulty_score") or 50)
+    except (TypeError, ValueError):
+        score = 50
+    question["difficulty_score"] = max(1, min(100, score))
+    question["difficulty_reason"] = question.get("difficulty_reason") or None
     return question
+
+
+def _normalize_level_evaluation(result: dict) -> dict:
+    level = result.get("mastery_level")
+    if level not in ("beginner", "intermediate", "advanced"):
+        level = "intermediate"
+    recommended = result.get("recommended_difficulty")
+    if recommended not in ("easy", "normal", "hard"):
+        recommended = "normal"
+    try:
+        mastery_score = float(result.get("mastery_score", 50))
+    except (TypeError, ValueError):
+        mastery_score = 50.0
+    try:
+        confidence_score = float(result.get("confidence_score", 50))
+    except (TypeError, ValueError):
+        confidence_score = 50.0
+    return {
+        "mastery_score": max(0.0, min(100.0, mastery_score)),
+        "mastery_level": level,
+        "recommended_difficulty": recommended,
+        "confidence_score": max(0.0, min(100.0, confidence_score)),
+        "difficulty_breakdown": result.get("difficulty_breakdown") or {},
+        "strengths": result.get("strengths") or [],
+        "weaknesses": result.get("weaknesses") or [],
+        "analysis": result.get("analysis") or "",
+    }
+
+
+def _format_profile_for_prompt(profile: dict | None) -> str:
+    if not profile:
+        return "No previous learner profile."
+    return (
+        f"mastery_level={profile.get('mastery_level')}, "
+        f"mastery_score={profile.get('mastery_score')}, "
+        f"recommended_difficulty={profile.get('recommended_difficulty')}, "
+        f"confidence_score={profile.get('confidence_score')}, "
+        f"analysis={profile.get('ai_analysis') or profile.get('analysis') or ''}"
+    )

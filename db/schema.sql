@@ -240,7 +240,10 @@ CREATE TABLE quiz_questions (
     options        JSONB,
     correct_answer TEXT NOT NULL,
     explanation    TEXT,
-    topic_tag      TEXT
+    topic_tag      TEXT,
+    question_difficulty TEXT NOT NULL DEFAULT 'normal' CHECK (question_difficulty IN ('easy','normal','hard')),
+    difficulty_score INT NOT NULL DEFAULT 50 CHECK (difficulty_score BETWEEN 1 AND 100),
+    difficulty_reason TEXT
 );
 
 CREATE TABLE quiz_attempts (
@@ -271,6 +274,39 @@ CREATE TABLE weak_point_reports (
     recommendation           TEXT,
     source_quiz_attempt_id   UUID REFERENCES quiz_attempts(id) ON DELETE SET NULL,
     generated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE quiz_attempt_evaluations (
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_attempt_id          UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+    quiz_id                  UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    user_id                  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    study_material_id        UUID,
+    quiz_type                TEXT NOT NULL CHECK (quiz_type IN ('placement','study_review')),
+    mastery_score            NUMERIC(5,2) NOT NULL,
+    mastery_level            TEXT NOT NULL CHECK (mastery_level IN ('beginner','intermediate','advanced')),
+    recommended_difficulty   TEXT NOT NULL CHECK (recommended_difficulty IN ('easy','normal','hard')),
+    confidence_score         NUMERIC(5,2) NOT NULL,
+    difficulty_breakdown     JSONB,
+    strengths                JSONB,
+    weaknesses               JSONB,
+    ai_analysis              TEXT,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (quiz_attempt_id)
+);
+
+CREATE TABLE user_learning_profiles (
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    study_material_id        UUID,
+    mastery_score            NUMERIC(5,2) NOT NULL DEFAULT 50,
+    mastery_level            TEXT NOT NULL DEFAULT 'intermediate' CHECK (mastery_level IN ('beginner','intermediate','advanced')),
+    recommended_difficulty   TEXT NOT NULL DEFAULT 'normal' CHECK (recommended_difficulty IN ('easy','normal','hard')),
+    confidence_score         NUMERIC(5,2) NOT NULL DEFAULT 50,
+    ai_analysis              TEXT,
+    last_quiz_attempt_id     UUID REFERENCES quiz_attempts(id) ON DELETE SET NULL,
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, study_material_id)
 );
 
 -- 사용자 업로드 학습자료(PDF/PPT/DOCX) + 약점 재학습용 튜터 챗봇(선생-학생 대화)
@@ -332,6 +368,12 @@ CREATE TABLE study_materials (
 -- quizzes.study_material_id FK (study_materials가 quizzes보다 뒤에 정의되므로 여기서 연결)
 ALTER TABLE quizzes ADD CONSTRAINT fk_quizzes_study_material
     FOREIGN KEY (study_material_id) REFERENCES study_materials(id) ON DELETE SET NULL;
+
+ALTER TABLE quiz_attempt_evaluations ADD CONSTRAINT fk_quiz_attempt_evaluations_study_material
+    FOREIGN KEY (study_material_id) REFERENCES study_materials(id) ON DELETE SET NULL;
+
+ALTER TABLE user_learning_profiles ADD CONSTRAINT fk_user_learning_profiles_study_material
+    FOREIGN KEY (study_material_id) REFERENCES study_materials(id) ON DELETE CASCADE;
 
 -- RAG 검색용 청크 + 임베딩 (Document Parse로 파싱한 자료를 섹션/토큰 단위로 분할)
 -- solar-embedding-2-passage/query: 1024차원 (Upstage 콘솔 문서에서 확인)

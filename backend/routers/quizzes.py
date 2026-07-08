@@ -17,6 +17,7 @@ class QuizCreateRequest(BaseModel):
     difficulty: str = Field("normal", pattern="^(easy|normal|hard)$")
     focus_query: str | None = None
     user_id: str | None = None
+    adapt_to_user: bool = True
 
 
 class AnswerItem(BaseModel):
@@ -75,6 +76,7 @@ async def _create_material_quiz(
     title_suffix: str,
 ):
     pool = await get_pool()
+    await _ensure_learning_profile_tables(pool)
     material = await pool.fetchrow(
         "SELECT id, user_id, title, processed_status FROM study_materials WHERE id = $1",
         material_id,
@@ -88,6 +90,17 @@ async def _create_material_quiz(
         )
 
     user_id = req.user_id or str(material["user_id"])
+    learner_profile = await _get_learning_profile(pool, user_id, material_id)
+    requested_difficulty = req.difficulty
+    if (
+        quiz_kind == "study_review"
+        and req.adapt_to_user
+        and not _request_includes_field(req, "difficulty")
+        and learner_profile
+        and learner_profile.get("recommended_difficulty")
+    ):
+        requested_difficulty = learner_profile["recommended_difficulty"]
+
     weak_rows = await pool.fetch(
         """
         SELECT topic_tag FROM weak_point_reports
@@ -105,9 +118,11 @@ async def _create_material_quiz(
     questions = await study_agent.generate_quiz(
         rag.format_context(chunks),
         num_questions=forced_num_questions,
-        difficulty=req.difficulty,
+        difficulty=requested_difficulty,
         weak_topics=weak_topics or None,
         question_mix=question_mix,
+        quiz_kind=quiz_kind,
+        learner_profile=learner_profile,
     )
     if len(questions) < forced_num_questions:
         raise HTTPException(
@@ -126,7 +141,7 @@ async def _create_material_quiz(
                 material_id,
                 date.today(),
                 f"{material['title']} {title_suffix}",
-                req.difficulty,
+                requested_difficulty,
                 quiz_kind,
             )
             quiz_id = str(quiz_row["id"])
@@ -136,8 +151,9 @@ async def _create_material_quiz(
                     """
                     INSERT INTO quiz_questions
                         (quiz_id, question_order, question_text, question_type,
-                         options, correct_answer, explanation, topic_tag)
-                    VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8) RETURNING id
+                         options, correct_answer, explanation, topic_tag,
+                         question_difficulty, difficulty_score, difficulty_reason)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11) RETURNING id
                     """,
                     quiz_id,
                     index,
@@ -149,6 +165,9 @@ async def _create_material_quiz(
                     str(question["correct_answer"]),
                     question.get("explanation"),
                     question.get("topic_tag"),
+                    question.get("question_difficulty", "normal"),
+                    int(question.get("difficulty_score", 50)),
+                    question.get("difficulty_reason"),
                 )
                 out_questions.append(
                     {
@@ -157,13 +176,17 @@ async def _create_material_quiz(
                         "question_text": question["question_text"],
                         "question_type": question.get("question_type", "multiple_choice"),
                         "options": question.get("options"),
+                        "question_difficulty": question.get("question_difficulty", "normal"),
+                        "difficulty_score": question.get("difficulty_score", 50),
                     }
                 )
 
     return {
         "quiz_id": quiz_id,
         "quiz_kind": quiz_kind,
-        "difficulty": req.difficulty,
+        "difficulty": requested_difficulty,
+        "adapted_from_profile": bool(quiz_kind == "study_review" and learner_profile),
+        "learner_profile": learner_profile,
         "question_mix": question_mix,
         "questions": out_questions,
     }
@@ -173,8 +196,13 @@ async def _create_material_quiz(
 async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     pool = await get_pool()
     await _ensure_wrong_answer_tables(pool)
+    await _ensure_learning_profile_tables(pool)
     quiz = await pool.fetchrow(
-        "SELECT id, user_id, study_material_id, COALESCE(quiz_type, 'study_review') AS quiz_type FROM quizzes WHERE id = $1",
+        """
+        SELECT id, user_id, study_material_id, difficulty,
+               COALESCE(quiz_type, 'study_review') AS quiz_type
+        FROM quizzes WHERE id = $1
+        """,
         quiz_id,
     )
     if quiz is None:
@@ -183,7 +211,10 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     q_rows = await pool.fetch(
         """
         SELECT id, question_order, question_text, question_type, options,
-               correct_answer, explanation, topic_tag
+               correct_answer, explanation, topic_tag,
+               COALESCE(question_difficulty, 'normal') AS question_difficulty,
+               COALESCE(difficulty_score, 50) AS difficulty_score,
+               difficulty_reason
         FROM quiz_questions WHERE quiz_id = $1 ORDER BY question_order
         """,
         quiz_id,
@@ -215,6 +246,9 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                 "is_correct": is_correct,
                 "explanation": question["explanation"],
                 "topic_tag": question["topic_tag"],
+                "question_difficulty": question["question_difficulty"],
+                "difficulty_score": question["difficulty_score"],
+                "difficulty_reason": question["difficulty_reason"],
             }
         )
 
@@ -292,6 +326,24 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
 
     wrong = [result for result in results if not result["is_correct"]]
     analysis = None
+    previous_profile = await _get_learning_profile(
+        pool, user_id, str(quiz["study_material_id"]) if quiz["study_material_id"] else None
+    )
+    learning_evaluation = await study_agent.evaluate_learning_level(
+        quiz_type=quiz["quiz_type"],
+        quiz_difficulty=quiz["difficulty"],
+        results=results,
+        previous_profile=previous_profile,
+    )
+    await _save_learning_evaluation(
+        pool,
+        user_id=user_id,
+        study_material_id=str(quiz["study_material_id"]) if quiz["study_material_id"] else None,
+        quiz_id=quiz_id,
+        attempt_id=attempt_id,
+        quiz_type=quiz["quiz_type"],
+        evaluation=learning_evaluation,
+    )
     if wrong and quiz["quiz_type"] != "placement":
         context = ""
         if quiz["study_material_id"]:
@@ -337,6 +389,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
         "quiz_type": quiz["quiz_type"],
         "results": results,
         "wrong_answer_notes": wrong_note_rows,
+        "learning_evaluation": learning_evaluation,
         "review": {
             "available": bool(wrong_note_rows),
             "time_limit_seconds_per_question": 120,
@@ -344,6 +397,48 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
         },
         "wrong_answer_analysis": analysis,
     }
+
+
+@router.get("/materials/{material_id}/learning-profile")
+async def get_material_learning_profile(material_id: str, user_id: str | None = None):
+    pool = await get_pool()
+    await _ensure_learning_profile_tables(pool)
+    material = await pool.fetchrow("SELECT id, user_id FROM study_materials WHERE id = $1", material_id)
+    if material is None:
+        raise HTTPException(404, "?숈뒿 ?먮즺瑜?李얠쓣 ???놁뒿?덈떎")
+    resolved_user_id = user_id or str(material["user_id"])
+    profile = await _get_learning_profile(pool, resolved_user_id, material_id)
+    return {
+        "user_id": resolved_user_id,
+        "material_id": material_id,
+        "profile": profile,
+        "has_profile": profile is not None,
+    }
+
+
+@router.get("/attempts/{attempt_id}/learning-evaluation")
+async def get_attempt_learning_evaluation(attempt_id: str):
+    pool = await get_pool()
+    await _ensure_learning_profile_tables(pool)
+    row = await pool.fetchrow(
+        """
+        SELECT id, quiz_attempt_id, quiz_id, user_id, study_material_id, quiz_type,
+               mastery_score, mastery_level, recommended_difficulty, confidence_score,
+               difficulty_breakdown, strengths, weaknesses, ai_analysis, created_at
+        FROM quiz_attempt_evaluations
+        WHERE quiz_attempt_id = $1
+        """,
+        attempt_id,
+    )
+    if row is None:
+        raise HTTPException(404, "AI 학습 수준 평가를 찾을 수 없습니다")
+    item = dict(row)
+    for key in ("id", "quiz_attempt_id", "quiz_id", "user_id", "study_material_id"):
+        if item.get(key) is not None:
+            item[key] = str(item[key])
+    item["mastery_score"] = float(item["mastery_score"])
+    item["confidence_score"] = float(item["confidence_score"])
+    return item
 
 
 @router.get("/attempts/{attempt_id}/wrong-notes")
@@ -549,6 +644,159 @@ async def submit_wrong_answer_review_item(session_id: str, item_id: str, req: Re
         "explanation": row["explanation"],
         "wrong_note_status": note_status,
     }
+
+
+def _request_includes_field(model: BaseModel, field_name: str) -> bool:
+    fields_set = getattr(model, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = getattr(model, "__fields_set__", set())
+    return field_name in fields_set
+
+
+async def _ensure_learning_profile_tables(pool) -> None:
+    await pool.execute(
+        """
+        ALTER TABLE quiz_questions
+            ADD COLUMN IF NOT EXISTS question_difficulty TEXT NOT NULL DEFAULT 'normal'
+                CHECK (question_difficulty IN ('easy','normal','hard'));
+        ALTER TABLE quiz_questions
+            ADD COLUMN IF NOT EXISTS difficulty_score INT NOT NULL DEFAULT 50
+                CHECK (difficulty_score BETWEEN 1 AND 100);
+        ALTER TABLE quiz_questions
+            ADD COLUMN IF NOT EXISTS difficulty_reason TEXT;
+
+        CREATE TABLE IF NOT EXISTS quiz_attempt_evaluations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            quiz_attempt_id UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+            quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            study_material_id UUID REFERENCES study_materials(id) ON DELETE SET NULL,
+            quiz_type TEXT NOT NULL CHECK (quiz_type IN ('placement','study_review')),
+            mastery_score NUMERIC(5,2) NOT NULL,
+            mastery_level TEXT NOT NULL CHECK (mastery_level IN ('beginner','intermediate','advanced')),
+            recommended_difficulty TEXT NOT NULL CHECK (recommended_difficulty IN ('easy','normal','hard')),
+            confidence_score NUMERIC(5,2) NOT NULL,
+            difficulty_breakdown JSONB,
+            strengths JSONB,
+            weaknesses JSONB,
+            ai_analysis TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (quiz_attempt_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS user_learning_profiles (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            study_material_id UUID REFERENCES study_materials(id) ON DELETE CASCADE,
+            mastery_score NUMERIC(5,2) NOT NULL DEFAULT 50,
+            mastery_level TEXT NOT NULL DEFAULT 'intermediate'
+                CHECK (mastery_level IN ('beginner','intermediate','advanced')),
+            recommended_difficulty TEXT NOT NULL DEFAULT 'normal'
+                CHECK (recommended_difficulty IN ('easy','normal','hard')),
+            confidence_score NUMERIC(5,2) NOT NULL DEFAULT 50,
+            ai_analysis TEXT,
+            last_quiz_attempt_id UUID REFERENCES quiz_attempts(id) ON DELETE SET NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (user_id, study_material_id)
+        );
+        """
+    )
+
+
+async def _get_learning_profile(pool, user_id: str, study_material_id: str | None) -> dict | None:
+    if not study_material_id:
+        return None
+    row = await pool.fetchrow(
+        """
+        SELECT user_id, study_material_id, mastery_score, mastery_level,
+               recommended_difficulty, confidence_score, ai_analysis,
+               last_quiz_attempt_id, updated_at
+        FROM user_learning_profiles
+        WHERE user_id = $1 AND study_material_id = $2
+        """,
+        user_id,
+        study_material_id,
+    )
+    if row is None:
+        return None
+    profile = dict(row)
+    profile["user_id"] = str(profile["user_id"])
+    profile["study_material_id"] = str(profile["study_material_id"])
+    profile["last_quiz_attempt_id"] = (
+        str(profile["last_quiz_attempt_id"]) if profile["last_quiz_attempt_id"] else None
+    )
+    profile["mastery_score"] = float(profile["mastery_score"])
+    profile["confidence_score"] = float(profile["confidence_score"])
+    return profile
+
+
+async def _save_learning_evaluation(
+    pool,
+    *,
+    user_id: str,
+    study_material_id: str | None,
+    quiz_id: str,
+    attempt_id: str,
+    quiz_type: str,
+    evaluation: dict,
+) -> None:
+    await pool.execute(
+        """
+        INSERT INTO quiz_attempt_evaluations
+            (quiz_attempt_id, quiz_id, user_id, study_material_id, quiz_type,
+             mastery_score, mastery_level, recommended_difficulty, confidence_score,
+             difficulty_breakdown, strengths, weaknesses, ai_analysis)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13)
+        ON CONFLICT (quiz_attempt_id) DO UPDATE SET
+            mastery_score = EXCLUDED.mastery_score,
+            mastery_level = EXCLUDED.mastery_level,
+            recommended_difficulty = EXCLUDED.recommended_difficulty,
+            confidence_score = EXCLUDED.confidence_score,
+            difficulty_breakdown = EXCLUDED.difficulty_breakdown,
+            strengths = EXCLUDED.strengths,
+            weaknesses = EXCLUDED.weaknesses,
+            ai_analysis = EXCLUDED.ai_analysis
+        """,
+        attempt_id,
+        quiz_id,
+        user_id,
+        study_material_id,
+        quiz_type,
+        float(evaluation["mastery_score"]),
+        evaluation["mastery_level"],
+        evaluation["recommended_difficulty"],
+        float(evaluation["confidence_score"]),
+        json.dumps(evaluation.get("difficulty_breakdown") or {}, ensure_ascii=False),
+        json.dumps(evaluation.get("strengths") or [], ensure_ascii=False),
+        json.dumps(evaluation.get("weaknesses") or [], ensure_ascii=False),
+        evaluation.get("analysis"),
+    )
+    if study_material_id:
+        await pool.execute(
+            """
+            INSERT INTO user_learning_profiles
+                (user_id, study_material_id, mastery_score, mastery_level,
+                 recommended_difficulty, confidence_score, ai_analysis,
+                 last_quiz_attempt_id, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+            ON CONFLICT (user_id, study_material_id) DO UPDATE SET
+                mastery_score = EXCLUDED.mastery_score,
+                mastery_level = EXCLUDED.mastery_level,
+                recommended_difficulty = EXCLUDED.recommended_difficulty,
+                confidence_score = EXCLUDED.confidence_score,
+                ai_analysis = EXCLUDED.ai_analysis,
+                last_quiz_attempt_id = EXCLUDED.last_quiz_attempt_id,
+                updated_at = now()
+            """,
+            user_id,
+            study_material_id,
+            float(evaluation["mastery_score"]),
+            evaluation["mastery_level"],
+            evaluation["recommended_difficulty"],
+            float(evaluation["confidence_score"]),
+            evaluation.get("analysis"),
+            attempt_id,
+        )
 
 
 async def _ensure_wrong_answer_tables(pool) -> None:
