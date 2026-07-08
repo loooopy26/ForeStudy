@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import MainNav from './MainNav'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
+import { getDemoUser, getStats } from './api'
 import {
   AcornIcon,
   BellIcon,
@@ -13,12 +15,8 @@ import {
 } from './icons'
 import './Profile.css'
 
-const STATS = [
-  { key: 'focus', label: '집중력', value: 82, Icon: FocusIcon, suffix: '%' },
-  { key: 'understanding', label: '이해도', value: 68, Icon: StarIcon, suffix: '%' },
-  { key: 'review', label: '학습 지속성', value: 74, Icon: MedalIcon, suffix: '%' },
-  { key: 'passRate', label: '합격 가능성', value: 71, Icon: StarIcon, suffix: '%' },
-]
+// SQLite 타이머 데모 유저(Library.jsx의 TIMER_DEMO_USER_ID)와 동일한 고정 id.
+const TIMER_DEMO_USER_ID = 1
 
 const CERTS = [
   { key: 'infoproc', title: '정보처리기사', subtitle: '시험일 2/24', progress: 60 },
@@ -26,6 +24,21 @@ const CERTS = [
 ]
 
 function Profile({ onNavigate }) {
+  const [stats, setStats] = useState(null)
+  const [dotori, setDotori] = useState(null)
+
+  useEffect(() => {
+    getStats(TIMER_DEMO_USER_ID).then(setStats).catch(() => {})
+    getDemoUser().then((user) => setDotori(user.dotori)).catch(() => {})
+  }, [])
+
+  const statRows = [
+    { key: 'focus', label: '집중력', value: stats?.focus, Icon: FocusIcon, suffix: '%' },
+    { key: 'understanding', label: '이해도', value: stats?.comprehension, Icon: StarIcon, suffix: '%' },
+    { key: 'review', label: '학습 지속성', value: stats?.persistence, Icon: MedalIcon, suffix: '%' },
+    { key: 'passRate', label: '합격 가능성', value: stats ? Math.round(stats.pass_rate) : undefined, Icon: StarIcon, suffix: '%' },
+  ]
+
   return (
     <div className="profile-page">
       <div
@@ -87,7 +100,7 @@ function Profile({ onNavigate }) {
           </div>
 
           <div className="status-rows">
-            {STATS.map(({ key, label, value, Icon, suffix = '' }) => (
+            {statRows.map(({ key, label, value, Icon, suffix = '' }) => (
               <div className="status-row" key={key}>
                 <span className="status-label">
                   <span className="status-badge">
@@ -98,14 +111,14 @@ function Profile({ onNavigate }) {
 
                 <div className="progress-track">
                   <div
-                    className={`progress-fill${value <= 50 ? ' warm' : ''}`}
-                    style={{ width: `${value}%` }}
+                    className={`progress-fill${value !== undefined && value <= 50 ? ' warm' : ''}`}
+                    style={{ width: `${value ?? 0}%` }}
                   />
                 </div>
 
                 <span className="status-value">
-                  {value}
-                  {suffix}
+                  {value !== undefined ? value : '-'}
+                  {value !== undefined ? suffix : ''}
                 </span>
               </div>
             ))}
@@ -117,14 +130,14 @@ function Profile({ onNavigate }) {
             <p className="mini-label">보유 도토리</p>
             <div className="mini-value mini-value-acorn">
               <AcornIcon size={28} />
-              <span>2,450</span>
+              <span>{dotori !== null ? dotori.toLocaleString() : '-'}</span>
             </div>
           </article>
 
           <article className="mini-card forest-panel compact">
             <p className="mini-label">연속 학습</p>
             <div className="mini-value mini-value-days">
-              <span>7일</span>
+              <span>{stats ? `${stats.current_streak_days}일` : '-'}</span>
             </div>
           </article>
         </section>

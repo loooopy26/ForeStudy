@@ -15,5 +15,5 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/{user_id}", response_model=DashboardResponse)
-def read_dashboard(user_id: int, db: Session = Depends(get_db)):
-    return get_dashboard(db=db, user_id=user_id)
+async def read_dashboard(user_id: int, db: Session = Depends(get_db)):
+    return await get_dashboard(db=db, user_id=user_id)

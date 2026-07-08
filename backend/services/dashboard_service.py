@@ -9,9 +9,9 @@ from services.stat_service import get_user_stats
 from sqlalchemy.orm import Session
 
 
-def get_dashboard(db: Session, user_id: int) -> dict:
+async def get_dashboard(db: Session, user_id: int) -> dict:
     rewards = get_rewards(user_id)
-    stats = get_user_stats(db=db, user_id=user_id)
+    stats = await get_user_stats(db=db, user_id=user_id)
 
     return {
         "user_id": user_id,

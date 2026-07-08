@@ -13,7 +13,7 @@ import secrets
 import asyncpg
 from fastapi import HTTPException
 
-from db import get_pool
+from db import get_or_create_demo_user, get_pool
 
 # PBKDF2-HMAC-SHA256: 표준 라이브러리만으로 솔트 + 반복 해싱을 적용한다.
 # 저장 형식: "pbkdf2_sha256$<iterations>$<salt_hex>$<hash_hex>"
@@ -71,6 +71,15 @@ async def login_user(email: str, password: str) -> dict:
         "access_token": _create_dummy_token(),
         "message": "로그인에 성공했습니다.",
     }
+
+
+async def get_demo_user() -> dict:
+    # 로그인 화면 없이 도토리/레벨 등을 보여줘야 하는 화면(홈)에서 사용.
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user_id = await get_or_create_demo_user(conn)
+        row = await conn.fetchrow(f"SELECT {_USER_FIELDS} FROM users WHERE id = $1", user_id)
+    return _to_user_response(row)
 
 
 async def get_user(user_id: str) -> dict:

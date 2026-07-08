@@ -3,11 +3,13 @@ import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { listMaterials, uploadMaterial } from './api'
+import { endTimer, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
 import './Library.css'
 
 const TOTAL_SEC = 2400
 const RING_LENGTH = 653.45
+// 로그인이 없는 MVP라 SQLite 타이머 쪽은 고정 데모 유저를 사용한다 (AI 도서관의 데모 유저와 별개).
+const TIMER_DEMO_USER_ID = 1
 
 const STATUS_LABEL = {
   pending: '대기 중',
@@ -28,6 +30,12 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
   const [running, setRunning] = useState(false)
   const runningRef = useRef(running)
   runningRef.current = running
+
+  // 타이머 세션 상태는 렌더링과 무관해서 ref로 관리한다.
+  const sessionIdRef = useRef(null)
+  const segmentStartRef = useRef(null)
+  const maxUninterruptedMinRef = useRef(0)
+  const endedRef = useRef(false)
 
   const [materials, setMaterials] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -61,12 +69,21 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
     }
   }
 
+  const finishSession = () => {
+    if (endedRef.current || !sessionIdRef.current) return
+    endedRef.current = true
+    const segmentMin = segmentStartRef.current ? Math.round((Date.now() - segmentStartRef.current) / 60000) : 0
+    const maxMin = Math.max(maxUninterruptedMinRef.current, segmentMin)
+    endTimer(sessionIdRef.current, Math.round(TOTAL_SEC / 60), maxMin).catch(() => {})
+  }
+
   useEffect(() => {
     const id = setInterval(() => {
       if (!runningRef.current) return
       setRemaining((r) => {
         if (r <= 1) {
           setRunning(false)
+          finishSession()
           return 0
         }
         return r - 1
@@ -75,6 +92,29 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
     }, 1000)
     return () => clearInterval(id)
   }, [])
+
+  const handleTimerToggle = async () => {
+    if (!running) {
+      if (!sessionIdRef.current) {
+        try {
+          const { session_id } = await startTimer(TIMER_DEMO_USER_ID)
+          sessionIdRef.current = session_id
+        } catch {
+          // 세션 생성에 실패해도 로컬 타이머는 그대로 진행한다.
+        }
+      }
+      segmentStartRef.current = Date.now()
+      setRunning(true)
+    } else {
+      const segmentMin = segmentStartRef.current ? Math.round((Date.now() - segmentStartRef.current) / 60000) : 0
+      maxUninterruptedMinRef.current = Math.max(maxUninterruptedMinRef.current, segmentMin)
+      segmentStartRef.current = null
+      setRunning(false)
+      if (sessionIdRef.current) {
+        pauseTimer(sessionIdRef.current, segmentMin, 'leave_library').catch(() => {})
+      }
+    }
+  }
 
   const offset = RING_LENGTH * ((TOTAL_SEC - remaining) / TOTAL_SEC)
   const handleBack = () => onNavigate('village')
@@ -139,7 +179,7 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
             <div className="study-pill">
               <span>총 공부시간 {fmt(studySec)}</span>
             </div>
-            <button type="button" className="timer-button" onClick={() => setRunning((r) => !r)}>
+            <button type="button" className="timer-button" onClick={handleTimerToggle}>
               {running ? '일시정지' : '공부 시작'}
             </button>
           </div>

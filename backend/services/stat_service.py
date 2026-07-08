@@ -2,41 +2,37 @@
 
 Screen: status and growth reports.
 Role: calculate focus, comprehension, persistence, and growth score.
+
+이해도/합격 가능성은 실제로 동작 중인 AI 퀴즈 결과(Postgres quiz_attempts)를 근거로
+계산한다. SQLite 쪽 quiz_results 테이블은 어떤 화면도 채워 넣지 않는 값이라 제외했다.
 """
 
 from datetime import date
 
 from sqlalchemy.orm import Session
 
-from models import QuizResult, StudySession
-from services.memory_store import get_current_streak_days, quiz_results
+from db import get_or_create_demo_user, get_pool
+from models import StudySession
+from services.memory_store import get_current_streak_days
+
+_RECENT_QUIZ_LIMIT = 5
 
 
-def get_user_stats(db: Session, user_id: int) -> dict:
+async def get_user_stats(db: Session, user_id: int) -> dict:
     ended_sessions = (
         db.query(StudySession)
         .filter(StudySession.user_id == user_id, StudySession.status == "ended")
         .order_by(StudySession.ended_at.desc())
         .all()
     )
-    persisted_quiz_results = (
-        db.query(QuizResult)
-        .filter(QuizResult.user_id == user_id)
-        .order_by(QuizResult.created_at.desc())
-        .limit(5)
-        .all()
-    )
 
-    memory_quiz_results = [result for result in quiz_results if result["user_id"] == user_id]
     total_study_minutes = sum(session.studied_minutes for session in ended_sessions)
     best_uninterrupted_minutes = max(
         (session.max_uninterrupted_minutes for session in ended_sessions),
         default=0,
     )
     current_streak_days = _current_streak_days_from_sessions(ended_sessions) or get_current_streak_days(user_id)
-    recent_scores = [result.score_percent for result in persisted_quiz_results]
-    if not recent_scores:
-        recent_scores = [result["score_percent"] for result in memory_quiz_results[-5:]]
+    recent_scores = await _recent_quiz_scores()
     recent_quiz_average = round(sum(recent_scores) / len(recent_scores), 2) if recent_scores else 0
 
     focus = min(100, best_uninterrupted_minutes // 3)
@@ -66,6 +62,23 @@ def get_user_stats(db: Session, user_id: int) -> dict:
         "recent_quiz_average": recent_quiz_average,
         "ai_feedback": ai_feedback,
     }
+
+
+async def _recent_quiz_scores() -> list[float]:
+    """AI 도서관 데모 유저 기준으로 최근 제출된 퀴즈 점수를 가져온다."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        demo_user_id = await get_or_create_demo_user(conn)
+        rows = await conn.fetch(
+            """
+            SELECT score_pct FROM quiz_attempts
+            WHERE user_id = $1 AND submitted_at IS NOT NULL
+            ORDER BY submitted_at DESC LIMIT $2
+            """,
+            demo_user_id,
+            _RECENT_QUIZ_LIMIT,
+        )
+    return [float(row["score_pct"]) for row in rows if row["score_pct"] is not None]
 
 
 def _current_streak_days_from_sessions(sessions: list[StudySession]) -> int:

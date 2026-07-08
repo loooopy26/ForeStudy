@@ -53,6 +53,36 @@ export async function getMaterialAttempts(materialId) {
   return apiRequest(`/api/materials/${materialId}/attempts`)
 }
 
+export async function getDemoUser() {
+  return apiRequest('/auth/demo')
+}
+
+export async function getStats(userId) {
+  return apiRequest(`/stats/${userId}`)
+}
+
+export async function startTimer(userId) {
+  return apiRequest('/timer/start', { method: 'POST', body: JSON.stringify({ user_id: userId }) })
+}
+
+export async function pauseTimer(sessionId, segmentMinutes, reason = 'leave_library') {
+  return apiRequest('/timer/pause', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId, segment_minutes: segmentMinutes, reason }),
+  })
+}
+
+export async function endTimer(sessionId, studiedMinutes, maxUninterruptedMinutes) {
+  return apiRequest('/timer/end', {
+    method: 'POST',
+    body: JSON.stringify({
+      session_id: sessionId,
+      studied_minutes: studiedMinutes,
+      max_uninterrupted_minutes: maxUninterruptedMinutes,
+    }),
+  })
+}
+
 export async function listMaterials() {
   const res = await fetch(`${API_BASE}/api/materials`)
   if (!res.ok) throw new Error('자료 목록을 불러오지 못했습니다')
