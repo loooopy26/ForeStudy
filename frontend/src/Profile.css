@@ -422,6 +422,28 @@
   gap: 8px;
 }
 
+.cert-empty {
+  padding: 18px 12px;
+  border: 1px dashed rgba(164, 145, 104, 0.45);
+  border-radius: 14px;
+  text-align: center;
+  background: rgba(255, 252, 245, 0.55);
+}
+
+.cert-empty p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cert-empty span {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-softer);
+  font-size: 12px;
+}
+
 .cert-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;

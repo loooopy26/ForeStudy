@@ -107,6 +107,11 @@
   font-weight: 500;
 }
 
+.goal-meta .duration-hint {
+  font-size: 12px;
+  color: var(--ink-softer);
+}
+
 .stage-panel {
   position: relative;
   flex: 1;
@@ -177,14 +182,35 @@
 }
 
 .ring-face {
+  position: relative;
+  z-index: 1;
   width: 176px;
   height: 176px;
   border-radius: 100px;
+  border: none;
   background: oklch(0.99 0.012 82 / 0.92);
   box-shadow: 0 14px 36px -24px oklch(0.42 0.03 80 / 0.45);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 7px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.ring-face:hover:not(:disabled) {
+  background: white;
+  box-shadow: 0 16px 38px -20px oklch(0.42 0.05 145 / 0.55);
+}
+
+.ring-face:focus-visible {
+  outline: 4px solid oklch(0.72 0.08 148 / 0.35);
+  outline-offset: 4px;
+}
+
+.ring-face:disabled {
+  cursor: default;
 }
 
 .ring-face span {
@@ -193,6 +219,107 @@
   color: var(--ink);
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+.ring-face small {
+  color: var(--green-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.duration-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(31, 39, 33, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+.duration-modal {
+  width: min(100%, 320px);
+  padding: 24px;
+  border: 1px solid var(--card-border);
+  border-radius: 22px;
+  background: #fffaf0;
+  box-shadow: 0 24px 60px -24px rgba(28, 40, 31, 0.55);
+}
+
+.duration-modal h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 21px;
+}
+
+.duration-modal > p {
+  margin: 7px 0 18px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.duration-modal-input {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.duration-modal-input input {
+  width: 110px;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.duration-modal-input input:focus-visible {
+  outline: 3px solid oklch(0.72 0.08 148 / 0.3);
+  border-color: var(--green);
+}
+
+.duration-modal-input span {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.duration-modal-error {
+  margin: 10px 0 0;
+  color: oklch(0.5 0.15 25);
+  font-size: 12px;
+  text-align: center;
+}
+
+.duration-modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.duration-modal-actions button {
+  min-height: 44px;
+  border: none;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.duration-cancel-button {
+  background: oklch(0.93 0.015 82);
+  color: var(--ink-soft);
+}
+
+.duration-apply-button {
+  background: var(--green);
+  color: white;
 }
 
 .study-pill {

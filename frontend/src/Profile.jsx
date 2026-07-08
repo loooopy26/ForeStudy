@@ -3,7 +3,7 @@ import MainNav from './MainNav'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
-import { clearCurrentUser, getDemoUser, getStats } from './api'
+import { clearCurrentUser, getCurrentCertificates, getDemoUser, getStats } from './api'
 import {
   AcornIcon,
   BellIcon,
@@ -18,14 +18,10 @@ import './Profile.css'
 // SQLite 타이머 데모 유저(Library.jsx의 TIMER_DEMO_USER_ID)와 동일한 고정 id.
 const TIMER_DEMO_USER_ID = 1
 
-const CERTS = [
-  { key: 'infoproc', title: '정보처리기사', subtitle: '시험일 2/24', progress: 60 },
-  { key: 'sqld', title: 'SQLD', subtitle: '시험일 10/4', progress: 20 },
-]
-
 function Profile({ onNavigate }) {
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
+  const [certificates] = useState(getCurrentCertificates)
 
   useEffect(() => {
     getStats(TIMER_DEMO_USER_ID).then(setStats).catch(() => {})
@@ -160,24 +156,29 @@ function Profile({ onNavigate }) {
             <p className="cert-kicker">진행 중인 자격증</p>
           </div>
 
-          <div className="cert-list">
-            {CERTS.map((cert) => (
-              <article key={cert.key} className="cert-row">
-                <div className="cert-copy">
-                  <div className="cert-title-line">
-                    <h3>{cert.title}</h3>
+          {certificates.length > 0 ? (
+            <div className="cert-list">
+              {certificates.map((certificate) => (
+                <article key={certificate.id} className="cert-row">
+                  <div className="cert-copy">
+                    <div className="cert-title-line">
+                      <h3>{certificate.title}</h3>
+                    </div>
+                    <p>{certificate.subtitle}</p>
                   </div>
-                  <p>{cert.subtitle}</p>
-                </div>
-
-                <div className="cert-progress">{`진행률 ${cert.progress}%`}</div>
-
-                <button type="button" className="start-button cert-start" onClick={() => onNavigate('village')}>
-                  시작하기
-                </button>
-              </article>
-            ))}
-          </div>
+                  <div className="cert-progress">진행률 {certificate.progress}%</div>
+                  <button type="button" className="start-button cert-start" onClick={() => onNavigate('village')}>
+                    시작하기
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="cert-empty">
+              <p>진행 중인 자격증이 없습니다.</p>
+              <span>학습할 자격증을 추가해 보세요.</span>
+            </div>
+          )}
 
           <button type="button" className="cert-add-button" onClick={() => onNavigate('addcert')}>
             <PlusIcon size={15} /> 자격증 추가하기

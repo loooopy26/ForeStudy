@@ -1,4 +1,5 @@
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL
+  || `${window.location.protocol}//${window.location.hostname}:8000`
 
 export function getMaterialId() {
   return localStorage.getItem('forestudy_material_id') || import.meta.env.VITE_MATERIAL_ID || ''
@@ -79,6 +80,37 @@ export function setCurrentUser(user) {
 
 export function clearCurrentUser() {
   localStorage.removeItem('forestudy_user')
+}
+
+const CERTIFICATES_STORAGE_KEY = 'forestudy_certificates'
+
+export function getCurrentCertificates() {
+  try {
+    const certificates = JSON.parse(localStorage.getItem(CERTIFICATES_STORAGE_KEY) || '[]')
+    return Array.isArray(certificates) ? certificates : []
+  } catch {
+    return []
+  }
+}
+
+export function addCurrentCertificate(title) {
+  const normalizedTitle = title.trim()
+  if (!normalizedTitle) return getCurrentCertificates()
+
+  const certificates = getCurrentCertificates()
+  if (certificates.some((certificate) => certificate.title === normalizedTitle)) return certificates
+
+  const nextCertificates = [
+    ...certificates,
+    {
+      id: crypto.randomUUID(),
+      title: normalizedTitle,
+      subtitle: '학습 준비 중',
+      progress: 0,
+    },
+  ]
+  localStorage.setItem(CERTIFICATES_STORAGE_KEY, JSON.stringify(nextCertificates))
+  return nextCertificates
 }
 
 export async function getStats(userId) {

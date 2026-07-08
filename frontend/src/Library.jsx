@@ -6,7 +6,9 @@ import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
 import { endTimer, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
 import './Library.css'
 
-const TOTAL_SEC = 2400
+const DEFAULT_DURATION_MIN = 40
+const MIN_DURATION_MIN = 1
+const MAX_DURATION_MIN = 180
 const RING_LENGTH = 653.45
 // 로그인이 없는 MVP라 SQLite 타이머 쪽은 고정 데모 유저를 사용한다 (AI 도서관의 데모 유저와 별개).
 const TIMER_DEMO_USER_ID = 1
@@ -25,11 +27,25 @@ function fmt(sec) {
 }
 
 function Library({ onNavigate, materialId, onSelectMaterial }) {
-  const [remaining, setRemaining] = useState(TOTAL_SEC)
+  const [durationMin, setDurationMin] = useState(() => {
+    const saved = Number(localStorage.getItem('forestudy_timer_duration_min'))
+    return Number.isInteger(saved) && saved >= MIN_DURATION_MIN && saved <= MAX_DURATION_MIN
+      ? saved
+      : DEFAULT_DURATION_MIN
+  })
+  const totalSec = durationMin * 60
+  const [remaining, setRemaining] = useState(() => durationMin * 60)
   const [studySec, setStudySec] = useState(0)
   const [running, setRunning] = useState(false)
+  const [durationModalOpen, setDurationModalOpen] = useState(false)
+  const [durationDraft, setDurationDraft] = useState(String(durationMin))
+  const [durationError, setDurationError] = useState('')
   const runningRef = useRef(running)
-  runningRef.current = running
+  const studySecRef = useRef(0)
+
+  useEffect(() => {
+    runningRef.current = running
+  }, [running])
 
   // 타이머 세션 상태는 렌더링과 무관해서 ref로 관리한다.
   const sessionIdRef = useRef(null)
@@ -74,7 +90,8 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
     endedRef.current = true
     const segmentMin = segmentStartRef.current ? Math.round((Date.now() - segmentStartRef.current) / 60000) : 0
     const maxMin = Math.max(maxUninterruptedMinRef.current, segmentMin)
-    endTimer(sessionIdRef.current, Math.round(TOTAL_SEC / 60), maxMin).catch(() => {})
+    const studiedMin = Math.max(1, Math.round(studySecRef.current / 60))
+    endTimer(sessionIdRef.current, studiedMin, maxMin).catch(() => {})
   }
 
   useEffect(() => {
@@ -88,7 +105,11 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
         }
         return r - 1
       })
-      setStudySec((s) => s + 1)
+      setStudySec((s) => {
+        const next = s + 1
+        studySecRef.current = next
+        return next
+      })
     }, 1000)
     return () => clearInterval(id)
   }, [])
@@ -116,7 +137,33 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
     }
   }
 
-  const offset = RING_LENGTH * ((TOTAL_SEC - remaining) / TOTAL_SEC)
+  const openDurationModal = () => {
+    if (running || studySec > 0) return
+    setDurationDraft(String(durationMin))
+    setDurationError('')
+    setDurationModalOpen(true)
+  }
+
+  const closeDurationModal = () => {
+    setDurationModalOpen(false)
+    setDurationError('')
+  }
+
+  const applyDuration = (event) => {
+    event.preventDefault()
+    const nextDuration = Number(durationDraft)
+    if (!Number.isInteger(nextDuration) || nextDuration < MIN_DURATION_MIN || nextDuration > MAX_DURATION_MIN) {
+      setDurationError(`${MIN_DURATION_MIN}분에서 ${MAX_DURATION_MIN}분 사이의 정수를 입력해 주세요.`)
+      return
+    }
+    setDurationMin(nextDuration)
+    setRemaining(nextDuration * 60)
+    localStorage.setItem('forestudy_timer_duration_min', String(nextDuration))
+    closeDurationModal()
+  }
+
+  const timerStarted = running || studySec > 0
+  const offset = RING_LENGTH * ((totalSec - remaining) / totalSec)
   const handleBack = () => onNavigate('village')
 
   return (
@@ -151,7 +198,8 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
           <h1 className="goal-title">데이터베이스 개념 복습</h1>
           <div className="goal-meta">
             <ClockIcon />
-            <span>40분</span>
+            <span>{durationMin}분</span>
+            {!timerStarted && <span className="duration-hint">가운데 타이머를 눌러 변경</span>}
           </div>
         </div>
 
@@ -172,9 +220,16 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
                   strokeDashoffset={offset}
                 />
               </svg>
-              <div className="ring-face">
+              <button
+                type="button"
+                className="ring-face"
+                onClick={openDurationModal}
+                disabled={timerStarted}
+                aria-label={timerStarted ? `남은 시간 ${fmt(remaining)}` : `남은 시간 ${fmt(remaining)}, 목표 시간 변경`}
+              >
                 <span>{fmt(remaining)}</span>
-              </div>
+                {!timerStarted && <small>눌러서 시간 설정</small>}
+              </button>
             </div>
             <div className="study-pill">
               <span>총 공부시간 {fmt(studySec)}</span>
@@ -226,6 +281,39 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
           </div>
         </div>
       </div>
+
+      {durationModalOpen && (
+        <div className="duration-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && closeDurationModal()}>
+          <div className="duration-modal" role="dialog" aria-modal="true" aria-labelledby="duration-modal-title">
+            <h2 id="duration-modal-title">목표 시간 설정</h2>
+            <p>집중할 시간을 분 단위로 입력해 주세요.</p>
+            <form onSubmit={applyDuration}>
+              <label className="duration-modal-input">
+                <input
+                  type="number"
+                  min={MIN_DURATION_MIN}
+                  max={MAX_DURATION_MIN}
+                  step="1"
+                  value={durationDraft}
+                  onChange={(event) => {
+                    setDurationDraft(event.target.value)
+                    setDurationError('')
+                  }}
+                  autoFocus
+                  aria-label="목표 공부 시간"
+                  aria-invalid={Boolean(durationError)}
+                />
+                <span>분</span>
+              </label>
+              {durationError && <p className="duration-modal-error">{durationError}</p>}
+              <div className="duration-modal-actions">
+                <button type="button" className="duration-cancel-button" onClick={closeDurationModal}>취소</button>
+                <button type="submit" className="duration-apply-button">적용</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <BottomNav active={null} onNavigate={onNavigate} />
     </div>
