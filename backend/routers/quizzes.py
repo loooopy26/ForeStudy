@@ -130,6 +130,38 @@ async def _create_material_quiz(
             f"AI generated only {len(questions)} questions. Expected {forced_num_questions}.",
         )
 
+    persisted = await _persist_quiz(
+        pool,
+        user_id=user_id,
+        material_id=material_id,
+        title=f"{material['title']} {title_suffix}",
+        difficulty=requested_difficulty,
+        quiz_kind=quiz_kind,
+        questions=questions[:forced_num_questions],
+    )
+
+    return {
+        "quiz_id": persisted["quiz_id"],
+        "quiz_kind": quiz_kind,
+        "difficulty": requested_difficulty,
+        "adapted_from_profile": bool(quiz_kind == "study_review" and learner_profile),
+        "learner_profile": learner_profile,
+        "question_mix": question_mix,
+        "questions": persisted["questions"],
+    }
+
+
+async def _persist_quiz(
+    pool,
+    *,
+    user_id: str,
+    material_id: str,
+    title: str,
+    difficulty: str,
+    quiz_kind: str,
+    questions: list[dict],
+) -> dict:
+    """quizzes/quiz_questions에 생성된 문제를 저장하고 프론트엔드 응답 형태로 돌려준다."""
     async with pool.acquire() as conn:
         async with conn.transaction():
             quiz_row = await conn.fetchrow(
@@ -140,13 +172,13 @@ async def _create_material_quiz(
                 user_id,
                 material_id,
                 date.today(),
-                f"{material['title']} {title_suffix}",
-                requested_difficulty,
+                title,
+                difficulty,
                 quiz_kind,
             )
             quiz_id = str(quiz_row["id"])
             out_questions = []
-            for index, question in enumerate(questions[:forced_num_questions], start=1):
+            for index, question in enumerate(questions, start=1):
                 q_row = await conn.fetchrow(
                     """
                     INSERT INTO quiz_questions
@@ -180,15 +212,92 @@ async def _create_material_quiz(
                         "difficulty_score": question.get("difficulty_score", 50),
                     }
                 )
+    return {"quiz_id": quiz_id, "questions": out_questions}
 
+
+@router.post("/attempts/{attempt_id}/similar-quiz", status_code=201)
+async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
+    """오답 회차의 틀린 문제와 비슷한 유형의 새 문제를 AI로 생성한다 (원래 문제 재사용이 아님)."""
+    pool = await get_pool()
+    await _ensure_wrong_answer_tables(pool)
+    attempt = await pool.fetchrow(
+        """
+        SELECT a.id, a.user_id, q.study_material_id, q.difficulty
+        FROM quiz_attempts a
+        JOIN quizzes q ON q.id = a.quiz_id
+        WHERE a.id = $1
+        """,
+        attempt_id,
+    )
+    if attempt is None:
+        raise HTTPException(404, "응시 기록을 찾을 수 없습니다")
+    material_id = str(attempt["study_material_id"]) if attempt["study_material_id"] else None
+    if not material_id:
+        raise HTTPException(409, "이 응시 기록에는 연결된 학습 자료가 없습니다")
+
+    material = await pool.fetchrow("SELECT title FROM study_materials WHERE id = $1", material_id)
+    if material is None:
+        raise HTTPException(404, "학습 자료를 찾을 수 없습니다")
+
+    source_notes = await pool.fetch(
+        """
+        SELECT id, question_text, correct_answer, topic_tag
+        FROM wrong_answer_notes
+        WHERE quiz_attempt_id = $1 AND status <> 'mastered'
+        ORDER BY created_at, id
+        LIMIT 10
+        """,
+        attempt_id,
+    )
+    weak_topics = [row["topic_tag"] or row["question_text"] for row in source_notes]
+    if not source_notes:
+        raise HTTPException(409, "이 회차에는 복습할 오답 유형이 없습니다")
+
+    user_id = req.user_id or str(attempt["user_id"])
+    num_questions = len(source_notes)
+    query = " ".join(weak_topics)
+    chunks = await rag.retrieve_chunks(material_id, query, top_k=8)
+    if not chunks:
+        raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
+
+    questions = await study_agent.generate_quiz(
+        rag.format_context(chunks),
+        num_questions=num_questions,
+        difficulty=attempt["difficulty"] or "normal",
+        weak_topics=weak_topics,
+        question_mix={"multiple_choice": num_questions},
+        quiz_kind="study_review",
+        learner_profile=None,
+    )
+    if len(questions) < num_questions:
+        raise HTTPException(
+            502, f"AI generated only {len(questions)} questions. Expected {num_questions}."
+        )
+
+    persisted = await _persist_quiz(
+        pool,
+        user_id=user_id,
+        material_id=material_id,
+        title=f"{material['title']} 오답 유형 복습",
+        difficulty=attempt["difficulty"] or "normal",
+        quiz_kind="study_review",
+        questions=questions[:num_questions],
+    )
+    await _link_similar_quiz_notes(
+        pool,
+        source_attempt_id=attempt_id,
+        similar_quiz_id=persisted["quiz_id"],
+        source_notes=source_notes,
+        questions=persisted["questions"],
+    )
     return {
-        "quiz_id": quiz_id,
-        "quiz_kind": quiz_kind,
-        "difficulty": requested_difficulty,
-        "adapted_from_profile": bool(quiz_kind == "study_review" and learner_profile),
-        "learner_profile": learner_profile,
-        "question_mix": question_mix,
-        "questions": out_questions,
+        "quiz_id": persisted["quiz_id"],
+        "quiz_kind": "study_review",
+        "difficulty": attempt["difficulty"] or "normal",
+        "mode": "similar_review",
+        "source_attempt_id": attempt_id,
+        "weak_topics": weak_topics,
+        "questions": persisted["questions"],
     }
 
 
@@ -257,6 +366,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     score_pct = round(correct_count / total_count * 100, 2) if total_count else 0.0
     user_id = req.user_id or str(quiz["user_id"])
     wrong_note_rows = []
+    mastered_wrong_note_ids = []
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -283,6 +393,23 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                 ],
             )
             await conn.execute("UPDATE quizzes SET status = 'graded' WHERE id = $1", quiz_id)
+
+            for result in results:
+                if not result["is_correct"]:
+                    continue
+                deleted_rows = await conn.fetch(
+                    """
+                    DELETE FROM wrong_answer_notes n
+                    USING similar_quiz_note_links l
+                    WHERE l.similar_quiz_id = $1
+                      AND l.similar_question_id = $2
+                      AND l.source_wrong_note_id = n.id
+                    RETURNING n.id
+                    """,
+                    quiz_id,
+                    result["question_id"],
+                )
+                mastered_wrong_note_ids.extend(str(row["id"]) for row in deleted_rows)
 
             if quiz["quiz_type"] != "placement":
                 for result in results:
@@ -389,6 +516,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
         "quiz_type": quiz["quiz_type"],
         "results": results,
         "wrong_answer_notes": wrong_note_rows,
+        "mastered_wrong_note_ids": mastered_wrong_note_ids,
         "learning_evaluation": learning_evaluation,
         "review": {
             "available": bool(wrong_note_rows),
@@ -460,7 +588,13 @@ async def list_material_attempts(material_id: str, user_id: str | None = None):
         FROM quiz_attempts a
         JOIN quizzes q ON q.id = a.quiz_id
         LEFT JOIN wrong_answer_notes n ON n.quiz_attempt_id = a.id
-        WHERE q.study_material_id = $1 AND a.user_id = $2
+        WHERE q.study_material_id = $1
+          AND a.user_id = $2
+          AND NOT EXISTS (
+              SELECT 1
+              FROM similar_quiz_note_links l
+              WHERE l.similar_quiz_id = q.id
+          )
         GROUP BY a.id, a.submitted_at, a.correct_count, a.total_count, a.score_pct, q.quiz_type, q.difficulty
         ORDER BY a.submitted_at DESC
         """,
@@ -887,7 +1021,48 @@ async def _ensure_wrong_answer_tables(pool) -> None:
             is_correct BOOLEAN,
             UNIQUE (review_session_id, wrong_answer_note_id)
         );
+
+        CREATE TABLE IF NOT EXISTS similar_quiz_note_links (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            source_attempt_id UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+            source_wrong_note_id UUID NOT NULL REFERENCES wrong_answer_notes(id) ON DELETE CASCADE,
+            similar_quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+            similar_question_id UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (similar_question_id)
+        );
         """
+    )
+
+
+async def _link_similar_quiz_notes(
+    pool,
+    *,
+    source_attempt_id: str,
+    similar_quiz_id: str,
+    source_notes,
+    questions: list[dict],
+) -> None:
+    pairs = []
+    for note, question in zip(source_notes, questions):
+        pairs.append(
+            (
+                source_attempt_id,
+                str(note["id"]),
+                similar_quiz_id,
+                question["question_id"],
+            )
+        )
+    if not pairs:
+        return
+    await pool.executemany(
+        """
+        INSERT INTO similar_quiz_note_links
+            (source_attempt_id, source_wrong_note_id, similar_quiz_id, similar_question_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (similar_question_id) DO NOTHING
+        """,
+        pairs,
     )
 
 

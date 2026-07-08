@@ -352,6 +352,16 @@ CREATE TABLE wrong_answer_review_items (
     UNIQUE (review_session_id, wrong_answer_note_id)
 );
 
+CREATE TABLE similar_quiz_note_links (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_attempt_id     UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+    source_wrong_note_id  UUID NOT NULL REFERENCES wrong_answer_notes(id) ON DELETE CASCADE,
+    similar_quiz_id       UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    similar_question_id   UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (similar_question_id)
+);
+
 CREATE TABLE study_materials (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

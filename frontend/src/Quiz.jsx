@@ -2,32 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import { QuizIcon, CheckIcon, CrossIcon } from './icons'
-import { apiRequest, getMaterialId, normalizeOptions, setLastAttemptId } from './api'
+import {
+  apiRequest,
+  clearQuizProgress,
+  getMaterialId,
+  getQuizProgress,
+  normalizeOptions,
+  setLastAttemptId,
+  setQuizProgress,
+} from './api'
 import './Shell.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
-const PROGRESS_KEY = 'forestudy_quiz_progress'
-
-function loadProgress(materialId) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null')
-    return saved && saved.materialId === materialId ? saved : null
-  } catch {
-    return null
-  }
-}
-
-function saveProgress(materialId, quiz, answers, idx) {
-  localStorage.setItem(PROGRESS_KEY, JSON.stringify({ materialId, quiz, answers, idx }))
-}
-
-function clearProgress() {
-  localStorage.removeItem(PROGRESS_KEY)
-}
 
 function Quiz({ onNavigate }) {
   const materialId = useMemo(() => getMaterialId(), [])
-  const initial = useMemo(() => loadProgress(materialId), [materialId])
+  const initial = useMemo(() => getQuizProgress(materialId), [materialId])
   const [quiz, setQuiz] = useState(initial?.quiz || null)
   const [idx, setIdx] = useState(initial?.idx || 0)
   const [answers, setAnswers] = useState(initial?.answers || {})
@@ -47,7 +37,7 @@ function Quiz({ onNavigate }) {
   }
 
   const startNewQuiz = async () => {
-    clearProgress()
+    clearQuizProgress()
     setResult(null)
     setIdx(0)
     setAnswers({})
@@ -57,7 +47,7 @@ function Quiz({ onNavigate }) {
     try {
       const data = await fetchQuiz()
       setQuiz(data)
-      saveProgress(materialId, data, {}, 0)
+      setQuizProgress(materialId, data, {}, 0)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -79,7 +69,7 @@ function Quiz({ onNavigate }) {
         const data = await fetchQuiz()
         if (ignore) return
         setQuiz(data)
-        saveProgress(materialId, data, {}, 0)
+        setQuizProgress(materialId, data, {}, 0)
       } catch (err) {
         if (!ignore) setError(err.message)
       } finally {
@@ -93,7 +83,7 @@ function Quiz({ onNavigate }) {
   }, [])
 
   useEffect(() => {
-    if (quiz && !result) saveProgress(materialId, quiz, answers, idx)
+    if (quiz && !result) setQuizProgress(materialId, quiz, answers, idx)
   }, [materialId, quiz, answers, idx, result])
 
   const questions = quiz?.questions || []
@@ -124,7 +114,7 @@ function Quiz({ onNavigate }) {
       })
       setLastAttemptId(data.attempt_id)
       setResult(data)
-      clearProgress()
+      clearQuizProgress()
     } catch (err) {
       setError(err.message)
     } finally {

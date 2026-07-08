@@ -17,6 +17,30 @@ export function setLastAttemptId(attemptId) {
   if (attemptId) localStorage.setItem('forestudy_last_attempt_id', attemptId)
 }
 
+const QUIZ_PROGRESS_KEY = 'forestudy_quiz_progress'
+
+export function getQuizProgress(materialId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUIZ_PROGRESS_KEY) || 'null')
+    if (!saved || saved.materialId !== materialId) return null
+    if (saved.quiz?.mode === 'similar_review' || saved.quiz?.source_attempt_id) {
+      clearQuizProgress()
+      return null
+    }
+    return saved
+  } catch {
+    return null
+  }
+}
+
+export function setQuizProgress(materialId, quiz, answers = {}, idx = 0) {
+  localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify({ materialId, quiz, answers, idx }))
+}
+
+export function clearQuizProgress() {
+  localStorage.removeItem(QUIZ_PROGRESS_KEY)
+}
+
 export async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,

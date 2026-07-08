@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
-import { ReviewIcon, CheckIcon, CrossIcon, CheckBigIcon } from './icons'
-import { apiRequest, getLastAttemptId, getMaterialAttempts, getMaterialId, normalizeOptions } from './api'
+import { CheckIcon, CrossIcon, ReviewIcon } from './icons'
+import { apiRequest, getMaterialAttempts, getMaterialId, normalizeOptions, setLastAttemptId } from './api'
 import './Shell.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
@@ -33,45 +33,31 @@ function groupByDate(attempts) {
 
 function Review({ onNavigate }) {
   const materialId = useMemo(() => getMaterialId(), [])
-  const [attemptId] = useState(() => getLastAttemptId())
-  const [session, setSession] = useState(null)
+
+  const [view, setView] = useState('dates')
+  const [attempts, setAttempts] = useState(null)
+  const [notes, setNotes] = useState([])
+  const [selectedAttemptId, setSelectedAttemptId] = useState(null)
+  const [expandedNoteId, setExpandedNoteId] = useState(null)
+  const [quiz, setQuiz] = useState(null)
   const [idx, setIdx] = useState(0)
-  const [selected, setSelected] = useState(null)
-  const [feedback, setFeedback] = useState(null)
-  const [done, setDone] = useState(false)
+  const [answers, setAnswers] = useState({})
+  const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const startedAtRef = useRef(Date.now())
+  const [generating, setGenerating] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [historyView, setHistoryView] = useState('dates')
-  const [historyAttempts, setHistoryAttempts] = useState(null)
-  const [historyNotes, setHistoryNotes] = useState([])
-  const [historyAttemptId, setHistoryAttemptId] = useState(null)
-  const [expandedNoteId, setExpandedNoteId] = useState(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState('')
-
-  const startReview = async (targetAttemptId) => {
-    const useAttemptId = targetAttemptId || attemptId
-    if (!useAttemptId) {
-      setError('먼저 AI 퀴즈를 풀어야 지난 오답으로 복습할 수 있어요.')
+  const loadAttempts = async () => {
+    if (!materialId) {
+      setError('자료 ID가 필요합니다. 도서관에서 자료를 먼저 선택해 주세요.')
       return
     }
     setLoading(true)
     setError('')
-    setDone(false)
-    setIdx(0)
-    setSelected(null)
-    setFeedback(null)
     try {
-      const data = await apiRequest(`/api/attempts/${useAttemptId}/review/start`, {
-        method: 'POST',
-        body: JSON.stringify({ time_limit_seconds_per_question: 120 }),
-      })
-      setSession(data)
-      setHistoryOpen(false)
-      startedAtRef.current = Date.now()
+      const data = await getMaterialAttempts(materialId)
+      setAttempts(data.attempts || [])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -79,286 +65,283 @@ function Review({ onNavigate }) {
     }
   }
 
-  const openHistory = async () => {
-    const opening = !historyOpen
-    setHistoryOpen(opening)
-    if (!opening) return
-    setHistoryView('dates')
-    if (historyAttempts) return
-    if (!materialId) {
-      setHistoryError('자료 ID가 필요합니다.')
-      return
-    }
-    setHistoryLoading(true)
-    setHistoryError('')
-    try {
-      const data = await getMaterialAttempts(materialId)
-      setHistoryAttempts(data.attempts || [])
-    } catch (err) {
-      setHistoryError(err.message)
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
-
-  const selectHistoryAttempt = async (targetAttemptId) => {
-    setHistoryLoading(true)
-    setHistoryError('')
-    setExpandedNoteId(null)
-    try {
-      const data = await apiRequest(`/api/attempts/${targetAttemptId}/wrong-notes`)
-      setHistoryNotes(data.wrong_notes || [])
-      setHistoryAttemptId(targetAttemptId)
-      setHistoryView('notes')
-    } catch (err) {
-      setHistoryError(err.message)
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
-
-  const toggleNoteExpanded = (noteId) => {
-    setExpandedNoteId((current) => (current === noteId ? null : noteId))
-  }
-
   useEffect(() => {
-    startReview()
+    loadAttempts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const items = session?.items || []
-  const current = items[idx]
-  const isLast = idx >= items.length - 1
-  const progress = items.length ? Math.round(((idx + 1) / items.length) * 100) : 0
-
-  const selectOption = async (answer) => {
-    if (!current || feedback) return
-    setSelected(answer)
-    const elapsed = Math.max(0, Math.round((Date.now() - startedAtRef.current) / 1000))
+  const selectAttempt = async (attemptId) => {
+    setLoading(true)
+    setError('')
+    setExpandedNoteId(null)
     try {
-      const data = await apiRequest(`/api/review-sessions/${session.review_session_id}/items/${current.review_item_id}/submit`, {
-        method: 'POST',
-        body: JSON.stringify({ answer, elapsed_seconds: elapsed }),
-      })
-      setFeedback(data)
+      const data = await apiRequest(`/api/attempts/${attemptId}/wrong-notes`)
+      setNotes(data.wrong_notes || [])
+      setSelectedAttemptId(attemptId)
+      setView('notes')
     } catch (err) {
       setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const backToNotes = () => {
+    setView('notes')
+    setQuiz(null)
+    setResult(null)
+    setIdx(0)
+    setAnswers({})
+  }
+
+  const backToDates = () => {
+    setView('dates')
+    setExpandedNoteId(null)
+    setQuiz(null)
+    setResult(null)
+    setIdx(0)
+    setAnswers({})
+  }
+
+  const startSimilarQuiz = async () => {
+    if (!selectedAttemptId) return
+    setGenerating(true)
+    setError('')
+    setResult(null)
+    setIdx(0)
+    setAnswers({})
+    try {
+      const data = await apiRequest(`/api/attempts/${selectedAttemptId}/similar-quiz`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+      setQuiz(data)
+      setView('quiz')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const questions = quiz?.questions || []
+  const current = questions[idx]
+  const selected = current ? answers[current.question_id] : undefined
+  const answered = selected !== undefined
+  const isLast = idx >= questions.length - 1
+  const progress = questions.length ? Math.round(((idx + 1) / questions.length) * 100) : 0
+
+  const selectOption = (answer) => {
+    if (!current) return
+    setAnswers((prev) => ({ ...prev, [current.question_id]: answer }))
+  }
+
+  const submitSimilarQuiz = async () => {
+    if (!quiz) return
+    setSubmitting(true)
+    setError('')
+    try {
+      const data = await apiRequest(`/api/quizzes/${quiz.quiz_id}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({
+          answers: questions.map((question) => ({
+            question_id: question.question_id,
+            answer: answers[question.question_id] || '',
+          })),
+        }),
+      })
+      setLastAttemptId(data.attempt_id)
+      const mastered = new Set(data.mastered_wrong_note_ids || [])
+      if (mastered.size > 0) {
+        setNotes((prev) => prev.filter((note) => !mastered.has(note.wrong_note_id)))
+      }
+      setResult(data)
+      setView('result')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const next = () => {
-    if (!feedback) return
-    if (isLast) {
-      setDone(true)
-      return
-    }
-    setIdx((value) => value + 1)
-    setSelected(null)
-    setFeedback(null)
-    startedAtRef.current = Date.now()
+    if (!answered || submitting) return
+    if (isLast) submitSimilarQuiz()
+    else setIdx((value) => value + 1)
   }
 
-  const historyPanel = historyOpen && (
-    <div className="note-panel">
-      {historyView === 'notes' && (
-        <button type="button" className="history-back" onClick={() => setHistoryView('dates')}>
-          ← 날짜 목록으로
-        </button>
-      )}
-      <div className="note-title">{historyView === 'dates' ? '지난 응시 기록' : '오답노트'}</div>
-
-      {historyLoading && <div className="note-empty">불러오는 중...</div>}
-      {historyError && <div className="note-empty">{historyError}</div>}
-
-      {!historyLoading && !historyError && historyView === 'dates' && (
-        <div className="history-list">
-          {(historyAttempts || []).length === 0 && <div className="note-empty">지난 응시 기록이 없습니다.</div>}
-          {groupByDate(historyAttempts || []).map((group) => (
-            <div key={group.date}>
-              <div className="history-date-heading">{formatDateHeading(group.date)}</div>
-              {group.attempts.map((attempt) => (
-                <button
-                  type="button"
-                  key={attempt.attempt_id}
-                  className="history-item"
-                  onClick={() => selectHistoryAttempt(attempt.attempt_id)}
-                >
-                  <span className="history-item-time">{formatTime(attempt.submitted_at)}</span>
-                  <span>
-                    <span className="history-item-score">{attempt.correct_count}/{attempt.total_count}</span>
-                    {attempt.wrong_count > 0 && <span className="history-item-wrong">오답 {attempt.wrong_count}개</span>}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!historyLoading && !historyError && historyView === 'notes' && (
-        <>
-          <div className="note-list">
-            {historyNotes.length === 0 ? (
-              <div className="note-empty">이 회차에는 오답이 없습니다.</div>
-            ) : (
-              historyNotes.map((note, index) => {
-                const expanded = expandedNoteId === note.wrong_note_id
-                return (
-                  <button
-                    type="button"
-                    className={`note-card${expanded ? ' expanded' : ''}`}
-                    key={note.wrong_note_id}
-                    onClick={() => toggleNoteExpanded(note.wrong_note_id)}
-                  >
-                    <div className="note-question">
-                      <span>{index + 1}. {note.question_text}</span>
-                      <span className="note-question-chevron">▸</span>
-                    </div>
-                    {expanded && (
-                      <div className="note-detail">
-                        <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
-                        <div className="note-answer correct">정답: {note.correct_answer}</div>
-                        {note.explanation && <div className="note-explain">{note.explanation}</div>}
-                      </div>
-                    )}
-                  </button>
-                )
-              })
-            )}
-          </div>
-          {historyNotes.length > 0 && (
-            <button type="button" className="cta-button" onClick={() => startReview(historyAttemptId)}>
-              이 회차 복습하기
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  )
-
-  if (loading || error || !session) {
-    return (
-      <>
-        <Header title="복습하기" icon={<ReviewIcon />} onBack={() => onNavigate('library')} />
-        <div className="done-screen">
-          <div className="done-title">{loading ? '복습 준비 중' : '복습할 오답이 없어요'}</div>
-          <div className="done-desc">{loading ? '지난 퀴즈의 오답을 불러오고 있습니다.' : error}</div>
-        </div>
-        <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={() => startReview()} disabled={loading}>
-            다시 불러오기
-          </button>
-        </div>
-        <BottomNav active="review" onNavigate={onNavigate} />
-      </>
-    )
-  }
-
-  if (done) {
-    return (
-      <>
-        <Header title="복습하기" icon={<ReviewIcon />} onBack={() => onNavigate('library')} />
-        <div className="done-screen">
-          <div className="done-badge done-check">
-            <CheckBigIcon />
-          </div>
-          <div>
-            <div className="done-title">복습 완료!</div>
-            <div className="done-desc">
-              지난 오답 {items.length}문제를 다시 확인했어요.
-              <br />오답노트에서 남은 항목을 계속 점검할 수 있습니다.
-            </div>
-          </div>
-        </div>
-        <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={() => startReview()}>
-            다시 복습하기
-          </button>
-        </div>
-        <BottomNav active="review" onNavigate={onNavigate} />
-      </>
-    )
-  }
-
-  const options = normalizeOptions(current.options)
+  const headerBack = view === 'dates' ? () => onNavigate('library') : view === 'notes' ? backToDates : backToNotes
 
   return (
     <>
-      <Header title="복습하기" icon={<ReviewIcon />} onBack={() => onNavigate('library')} />
+      <Header title="복습하기" icon={<ReviewIcon />} onBack={headerBack} />
 
       <div className="body-scroll">
-        <div className="progress-row">
-          <div className="progress-top">
-            <span className="progress-count">복습 {idx + 1} / {items.length}</span>
-            <button type="button" className="progress-tag tag-button" onClick={openHistory}>
-              지난번 오답
+        {error && <div className="explain-box">{error}</div>}
+
+        {view === 'dates' && (
+          <div className="note-panel">
+            <div className="note-title">지난 응시 기록</div>
+            {loading && <div className="note-empty">불러오는 중...</div>}
+            {!loading && !error && (attempts || []).length === 0 && (
+              <div className="note-empty">지난 응시 기록이 없습니다. 먼저 AI 퀴즈를 풀어보세요.</div>
+            )}
+            {!loading && !error && (
+              <div className="history-list">
+                {groupByDate(attempts || []).map((group) => (
+                  <div key={group.date}>
+                    <div className="history-date-heading">{formatDateHeading(group.date)}</div>
+                    {group.attempts.map((attempt) => (
+                      <button
+                        type="button"
+                        key={attempt.attempt_id}
+                        className="history-item"
+                        onClick={() => selectAttempt(attempt.attempt_id)}
+                      >
+                        <span className="history-item-time">{formatTime(attempt.submitted_at)}</span>
+                        <span>
+                          <span className="history-item-score">{attempt.correct_count}/{attempt.total_count}</span>
+                          {attempt.wrong_count > 0 && <span className="history-item-wrong">오답 {attempt.wrong_count}개</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'notes' && (
+          <div className="note-panel">
+            <button type="button" className="history-back" onClick={backToDates}>
+              날짜 목록으로
             </button>
-          </div>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-
-        {historyPanel}
-
-        <p className="question-text">{current.question_text}</p>
-
-        {options.length === 0 && (
-          <div className="done-desc" style={{ color: 'oklch(0.55 0.15 25)' }}>
-            이 문제의 선택지를 불러오지 못했습니다.
-          </div>
-        )}
-
-        <div className="option-list">
-          {options.map((text, i) => {
-            const isCorrect = feedback && text === feedback.correct_answer
-            const isWrongPick = feedback && selected === text && !isCorrect
-            let background
-            let borderColor
-            let color
-            let mark = 'idle'
-            if (isCorrect) {
-              background = 'oklch(0.93 0.03 148)'
-              borderColor = 'oklch(0.75 0.06 148)'
-              mark = 'check'
-            } else if (isWrongPick) {
-              background = 'oklch(0.95 0.03 25)'
-              borderColor = 'oklch(0.8 0.08 25)'
-              color = 'oklch(0.45 0.1 25)'
-              mark = 'cross'
-            }
-            return (
-              <button
-                key={text}
-                type="button"
-                className="option-button"
-                style={{ background, borderColor, cursor: feedback ? 'default' : 'pointer' }}
-                onClick={() => selectOption(text)}
-              >
-                <span className={`option-mark ${mark}`}>
-                  {mark === 'check' && <CheckIcon />}
-                  {mark === 'cross' && <CrossIcon />}
-                </span>
-                <span className="option-label" style={{ color }}>{LETTERS[i]}. {text}</span>
+            <div className="note-title">오답노트</div>
+            <div className="note-list">
+              {notes.length === 0 ? (
+                <div className="note-empty">이 회차에는 남은 오답이 없습니다.</div>
+              ) : (
+                notes.map((note, index) => {
+                  const expanded = expandedNoteId === note.wrong_note_id
+                  return (
+                    <button
+                      type="button"
+                      className={`note-card${expanded ? ' expanded' : ''}`}
+                      key={note.wrong_note_id}
+                      onClick={() => setExpandedNoteId((currentValue) => (currentValue === note.wrong_note_id ? null : note.wrong_note_id))}
+                    >
+                      <div className="note-question">
+                        <span>{index + 1}. {note.question_text}</span>
+                        <span className="note-question-chevron">›</span>
+                      </div>
+                      {expanded && (
+                        <div className="note-detail">
+                          <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
+                          <div className="note-answer correct">정답: {note.correct_answer}</div>
+                          {note.explanation && <div className="note-explain">{note.explanation}</div>}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+            {notes.length > 0 && (
+              <button type="button" className="cta-button" onClick={startSimilarQuiz} disabled={generating}>
+                {generating ? 'AI가 비슷한 문제를 만드는 중...' : '이 회차 복습하기'}
               </button>
-            )
-          })}
-        </div>
-
-        {feedback && (
-          <div className="explain-box">
-            {feedback.is_correct ? '정답입니다.' : '다시 확인해 볼 문제예요.'}
-            {feedback.timed_out && ' 제한 시간을 초과했습니다.'}
-            {feedback.explanation && <><br />{feedback.explanation}</>}
+            )}
           </div>
+        )}
+
+        {view === 'quiz' && current && (
+          <>
+            <div className="progress-row">
+              <div className="progress-top">
+                <span className="progress-count">복습 문제 {idx + 1} / {questions.length}</span>
+                <span className="progress-tag">오답 유사문제</span>
+              </div>
+              <div className="progress-track">
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+
+            <p className="question-text">{current.question_text}</p>
+
+            <div className="option-list">
+              {normalizeOptions(current.options).map((text, optionIndex) => {
+                const isSelected = selected === text
+                return (
+                  <button
+                    key={text}
+                    type="button"
+                    className="option-button"
+                    style={{
+                      borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
+                      background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
+                    }}
+                    onClick={() => selectOption(text)}
+                  >
+                    <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
+                      {isSelected && <CheckIcon />}
+                    </span>
+                    <span className="option-label">{LETTERS[optionIndex]}. {text}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {view === 'result' && result && (
+          <>
+            <div className="done-screen inline">
+              <div className="done-badge done-score">
+                <span>{result.correct_count}</span>
+                <span>/ {result.total_count}</span>
+              </div>
+              <div>
+                <div className="done-title">복습 채점 완료</div>
+                <div className="done-desc">
+                  맞힌 유사문제와 연결된 기존 오답 {result.mastered_wrong_note_ids?.length || 0}개를 오답노트에서 지웠습니다.
+                </div>
+              </div>
+            </div>
+
+            <div className="result-list">
+              {result.results.map((item) => (
+                <div className="result-card" key={item.question_id}>
+                  <div className={`result-state ${item.is_correct ? 'correct' : 'wrong'}`}>
+                    {item.is_correct ? <CheckIcon /> : <CrossIcon />}
+                  </div>
+                  <div>
+                    <div className="result-question">{item.question_order}. {item.question_text}</div>
+                    <div className="result-answer">내 답: {item.user_answer || '미응답'}</div>
+                    <div className="result-answer">정답: {item.correct_answer}</div>
+                    {item.explanation && <div className="result-explain">{item.explanation}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
-      <div className="cta-area tight">
-        <button type="button" className="cta-button" disabled={!feedback} onClick={next}>
-          {isLast ? '복습 완료' : '다음 문제'}
-        </button>
-      </div>
+      {view === 'quiz' && (
+        <div className="cta-area">
+          <button type="button" className="cta-button" disabled={!answered || submitting} onClick={next}>
+            {submitting ? '채점 중' : isLast ? '결과 보기' : '다음 문제'}
+          </button>
+        </div>
+      )}
+      {view === 'result' && (
+        <div className="cta-area tight">
+          <button type="button" className="cta-button" onClick={backToNotes}>
+            오답노트로 돌아가기
+          </button>
+        </div>
+      )}
 
       <BottomNav active="review" onNavigate={onNavigate} />
     </>
