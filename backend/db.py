@@ -12,7 +12,29 @@ async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=10)
+        await _run_startup_migrations(_pool)
     return _pool
+
+
+async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
+    """스키마가 옛 컬럼명 등을 아직 쓰고 있으면 앱 기동 시 자동으로 맞춰준다.
+    (팀원이 git pull 후 로컬 DB에 수동 ALTER를 매번 실행할 필요가 없도록)"""
+    await pool.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'acorn_balance'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'dotori'
+            ) THEN
+                ALTER TABLE users RENAME COLUMN acorn_balance TO dotori;
+            END IF;
+        END $$;
+        """
+    )
 
 
 async def close_pool() -> None:
