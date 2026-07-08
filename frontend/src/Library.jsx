@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
-import { LibraryIcon, FocusIcon, ClockIcon, DocIcon } from './icons'
+import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
 import { listMaterials, uploadMaterial } from './api'
 import './Library.css'
 
@@ -88,7 +88,23 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
   return (
     <div className="library-page">
       <StudyIllustration />
-      <Header title="도서관" icon={<LibraryIcon />} onBack={handleBack} />
+      <Header
+        title="도서관"
+        icon={<LibraryIcon />}
+        onBack={handleBack}
+        action={
+          <button
+            type="button"
+            className="header-action"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="문서 업로드"
+            title="문서 업로드"
+          >
+            <UploadIcon />
+          </button>
+        }
+      />
 
       <div className="body-scroll library-body">
         <div className="focus-pill">

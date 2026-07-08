@@ -49,6 +49,42 @@
   margin-top: 2px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.header-action {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  border: none;
+  background: var(--green);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.header-action:hover:not(:disabled) {
+  background: var(--green-hover);
+}
+
+.header-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.header-action:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 .header-badge {
   width: 34px;
   height: 34px;

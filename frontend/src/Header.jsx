@@ -1,6 +1,6 @@
 import { BackIcon } from './icons'
 
-function Header({ title, subtitle, icon, onBack, bordered = false }) {
+function Header({ title, subtitle, icon, onBack, bordered = false, action }) {
   return (
     <header className={`screen-header${bordered ? ' with-border' : ''}`}>
       {onBack ? (
@@ -14,7 +14,10 @@ function Header({ title, subtitle, icon, onBack, bordered = false }) {
         {title}
         {subtitle && <small>{subtitle}</small>}
       </div>
-      <div className="header-badge">{icon}</div>
+      <div className="header-right">
+        {action}
+        <div className="header-badge">{icon}</div>
+      </div>
     </header>
   )
 }
