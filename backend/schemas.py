@@ -26,7 +26,7 @@ class UserResponse(BaseModel):
     email: str
     nickname: str
     level: int
-    token: int
+    dotori: int  # 도토리(재화) 점수 = users.dotori
 
 
 class AuthResponse(BaseModel):

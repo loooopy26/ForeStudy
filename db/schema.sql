@@ -18,7 +18,7 @@ CREATE TABLE users (
     avatar_url           TEXT,
     level                INT NOT NULL DEFAULT 1,
     current_xp           INT NOT NULL DEFAULT 0,
-    acorn_balance        INT NOT NULL DEFAULT 0,   -- 도토리(재화)
+    dotori               INT NOT NULL DEFAULT 0,   -- 도토리(재화) 점수
     current_streak_days  INT NOT NULL DEFAULT 0,
     longest_streak_days  INT NOT NULL DEFAULT 0,
     last_active_date     DATE,
@@ -63,6 +63,21 @@ CREATE TABLE user_stat_snapshots (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, snapshot_date)
 );
+
+-- 상태창 지표(스탯)의 표시용 라벨 정의. 프론트가 이름을 하드코딩하지 않고 여기서 읽는다.
+-- code 는 user_stats 의 컬럼명과 동일하게 맞춘다 (focus / persistence / pass_rate ...).
+CREATE TABLE stat_definitions (
+    code          TEXT PRIMARY KEY,              -- user_stats 컬럼명 (focus, persistence, pass_rate)
+    label         TEXT NOT NULL,                 -- 화면 표시 이름 (집중력, 학습 지속성, 합격률)
+    description   TEXT,                           -- 지표 설명
+    unit          TEXT,                           -- 값 단위 (점, % 등)
+    display_order INT NOT NULL DEFAULT 0          -- 상태창에서의 표시 순서
+);
+
+INSERT INTO stat_definitions (code, label, description, unit, display_order) VALUES
+    ('focus',       '집중력',      '누적 공부 시간 기반 집중 지표', '점', 1),
+    ('persistence', '학습 지속성', '연속 학습일(streak) 기반 지표', '점', 2),
+    ('pass_rate',   '합격률',      '최근 퀴즈 평균 기반 합격 가능성', '%', 3);
 
 -- 꾸준한 성장가 / 새벽형 집중러 / 벼락치기 마스터 / 팀 기여자 등
 CREATE TABLE trait_definitions (

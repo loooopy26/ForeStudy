@@ -608,3 +608,54 @@ def _review_item_response(row) -> dict:
         "explanation": row["explanation"] if submitted_at else None,
         "wrong_note_status": row["note_status"],
     }
+
+
+@router.get("/attempts/{attempt_id}/answers")
+async def get_attempt_answers(attempt_id: str, only: str = "all"):
+    """응시(attempt) 채점 결과 조회. 맞은 것/틀린 것 모두 quiz_answers 에 저장돼 있어 함께 돌려준다.
+    - only=all(기본): 전체, correct: 맞은 것만, wrong: 틀린 것만(오답 노트)
+    - 객관식은 보기(options)까지 함께, 서술형은 options=null 로 반환.
+    각 문항의 is_correct 로 정답/오답을 구분한다."""
+    if only not in ("all", "correct", "wrong"):
+        raise HTTPException(400, "only 는 all/correct/wrong 중 하나여야 합니다")
+
+    pool = await get_pool()
+    attempt = await pool.fetchrow(
+        "SELECT id, score_pct, correct_count, total_count FROM quiz_attempts WHERE id = $1",
+        attempt_id,
+    )
+    if attempt is None:
+        raise HTTPException(404, "응시 기록을 찾을 수 없습니다")
+
+    # only 값은 위에서 화이트리스트 검증했으므로 안전하게 조건만 덧붙인다.
+    filter_sql = {"all": "", "correct": " AND a.is_correct = true", "wrong": " AND a.is_correct = false"}[only]
+    rows = await pool.fetch(
+        f"""
+        SELECT q.id AS question_id, q.question_order, q.question_type, q.question_text,
+               q.options, q.correct_answer, q.explanation, q.topic_tag,
+               a.user_answer, a.is_correct
+        FROM quiz_answers a
+        JOIN quiz_questions q ON q.id = a.quiz_question_id
+        WHERE a.quiz_attempt_id = $1{filter_sql}
+        ORDER BY q.question_order
+        """,
+        attempt_id,
+    )
+
+    answers = []
+    for r in rows:
+        item = dict(r)
+        item["question_id"] = str(item["question_id"])
+        # options 는 JSONB. 코덱 미등록 시 문자열로 오므로 리스트로 복원 (서술형은 NULL)
+        opts = item["options"]
+        item["options"] = json.loads(opts) if isinstance(opts, str) else opts
+        answers.append(item)
+
+    return {
+        "attempt_id": attempt_id,
+        "score_pct": float(attempt["score_pct"]) if attempt["score_pct"] is not None else None,
+        "correct_count": attempt["correct_count"],
+        "total_count": attempt["total_count"],
+        "returned": only,
+        "answers": answers,
+    }

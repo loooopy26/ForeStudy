@@ -2,7 +2,7 @@
 
 담당 탭: 로그인, 회원가입.
 역할: 유저 계정을 PostgreSQL users 테이블(UUID id)에 저장/조회, 비밀번호 해시, 더미 access_token 발급.
-      레벨/도토리(token) 값은 users 테이블 컬럼(level, acorn_balance)에서 그대로 읽는다.
+      레벨/도토리(dotori) 값은 users 테이블 컬럼(level, dotori)에서 그대로 읽는다.
       (서버를 재시작해도 가입한 유저가 유지되도록 메모리가 아닌 DB에 저장한다.)
 """
 
@@ -21,7 +21,7 @@ _HASH_ALGO = "pbkdf2_sha256"
 _ITERATIONS = 200_000
 
 # 조회할 계정 컬럼 (비밀번호 해시는 검증용으로 login 에서만 추가로 가져온다).
-_USER_FIELDS = "id, email, nickname, level, acorn_balance"
+_USER_FIELDS = "id, email, nickname, level, dotori"
 
 
 async def register_user(email: str, password: str, nickname: str) -> dict:
@@ -124,5 +124,5 @@ def _to_user_response(user: asyncpg.Record) -> dict:
         "email": user["email"],
         "nickname": user["nickname"],
         "level": user["level"],
-        "token": user["acorn_balance"],  # 도토리 잔액을 token 으로 노출
+        "dotori": user["dotori"],  # 도토리(재화) 점수
     }

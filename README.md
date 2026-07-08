@@ -36,7 +36,7 @@ Forestudy는 단순히 공부를 기록하는 서비스를 넘어, AI 기반 학
 [db/schema.sql](db/schema.sql) — PostgreSQL 스키마.
 
 - **사용자/활동**: `users`, `user_activity_days` (연속 접속일 = 학습 지속성)
-- **AI 상태창**: `user_stats`, `user_stat_snapshots` (집중력/이해도/학습지속성/성장도/합격가능성 + AI 피드백), `trait_definitions`, `user_traits`
+- **AI 상태창**: `user_stats`, `user_stat_snapshots` (집중력/이해도/학습지속성/성장도/합격가능성 + AI 피드백), `stat_definitions`(지표 표시 라벨: 집중력/학습 지속성/합격률), `trait_definitions`, `user_traits`
 - **자격증/학습 목표**: `certifications`, `cert_exam_schedules`, `user_cert_goals`
 - **AI 커리큘럼**: `curricula`, `curriculum_weeks`, `curriculum_days`
 - **퀘스트 게시판**: `quests` (main/sub/bonus, 난이도 자동 조절)
