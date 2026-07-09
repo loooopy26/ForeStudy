@@ -973,6 +973,25 @@ async def _get_learning_profile(pool, user_id: str, study_material_id: str | Non
     return profile
 
 
+async def _get_attempt_evaluation(pool, attempt_id: str) -> dict | None:
+    row = await pool.fetchrow(
+        """
+        SELECT mastery_score, mastery_level, recommended_difficulty, confidence_score,
+               difficulty_breakdown, strengths, weaknesses, ai_analysis
+        FROM quiz_attempt_evaluations
+        WHERE quiz_attempt_id = $1
+        """,
+        attempt_id,
+    )
+    if row is None:
+        return None
+    evaluation = dict(row)
+    evaluation["mastery_score"] = float(evaluation["mastery_score"])
+    evaluation["confidence_score"] = float(evaluation["confidence_score"])
+    evaluation["analysis"] = evaluation.pop("ai_analysis", "") or ""
+    return evaluation
+
+
 async def _save_learning_evaluation(
     pool,
     *,

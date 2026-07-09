@@ -3,7 +3,14 @@ import MainNav from './MainNav'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
-import { clearCurrentUser, getCertificateInfo, getCurrentCertificates, getDemoUser, getStats } from './api'
+import {
+  clearCurrentUser,
+  getCertificateInfo,
+  getCurrentCertificates,
+  getDemoUser,
+  getStats,
+  removeCurrentCertificate,
+} from './api'
 import {
   AcornIcon,
   BellIcon,
@@ -48,11 +55,12 @@ const DEV_FALLBACK_DOTORI = 320
 function Profile({ onNavigate }) {
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
-  const [certificates] = useState(getCurrentCertificates)
+  const [certificates, setCertificates] = useState(getCurrentCertificates)
   const [selectedCertificate, setSelectedCertificate] = useState(null)
   const [certificateInfo, setCertificateInfo] = useState(null)
   const [certificateInfoError, setCertificateInfoError] = useState('')
   const [certificateInfoLoading, setCertificateInfoLoading] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   useEffect(() => {
     getStats(TIMER_DEMO_USER_ID).then(setStats).catch((err) => {
@@ -72,6 +80,7 @@ function Profile({ onNavigate }) {
     setSelectedCertificate(certificate)
     setCertificateInfo(null)
     setCertificateInfoError('')
+    setDeleteConfirmOpen(false)
     setCertificateInfoLoading(true)
     try {
       setCertificateInfo(await getCertificateInfo(certificate.title))
@@ -86,6 +95,13 @@ function Profile({ onNavigate }) {
     setSelectedCertificate(null)
     setCertificateInfo(null)
     setCertificateInfoError('')
+    setDeleteConfirmOpen(false)
+  }
+
+  const deleteSelectedCertificate = () => {
+    if (!selectedCertificate) return
+    setCertificates(removeCurrentCertificate(selectedCertificate.id))
+    closeCertificateInfo()
   }
 
   const statRows = [
@@ -299,6 +315,26 @@ function Profile({ onNavigate }) {
                 <a href={certificateInfo.source_url} target="_blank" rel="noreferrer">공공데이터포털 원문 보기</a>
               </div>
             )}
+
+            <div className="cert-delete-area">
+              {deleteConfirmOpen ? (
+                <div className="cert-delete-confirm" role="alert">
+                  <p>삭제하시겠습니까?</p>
+                  <div>
+                    <button type="button" className="cert-delete-cancel" onClick={() => setDeleteConfirmOpen(false)}>
+                      취소
+                    </button>
+                    <button type="button" className="cert-delete-confirm-button" onClick={deleteSelectedCertificate}>
+                      확인
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="cert-delete-button" onClick={() => setDeleteConfirmOpen(true)}>
+                  삭제하기
+                </button>
+              )}
+            </div>
           </section>
         </div>
       )}

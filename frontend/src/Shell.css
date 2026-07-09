@@ -443,6 +443,54 @@
   line-height: 1.6;
 }
 
+.learning-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  background: var(--card-bg);
+}
+
+.learning-plan-card h2,
+.plan-week h3,
+.learning-plan-card p {
+  margin: 0;
+}
+
+.learning-plan-card h2 {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.learning-plan-card > p,
+.plan-week p {
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.plan-week {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 252, 244, 0.82);
+  border: 1px solid rgba(226, 212, 174, 0.85);
+}
+
+.plan-week h3 {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.plan-week ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .tag-button {
   border: none;
   cursor: pointer;

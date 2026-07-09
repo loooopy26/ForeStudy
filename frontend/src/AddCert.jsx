@@ -3,7 +3,7 @@ import { BackIcon, SearchIcon, ArrowUpRightIcon, BotIcon } from './icons'
 import { getCurrentCertificates } from './api'
 import './AddCert.css'
 
-const POPULAR = ['SQLD', '컴퓨터활용능력 1급', 'ADsP', '네트워크관리사 2급', '리눅스마스터 2급']
+const POPULAR = ['정보처리기사', '정보처리산업기사', 'SQLD', 'ADsP', '컴퓨터활용능력 1급']
 const ALL_CERTS = [
   '정보처리기사',
   '정보처리산업기사',
@@ -139,11 +139,7 @@ function AddCert({ onNavigate }) {
           <div className="ai-avatar">
             <BotIcon size={18} />
           </div>
-          <p>
-            자격증과 시험일정을 등록하면
-            <br />
-            AI가 맞춤 학습 플랜을 만들어드려요.
-          </p>
+          <p>자격증의 학습 자료를 등록하면 AI가 맞춤 학습 플랜을 만들어드려요.</p>
         </div>
 
         <div className="addcert-submit-wrap">

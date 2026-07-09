@@ -57,10 +57,13 @@ function App() {
   const [route, setRoute] = useState(resolveRouteFromPath)
   const [materialId, setMaterialId] = useState(() => getMaterialId() || null)
   const [selectedCert, setSelectedCert] = useState('')
+  const [placementQuiz, setPlacementQuiz] = useState(null)
   const Screen = SCREENS[route.page] || Profile
 
   const navigate = (page, payload) => {
     if (payload?.cert) setSelectedCert(payload.cert)
+    if (payload?.materialId) selectMaterial(payload.materialId)
+    if (payload?.placementQuiz) setPlacementQuiz(payload.placementQuiz)
     setRoute({ page, sub: undefined })
     window.history.pushState({}, '', page === 'auth' ? '/' : `/${page}`)
   }
@@ -79,6 +82,7 @@ function App() {
           onSelectMaterial={selectMaterial}
           initialSub={route.sub}
           certName={selectedCert}
+          placementQuiz={placementQuiz}
         />
       </div>
     </div>

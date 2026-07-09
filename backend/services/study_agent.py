@@ -320,6 +320,91 @@ Rules:
     return _normalize_level_evaluation(result)
 
 
+async def generate_learning_plan(
+    *,
+    certification_name: str,
+    material_title: str,
+    current_date: str,
+    material_summary: str | None,
+    key_concepts: list | None,
+    learning_evaluation: dict | None,
+    quiz_results: list[dict],
+    context: str,
+) -> dict:
+    concept_text = "\n".join(
+        f"- {item.get('concept') or item.get('name')}: {item.get('description') or ''}"
+        if isinstance(item, dict)
+        else f"- {item}"
+        for item in (key_concepts or [])[:12]
+    )
+    result_text = "\n".join(
+        (
+            f"- order={item.get('question_order')}, correct={item.get('is_correct')}, "
+            f"difficulty={item.get('question_difficulty') or 'normal'}, "
+            f"topic={item.get('topic_tag') or 'general'}, "
+            f"question={item.get('question_text')}"
+        )
+        for item in quiz_results
+    )
+    prompt = f"""Create a personalized Korean study plan for a certification learner.
+
+Certification: {certification_name}
+Current date: {current_date}
+Uploaded material title: {material_title}
+
+Material summary:
+{material_summary or "(none)"}
+
+Key concepts:
+{concept_text or "(none)"}
+
+Placement test learning evaluation:
+{_format_profile_for_prompt(learning_evaluation)}
+
+Placement test results:
+{result_text}
+
+Study-material context:
+{context}
+
+You do not have live web browsing. If exact official exam dates are not present in the material,
+do not pretend they are confirmed. Give an estimated schedule basis and tell the learner to adjust
+the plan after confirming the official exam date.
+
+Return JSON only:
+{{
+  "certification_name": "certification name",
+  "exam_schedule_note": "Korean note about official exam date confidence and what to verify",
+  "learner_level_summary": "Korean summary of the learner's current level",
+  "recommended_total_weeks": 4,
+  "weekly_plan": [
+    {{
+      "week": 1,
+      "theme": "Korean weekly theme",
+      "goals": ["Korean goal"],
+      "study_tasks": ["Korean task based on the uploaded material"],
+      "review_tasks": ["Korean review task"],
+      "checkpoint": "Korean checkpoint quiz/review instruction"
+    }}
+  ],
+  "daily_routine": ["Korean daily routine item"],
+  "weak_topic_strategy": ["Korean strategy for weak topics"],
+  "adjustment_tips": ["Korean tip for changing the plan when the official exam date is confirmed"]
+}}
+
+Rules:
+- Build the plan from the uploaded material and placement result.
+- Keep it practical for a beginner unless the evaluation clearly says otherwise.
+- Include review/quiz checkpoints every week.
+- Make 4 to 8 weeks depending on learner level and material scope.
+- Do not mention fine tuning, vLLM, or LangChain to the learner."""
+    result = await upstage.chat_json(
+        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
+        temperature=0.25,
+    )
+    return _normalize_learning_plan(result, certification_name)
+
+
 async def tutor_reply(history: list[dict], context: str | None) -> str:
     system = _SYSTEM + (
         " You are now a 1:1 tutor. Prefer hints and Socratic questions over immediately "
@@ -381,6 +466,44 @@ def _normalize_level_evaluation(result: dict) -> dict:
         "weaknesses": result.get("weaknesses") or [],
         "analysis": result.get("analysis") or "",
     }
+
+
+def _normalize_learning_plan(result: dict, certification_name: str) -> dict:
+    weeks = result.get("weekly_plan")
+    if not isinstance(weeks, list):
+        weeks = []
+    normalized_weeks = []
+    for index, week in enumerate(weeks[:8], start=1):
+        if not isinstance(week, dict):
+            continue
+        normalized_weeks.append(
+            {
+                "week": int(week.get("week") or index),
+                "theme": week.get("theme") or f"{index}주차 학습",
+                "goals": _as_text_list(week.get("goals")),
+                "study_tasks": _as_text_list(week.get("study_tasks")),
+                "review_tasks": _as_text_list(week.get("review_tasks")),
+                "checkpoint": week.get("checkpoint") or "",
+            }
+        )
+    return {
+        "certification_name": result.get("certification_name") or certification_name,
+        "exam_schedule_note": result.get("exam_schedule_note") or "공식 시험일을 확인한 뒤 학습 기간을 조정하세요.",
+        "learner_level_summary": result.get("learner_level_summary") or "",
+        "recommended_total_weeks": int(result.get("recommended_total_weeks") or len(normalized_weeks) or 4),
+        "weekly_plan": normalized_weeks,
+        "daily_routine": _as_text_list(result.get("daily_routine")),
+        "weak_topic_strategy": _as_text_list(result.get("weak_topic_strategy")),
+        "adjustment_tips": _as_text_list(result.get("adjustment_tips")),
+    }
+
+
+def _as_text_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if value:
+        return [str(value)]
+    return []
 
 
 def _format_profile_for_prompt(profile: dict | None) -> str:

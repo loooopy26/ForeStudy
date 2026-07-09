@@ -117,7 +117,7 @@ export function getCurrentCertificates() {
   }
 }
 
-export function addCurrentCertificate(title) {
+export function addCurrentCertificate(title, extra = {}) {
   const normalizedTitle = title.trim()
   if (!normalizedTitle) return getCurrentCertificates()
 
@@ -131,8 +131,17 @@ export function addCurrentCertificate(title) {
       title: normalizedTitle,
       subtitle: '학습 준비 중',
       progress: 0,
+      ...extra,
     },
   ]
+  localStorage.setItem(CERTIFICATES_STORAGE_KEY, JSON.stringify(nextCertificates))
+  return nextCertificates
+}
+
+export function removeCurrentCertificate(certificateId) {
+  const nextCertificates = getCurrentCertificates().filter(
+    (certificate) => certificate.id !== certificateId
+  )
   localStorage.setItem(CERTIFICATES_STORAGE_KEY, JSON.stringify(nextCertificates))
   return nextCertificates
 }
@@ -179,15 +188,37 @@ export async function getMaterial(materialId) {
   return res.json()
 }
 
-export async function uploadMaterial(file) {
+export async function uploadMaterial(file, title = '') {
   const form = new FormData()
   form.append('file', file)
+  if (title) form.append('title', title)
   const res = await fetch(`${API_BASE}/api/materials`, { method: 'POST', body: form })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.detail || '업로드에 실패했습니다')
   }
   return res.json()
+}
+
+export function createPlacementQuiz(materialId) {
+  return apiRequest(`/api/materials/${materialId}/quiz`, {
+    method: 'POST',
+    body: JSON.stringify({ num_questions: 10, difficulty: 'normal' }),
+  })
+}
+
+export function submitQuiz(quizId, answers) {
+  return apiRequest(`/api/quizzes/${quizId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify({ answers }),
+  })
+}
+
+export function createLearningPlan(attemptId, certificationName) {
+  return apiRequest('/api/learning-plans', {
+    method: 'POST',
+    body: JSON.stringify({ quiz_attempt_id: attemptId, certification_name: certificationName }),
+  })
 }
 
 export async function createTutorSession(materialId) {

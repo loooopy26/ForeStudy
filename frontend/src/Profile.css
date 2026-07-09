@@ -613,6 +613,59 @@
   font-weight: 700;
 }
 
+.cert-delete-area {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(216, 199, 160, 0.7);
+}
+
+.cert-delete-button,
+.cert-delete-cancel,
+.cert-delete-confirm-button {
+  border: none;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cert-delete-button {
+  width: 100%;
+  background: rgba(183, 76, 67, 0.1);
+  color: #a3433b;
+}
+
+.cert-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cert-delete-confirm p {
+  margin: 0;
+  color: #6b4038;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.cert-delete-confirm div {
+  display: flex;
+  gap: 7px;
+}
+
+.cert-delete-cancel {
+  background: rgba(230, 221, 197, 0.7);
+  color: var(--ink-soft);
+}
+
+.cert-delete-confirm-button {
+  background: #b74c43;
+  color: #fff;
+}
+
 .cert-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;

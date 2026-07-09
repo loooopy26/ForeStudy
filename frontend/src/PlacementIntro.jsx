@@ -2,7 +2,7 @@ import Header from './Header'
 import { QuizIcon } from './icons'
 import './Shell.css'
 
-function PlacementIntro({ onNavigate, certName }) {
+function PlacementIntro({ onNavigate, certName, materialId, placementQuiz }) {
   return (
     <>
       <Header title="배치고사" icon={<QuizIcon />} onBack={() => onNavigate('certUpload', { cert: certName })} />
@@ -22,7 +22,7 @@ function PlacementIntro({ onNavigate, certName }) {
       </div>
 
       <div className="cta-area">
-        <button type="button" className="cta-button" onClick={() => onNavigate('placementTest', { cert: certName })}>
+        <button type="button" className="cta-button" onClick={() => onNavigate('placementTest', { cert: certName, materialId, placementQuiz })}>
           시작하기
         </button>
       </div>
