@@ -20,6 +20,7 @@ from routers import (
     goals,
     growth_reports,
     learning_plans,
+    location,
     materials,
     quests,
     quizzes,
@@ -107,5 +108,6 @@ for api_router in [
     room.router,
     character.router,
     certifications.router,
+    location.router,
 ]:
     register_router(api_router)

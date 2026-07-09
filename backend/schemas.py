@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -308,3 +309,45 @@ class CharacterResponse(BaseModel):
 class CharacterEquipRequest(BaseModel):
     user_id: int = Field(..., example=1)
     item_ids: list[int] = Field(default_factory=list, example=[1])
+
+
+# Location: TMAP 기반 주변 학습장소 추천 / 시험 당일 어시스턴트 (프론트 미연결, 백엔드 전용)
+TransportMode = Literal["walk", "car", "transit"]
+
+DEFAULT_STUDY_PLACE_KEYWORDS = ["도서관", "스터디카페", "카페", "대학 도서관", "프린트"]
+DEFAULT_TRANSPORT_MODES: list[TransportMode] = ["walk", "car", "transit"]
+
+
+class Coordinate(BaseModel):
+    latitude: float = Field(..., example=37.5665)
+    longitude: float = Field(..., example=126.9780)
+
+
+class NearbyStudyPlacesRequest(BaseModel):
+    latitude: float = Field(..., example=37.5665)
+    longitude: float = Field(..., example=126.9780)
+    radius_meters: int = Field(3000, gt=0, le=20000, example=3000)
+    query: str | None = Field(
+        None,
+        example="가까운 공부하기 좋은 카페 알려줘",
+        description="자연어 요청. 있으면 LLM(또는 규칙 기반)이 의도를 분석해 keywords 대신 사용할 검색어를 추출한다.",
+    )
+    keywords: list[str] = Field(default_factory=lambda: list(DEFAULT_STUDY_PLACE_KEYWORDS))
+    transport_modes: list[TransportMode] = Field(default_factory=lambda: list(DEFAULT_TRANSPORT_MODES))
+    debug: bool = Field(False, description="true면 각 경로 응답에 TMAP 원본(raw)을 포함한다")
+
+
+class ExamInfoRequest(BaseModel):
+    certification_name: str = Field(..., example="정보처리기사")
+    exam_site_name: str = Field(..., example="서울국가자격시험장")
+    exam_site_address: str = Field(..., example="서울특별시 중구 세종대로 110")
+    exam_date: str = Field(..., example="2026-07-20", description="YYYY-MM-DD")
+    exam_start_time: str = Field(..., example="09:00", description="HH:MM")
+
+
+class ExamDayAssistantRequest(BaseModel):
+    origin: Coordinate
+    exam: ExamInfoRequest
+    buffer_minutes: int = Field(30, ge=0, le=180, example=30)
+    transport_modes: list[TransportMode] = Field(default_factory=lambda: list(DEFAULT_TRANSPORT_MODES))
+    debug: bool = Field(False, description="true면 각 경로 응답에 TMAP 원본(raw)을 포함한다")

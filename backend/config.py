@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     public_data_service_key: str | None = None
     database_url: str = "postgresql://postgres:postgres@localhost:5432/forestudy"
 
+    # TMAP API (위치 기반 학습장소 추천 / 시험 당일 어시스턴트). 없어도 서버는 기동되고
+    # /api/location 호출 시점에만 명확한 에러로 알린다 (routers/location.py, services/tmap.py).
+    tmap_app_key: str | None = None
+    tmap_base_url: str = "https://apis.openapi.sk.com"
+
     upstage_base_url: str = "https://api.upstage.ai/v1"
     upstage_chat_model: str = "solar-pro3"
     upstage_embedding_passage_model: str = "solar-embedding-2-passage"
