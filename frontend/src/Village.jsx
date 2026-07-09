@@ -8,9 +8,10 @@ import './Village.css'
 const PLACES = [
   {
     key: 'board',
-    label: '테스트 게시판',
+    label: '퀘스트 게시판',
     top: '19%',
     left: '21%',
+    target: 'forest',
     hotspot: { top: '31%', left: '20%', width: '32%', height: '13%' },
   },
   {

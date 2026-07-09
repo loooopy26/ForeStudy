@@ -3,18 +3,24 @@
   flex-direction: column;
   height: 100%;
   background-color: var(--color-bg-main);
-  padding: 8px 16px 16px;
+  padding: 16px;
   overflow-y: auto;
   font-family: var(--font-sans);
   color: var(--color-text-dark);
+}
+
+.achievement-page::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .achievement-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 4px 6px;
-  margin-bottom: 8px;
+  padding: 8px 4px 24px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .header-icon-btn {
@@ -71,20 +77,21 @@
 .achievement-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
   flex: 1;
   justify-content: flex-start;
+  margin-top: 20px;
   padding-bottom: 15px;
 }
 
 /* Prototype Card Styling */
 .achievement-card {
   background-color: var(--color-bg-card);
-  border-radius: 20px;
-  padding: 8px 10px;
+  border-radius: 18px;
+  padding: 7px 10px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   transform: translateZ(0);
   will-change: transform, box-shadow, opacity;
   transition: transform 180ms cubic-bezier(0.25, 0.8, 0.25, 1),
@@ -101,8 +108,8 @@
 
 /* Left Badge Container */
 .badge-icon-container {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,12 +140,12 @@
 
 /* Row Heights for Perfect Alignments */
 .ach-middle-row {
-  min-height: 24px;
+  min-height: 16px;
   align-items: flex-start;
 }
 
 .ach-bottom-row {
-  min-height: 28px;
+  min-height: 26px;
 }
 
 .achievement-top-row {

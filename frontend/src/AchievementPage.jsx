@@ -1,5 +1,14 @@
+import { useState } from 'react';
 import { AcornIcon } from './icons';
 import './AchievementPage.css';
+import badgeBird1 from './assets/badge-bird-1.png';
+import badgeBird2 from './assets/badge-bird-2.png';
+import badgeBird3 from './assets/badge-bird-3.png';
+import badgeBird4 from './assets/badge-bird-4.png';
+import badgeBird5 from './assets/badge-bird-5.png';
+import badgeBird6 from './assets/badge-bird-6.png';
+
+const BADGE_BIRDS = [badgeBird1, badgeBird2, badgeBird3, badgeBird4, badgeBird5, badgeBird6];
 
 export default function AchievementPage({
   achievements,
@@ -8,6 +17,16 @@ export default function AchievementPage({
   onClaimReward,
   onNavigate
 }) {
+  // 업적별 배지 캐릭터를 6종 새 중에서 무작위로 뽑아 고정한다.
+  // 보상을 받아도(=achievements 갱신) 다시 섞이지 않도록 마운트 시 한 번만 계산한다.
+  const [badgeByAchievementId] = useState(() => {
+    const map = {};
+    achievements.forEach((ach) => {
+      map[ach.id] = BADGE_BIRDS[Math.floor(Math.random() * BADGE_BIRDS.length)];
+    });
+    return map;
+  });
+
   return (
     <div className="achievement-page">
       {/* Header */}
@@ -31,29 +50,16 @@ export default function AchievementPage({
 
       {/* Achievement List */}
       <div className="achievement-list">
-        {achievements.map((ach) => {
+        {achievements.filter((ach) => !(ach.current >= ach.target && ach.claimed)).map((ach) => {
           const isComplete = ach.current >= ach.target;
           const progressPercent = Math.min(100, (ach.current / ach.target) * 100);
-
-          // Get image badges dynamically matching the original designs
-          let badgeImg;
-          if (ach.rarity === 'gold') {
-            badgeImg = '/assets/dc668548-0e0f-4407-beeb-d5dd32159d6f.png';
-          } else if (ach.rarity === 'silver') {
-            if (ach.id === 'a4') {
-              badgeImg = '/assets/2054e68c-f22a-47cb-b33c-e3c0698055c5.png';
-            } else {
-              badgeImg = '/assets/c4039063-4f17-4fd8-a3c1-b94dc67a4d80.png';
-            }
-          } else {
-            badgeImg = '/assets/c4039063-4f17-4fd8-a3c1-b94dc67a4d80.png';
-          }
+          const badgeImg = badgeByAchievementId[ach.id];
 
           return (
             <div className="achievement-card" key={ach.id}>
               {/* Left Badge Icon */}
               <div className="badge-icon-container">
-                <img src={badgeImg} style={{width: 60, height: 60, objectFit: 'contain'}} alt="Badge" />
+                <img src={badgeImg} style={{width: 50, height: 50, objectFit: 'contain'}} alt="Badge" />
               </div>
 
               {/* Right Content Area containing 3 stacked rows */}

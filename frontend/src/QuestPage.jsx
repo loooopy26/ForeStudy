@@ -17,7 +17,7 @@ export default function QuestPage({
     <div className="quest-page">
       {/* Header */}
       <div className="quest-header">
-        <button className="header-icon-btn" onClick={() => onNavigate('library')}>
+        <button className="header-icon-btn" onClick={() => onNavigate('village')}>
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8a8272" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 18l-6-6 6-6"></path>
           </svg>
@@ -103,7 +103,7 @@ export default function QuestPage({
 
           return (
             <div className="quest-card" key={q.id}>
-              {q.status !== 'active' && q.status !== 'completed' && (
+              {q.status !== 'active' && (
                 <button className="quest-delete-btn" onClick={() => onRemoveQuest(q.id)}>×</button>
               )}
               
@@ -118,6 +118,7 @@ export default function QuestPage({
                     <span className="quest-title">{q.title}</span>
                     {q.status === 'active' && <span className="status-badge running">진행 중</span>}
                     {q.status === 'completed' && <span className="status-badge done-badge">완료됨</span>}
+                    {q.status === 'idle' && <span className="status-badge idle-badge">대기 중</span>}
                   </div>
                   <div className="quest-time">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
