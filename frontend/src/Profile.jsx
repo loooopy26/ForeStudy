@@ -5,7 +5,6 @@ import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
 import {
   clearCurrentUser,
-  getCertificateInfo,
   getCurrentCertificates,
   getDemoUser,
   getStats,
@@ -25,28 +24,6 @@ import './Profile.css'
 // SQLite 타이머 데모 유저(Library.jsx의 TIMER_DEMO_USER_ID)와 동일한 고정 id.
 const TIMER_DEMO_USER_ID = 1
 
-const INFO_LABELS = {
-  description: '시험 회차',
-  docRegStartDt: '필기 접수 시작',
-  docRegEndDt: '필기 접수 종료',
-  docExamDt: '필기 시험일',
-  docPassDt: '필기 합격 발표',
-  pracRegStartDt: '실기 접수 시작',
-  pracRegEndDt: '실기 접수 종료',
-  pracExamStartDt: '실기 시험 시작',
-  pracExamEndDt: '실기 시험 종료',
-  pracPassDt: '최종 합격 발표',
-  contents: '구분',
-  fee: '응시 수수료',
-}
-
-function formatInfoValue(key, value) {
-  if (/Dt$/.test(key) && /^\d{8}$/.test(value)) {
-    return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)}`
-  }
-  if (/fee/i.test(key) && /^\d+$/.test(value)) return `${Number(value).toLocaleString()}원`
-  return value
-}
 // TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패) 화면 확인용으로 보여줄 값.
 // 백엔드 세팅 후 이 상수와 아래 catch의 fallback 처리는 제거할 것.
 const DEV_FALLBACK_STATS = { focus: 72, comprehension: 65, persistence: 80, pass_rate: 68, current_streak_days: 5 }
@@ -57,9 +34,6 @@ function Profile({ onNavigate }) {
   const [dotori, setDotori] = useState(null)
   const [certificates, setCertificates] = useState(getCurrentCertificates)
   const [selectedCertificate, setSelectedCertificate] = useState(null)
-  const [certificateInfo, setCertificateInfo] = useState(null)
-  const [certificateInfoError, setCertificateInfoError] = useState('')
-  const [certificateInfoLoading, setCertificateInfoLoading] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   useEffect(() => {
@@ -76,25 +50,13 @@ function Profile({ onNavigate }) {
     onNavigate('auth')
   }
 
-  const openCertificateInfo = async (certificate) => {
+  const openCertificateInfo = (certificate) => {
     setSelectedCertificate(certificate)
-    setCertificateInfo(null)
-    setCertificateInfoError('')
     setDeleteConfirmOpen(false)
-    setCertificateInfoLoading(true)
-    try {
-      setCertificateInfo(await getCertificateInfo(certificate.title))
-    } catch (error) {
-      setCertificateInfoError(error.message)
-    } finally {
-      setCertificateInfoLoading(false)
-    }
   }
 
   const closeCertificateInfo = () => {
     setSelectedCertificate(null)
-    setCertificateInfo(null)
-    setCertificateInfoError('')
     setDeleteConfirmOpen(false)
   }
 
@@ -262,59 +224,11 @@ function Profile({ onNavigate }) {
           <section className="cert-info-modal" role="dialog" aria-modal="true" aria-labelledby="cert-info-title">
             <div className="cert-info-header">
               <div>
-                <p>국가기술자격 시험정보</p>
+                <p>진행 중인 자격증</p>
                 <h2 id="cert-info-title">{selectedCertificate.title}</h2>
               </div>
               <button type="button" onClick={closeCertificateInfo} aria-label="닫기">×</button>
             </div>
-
-            {certificateInfoLoading && <p className="cert-info-status">공공데이터에서 정보를 불러오는 중입니다.</p>}
-            {certificateInfoError && (
-              <div className="cert-info-error" role="alert">
-                <p>{certificateInfoError}</p>
-                <div className="cert-info-error-actions">
-                  <button type="button" onClick={() => openCertificateInfo(selectedCertificate)}>
-                    다시 시도
-                  </button>
-                  <a href="https://www.q-net.or.kr" target="_blank" rel="noreferrer">
-                    Q-Net에서 확인
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {certificateInfo && (
-              <div className="cert-info-content">
-                <div className="cert-info-summary">
-                  <span>종목코드 {certificateInfo.code}</span>
-                  {certificateInfo.series && <span>{certificateInfo.series}</span>}
-                  {certificateInfo.sub_category && <span>{certificateInfo.sub_category}</span>}
-                </div>
-
-                <h3>시험 일정</h3>
-                {certificateInfo.schedules.length > 0 ? certificateInfo.schedules.slice(0, 3).map((schedule, index) => (
-                  <article className="cert-schedule" key={`${schedule.description || 'schedule'}-${index}`}>
-                    {Object.entries(schedule).map(([key, value]) => (
-                      <div key={key}>
-                        <span>{INFO_LABELS[key] || key}</span>
-                        <strong>{formatInfoValue(key, value)}</strong>
-                      </div>
-                    ))}
-                  </article>
-                )) : <p className="cert-info-status">등록된 시험 일정이 없습니다.</p>}
-
-                <h3>응시 수수료</h3>
-                {certificateInfo.fees.length > 0 ? certificateInfo.fees.map((fee, index) => (
-                  <div className="cert-fee" key={index}>
-                    {Object.entries(fee).map(([key, value]) => (
-                      <span key={key}>{INFO_LABELS[key] || key}: <strong>{formatInfoValue(key, value)}</strong></span>
-                    ))}
-                  </div>
-                )) : <p className="cert-info-status">등록된 수수료 정보가 없습니다.</p>}
-
-                <a href={certificateInfo.source_url} target="_blank" rel="noreferrer">공공데이터포털 원문 보기</a>
-              </div>
-            )}
 
             <div className="cert-delete-area">
               {deleteConfirmOpen ? (

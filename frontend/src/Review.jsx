@@ -143,10 +143,14 @@ function Review({ onNavigate }) {
       const data = await apiRequest(`/api/quizzes/${quiz.quiz_id}/submit`, {
         method: 'POST',
         body: JSON.stringify({
-          answers: questions.map((question) => ({
-            question_id: question.question_id,
-            answer: answers[question.question_id] || '',
-          })),
+          answers: questions.map((question) => {
+            const optionIndex = answers[question.question_id]
+            const questionOptions = normalizeOptions(question.options)
+            return {
+              question_id: question.question_id,
+              answer: optionIndex !== undefined ? questionOptions[optionIndex] ?? '' : '',
+            }
+          }),
         }),
       })
       setLastAttemptId(data.attempt_id)
@@ -278,17 +282,17 @@ function Review({ onNavigate }) {
 
             <div className="option-list">
               {normalizeOptions(current.options).map((text, optionIndex) => {
-                const isSelected = selected === text
+                const isSelected = selected === optionIndex
                 return (
                   <button
-                    key={text}
+                    key={`${current.question_id}-${optionIndex}`}
                     type="button"
                     className="option-button"
                     style={{
                       borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
                       background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
                     }}
-                    onClick={() => selectOption(text)}
+                    onClick={() => selectOption(optionIndex)}
                   >
                     <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
                       {isSelected && <CheckIcon />}

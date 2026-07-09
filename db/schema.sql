@@ -139,12 +139,13 @@ CREATE TABLE user_cert_goals (
 -- =====================================================================
 
 CREATE TABLE curricula (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_cert_goal_id  UUID NOT NULL REFERENCES user_cert_goals(id) ON DELETE CASCADE,
-    version            INT NOT NULL DEFAULT 1,
-    generated_by       TEXT NOT NULL DEFAULT 'ai' CHECK (generated_by IN ('ai','user')),
-    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded')),
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_cert_goal_id        UUID NOT NULL REFERENCES user_cert_goals(id) ON DELETE CASCADE,
+    version                  INT NOT NULL DEFAULT 1,
+    generated_by             TEXT NOT NULL DEFAULT 'ai' CHECK (generated_by IN ('ai','user')),
+    status                   TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded')),
+    source_quiz_attempt_id   UUID,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE curriculum_weeks (
@@ -162,6 +163,9 @@ CREATE TABLE curriculum_days (
     day_date             DATE NOT NULL,
     focus_topic          TEXT,
     planned_minutes      INT,
+    tasks                JSONB,
+    checkpoint           TEXT,
+    edited_by            TEXT NOT NULL DEFAULT 'ai' CHECK (edited_by IN ('ai','user')),
     progress_status      TEXT NOT NULL DEFAULT 'not_started' CHECK (progress_status IN ('not_started','in_progress','completed')),
     UNIQUE (curriculum_week_id, day_date)
 );
@@ -376,6 +380,8 @@ CREATE TABLE study_materials (
     ai_summary        TEXT,        -- AI 요약
     key_concepts      JSONB,       -- 핵심 개념 목록
     processed_status  TEXT NOT NULL DEFAULT 'pending' CHECK (processed_status IN ('pending','processing','ready','failed')),
+    processing_stage  TEXT,        -- 진행 중 세부 단계 (parsing/embedding/summarizing), 완료/실패 시 NULL
+    processing_error  TEXT,
     uploaded_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

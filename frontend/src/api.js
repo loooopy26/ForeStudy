@@ -146,10 +146,6 @@ export function removeCurrentCertificate(certificateId) {
   return nextCertificates
 }
 
-export async function getCertificateInfo(name) {
-  return apiRequest(`/api/certifications/info?name=${encodeURIComponent(name)}`)
-}
-
 export async function getStats(userId) {
   return apiRequest(`/stats/${userId}`)
 }
@@ -218,6 +214,20 @@ export function createLearningPlan(attemptId, certificationName) {
   return apiRequest('/api/learning-plans', {
     method: 'POST',
     body: JSON.stringify({ quiz_attempt_id: attemptId, certification_name: certificationName }),
+  })
+}
+
+export function saveCertGoal(certificationName, targetExamDate) {
+  return apiRequest('/api/cert-goals', {
+    method: 'PUT',
+    body: JSON.stringify({ certification_name: certificationName, target_exam_date: targetExamDate }),
+  })
+}
+
+export function createCurriculum(goalId, attemptId) {
+  return apiRequest(`/api/cert-goals/${goalId}/curricula`, {
+    method: 'POST',
+    body: JSON.stringify({ quiz_attempt_id: attemptId }),
   })
 }
 

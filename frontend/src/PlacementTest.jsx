@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Header from './Header'
-import { createLearningPlan, createPlacementQuiz, normalizeOptions, submitQuiz } from './api'
+import { createCurriculum, createLearningPlan, createPlacementQuiz, normalizeOptions, saveCertGoal, submitQuiz } from './api'
 import { QuizIcon, CheckIcon } from './icons'
 import './Shell.css'
 
@@ -15,6 +15,10 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
   const [loading, setLoading] = useState(!placementQuiz)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [attemptId, setAttemptId] = useState(null)
+  const [curriculum, setCurriculum] = useState(null)
+  const [curriculumError, setCurriculumError] = useState('')
+  const [creatingCurriculum, setCreatingCurriculum] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -46,9 +50,9 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
 
   const questions = quiz?.questions || []
 
-  const selectOption = (answer) => {
+  const selectOption = (optionIndex) => {
     if (!questions[idx]) return
-    setAnswers((prev) => ({ ...prev, [questions[idx].question_id]: answer }))
+    setAnswers((prev) => ({ ...prev, [questions[idx].question_id]: optionIndex }))
   }
 
   const next = async () => {
@@ -64,18 +68,39 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
     try {
       const submitted = await submitQuiz(
         quiz.quiz_id,
-        questions.map((question) => ({
-          question_id: question.question_id,
-          answer: answers[question.question_id] || '',
-        }))
+        questions.map((question) => {
+          const optionIndex = answers[question.question_id]
+          const questionOptions = normalizeOptions(question.options)
+          return {
+            question_id: question.question_id,
+            answer: optionIndex !== undefined ? questionOptions[optionIndex] ?? '' : '',
+          }
+        })
       )
       setResult(submitted)
+      setAttemptId(submitted.attempt_id)
       const createdPlan = await createLearningPlan(submitted.attempt_id, certName || '선택한 자격증')
       setPlan(createdPlan.plan)
     } catch (err) {
       setError(err.message || '채점 또는 학습 플랜 생성에 실패했습니다.')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const createDailyCurriculum = async () => {
+    const targetDate = window.prompt('목표 시험일을 입력해 주세요 (YYYY-MM-DD)')
+    if (!targetDate) return
+    setCreatingCurriculum(true)
+    setCurriculumError('')
+    try {
+      const goal = await saveCertGoal(certName || '선택한 자격증', targetDate)
+      const created = await createCurriculum(goal.goal_id, attemptId)
+      setCurriculum(created)
+    } catch (err) {
+      setCurriculumError(err.message || '일별 학습 플랜 생성에 실패했습니다.')
+    } finally {
+      setCreatingCurriculum(false)
     }
   }
 
@@ -133,6 +158,16 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
                   {week.checkpoint && <p>{week.checkpoint}</p>}
                 </article>
               ))}
+
+              <button type="button" className="cta-button" disabled={creatingCurriculum} onClick={createDailyCurriculum}>
+                {creatingCurriculum ? '일별 플랜 생성 중...' : '목표 시험일 정하고 일별 계획 만들기'}
+              </button>
+              {curriculumError && <div className="done-desc" style={{ color: 'oklch(0.55 0.15 25)' }}>{curriculumError}</div>}
+              {curriculum && (
+                <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', background: 'oklch(0.97 0 0)', padding: '12px', borderRadius: '8px' }}>
+                  {JSON.stringify(curriculum, null, 2)}
+                </pre>
+              )}
             </section>
           )}
         </div>
@@ -147,8 +182,8 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
 
   const current = questions[idx]
   const options = normalizeOptions(current.options)
-  const selected = answers[current.question_id]
-  const answered = Boolean(selected)
+  const selectedIndex = answers[current.question_id]
+  const answered = selectedIndex !== undefined
   const isLast = idx >= questions.length - 1
   const progress = Math.round(((idx + 1) / questions.length) * 100)
 
@@ -170,17 +205,17 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
 
         <div className="option-list">
           {options.map((text, i) => {
-            const isSelected = selected === text
+            const isSelected = selectedIndex === i
             return (
               <button
-                key={`${current.question_id}-${text}`}
+                key={`${current.question_id}-${i}`}
                 type="button"
                 className="option-button"
                 style={{
                   borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
                   background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
                 }}
-                onClick={() => selectOption(text)}
+                onClick={() => selectOption(i)}
               >
                 <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
                   {isSelected && <CheckIcon />}

@@ -23,7 +23,11 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
     pool = await get_pool()
     try:
         await pool.execute(
-            "UPDATE study_materials SET processed_status = 'processing', processing_error = NULL WHERE id = $1",
+            """
+            UPDATE study_materials
+            SET processed_status = 'processing', processing_error = NULL, processing_stage = 'parsing'
+            WHERE id = $1
+            """,
             study_material_id,
         )
 
@@ -35,6 +39,7 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
         if not chunks:
             raise ValueError("파싱 결과에서 텍스트를 추출하지 못했습니다")
 
+        await _set_stage(pool, study_material_id, "embedding")
         # 3) 임베딩 (배치)
         embeddings = await upstage.embed([c.content for c in chunks], kind="passage")
 
@@ -66,18 +71,19 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
                     ],
                 )
 
+        await _set_stage(pool, study_material_id, "summarizing")
         # 5) 요약 + 핵심 개념
         sample = ""
         for c in chunks:
             if len(sample) + len(c.content) > _SUMMARY_INPUT_CHARS:
                 break
             sample += c.content + "\n"
-        summary_result = await agent_graph.run_summarize(title, sample)
+        summary_result = await _summarize_with_retry(title, sample)
 
         await pool.execute(
             """
             UPDATE study_materials
-            SET processed_status = 'ready', ai_summary = $2, key_concepts = $3::jsonb
+            SET processed_status = 'ready', ai_summary = $2, key_concepts = $3::jsonb, processing_stage = NULL
             WHERE id = $1
             """,
             study_material_id,
@@ -90,10 +96,26 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
         logger.exception("ingest 실패: material=%s", study_material_id)
         error_message = _describe_ingest_error(exc)
         await pool.execute(
-            "UPDATE study_materials SET processed_status = 'failed', processing_error = $2 WHERE id = $1",
+            "UPDATE study_materials SET processed_status = 'failed', processing_error = $2, processing_stage = NULL WHERE id = $1",
             study_material_id,
             error_message,
         )
+
+
+async def _set_stage(pool, study_material_id: str, stage: str) -> None:
+    await pool.execute(
+        "UPDATE study_materials SET processing_stage = $2 WHERE id = $1", study_material_id, stage
+    )
+
+
+async def _summarize_with_retry(title: str, sample: str) -> dict:
+    """매우 길고 촘촘한 자료는 요약 생성 자체가 느려 타임아웃이 날 수 있다.
+    한 번 타임아웃이 나면 입력을 절반으로 줄여 한 번 더 시도한다."""
+    try:
+        return await agent_graph.run_summarize(title, sample)
+    except (httpx.ReadTimeout, httpx.PoolTimeout):
+        logger.warning("summarize 타임아웃, 입력을 절반으로 줄여 재시도: title=%s", title)
+        return await agent_graph.run_summarize(title, sample[: len(sample) // 2])
 
 
 def _describe_ingest_error(exc: Exception) -> str:

@@ -63,7 +63,7 @@ async def chat(
     if max_tokens:
         body["max_tokens"] = max_tokens
 
-    async with httpx.AsyncClient(timeout=240) as client:
+    async with httpx.AsyncClient(timeout=280) as client:
         resp = await client.post(
             f"{settings.upstage_base_url}/chat/completions",
             headers={**_auth_headers(), "Content-Type": "application/json"},

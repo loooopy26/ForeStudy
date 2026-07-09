@@ -106,7 +106,7 @@ async def get_material(
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        SELECT m.id, m.title, m.file_type, m.processed_status, m.ai_summary,
+        SELECT m.id, m.title, m.file_type, m.processed_status, m.processing_stage, m.ai_summary,
                m.key_concepts, m.uploaded_at, m.processing_error,
                (SELECT count(*) FROM document_chunks c WHERE c.study_material_id = m.id) AS chunk_count
         FROM study_materials m WHERE m.id = $1

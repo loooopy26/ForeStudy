@@ -2,6 +2,8 @@
 """Study Agent helpers for summary, quiz generation, grading, and tutoring."""
 
 import asyncio
+from datetime import date, timedelta
+from math import ceil
 
 from . import upstage
 
@@ -22,14 +24,17 @@ condition, example, and procedure that appears in the material.
 
 Return JSON only:
 {{
-  "summary": "A Korean study note, broken into sections/topics that follow the material's own structure. Each section should have a short heading and spell out concrete definitions, numbers, examples, and procedures. No length limit — be as detailed as the material warrants. Markdown is fine.",
+  "summary": "A Korean study note, broken into sections/topics that follow the material's own structure. Each section should have a short heading and spell out concrete definitions, numbers, examples, and procedures. Aim for roughly 1500-2500 Korean words total — detailed, but not exhaustive to the point of restating the entire source. Markdown is fine.",
   "key_concepts": [
     {{"concept": "core concept name", "description": "Korean definition plus concrete numbers/examples/comparisons drawn from the material (2~4 sentences)"}}
   ]
 }}
 Extract 5~10 key concepts."""
+    # max_tokens 없이(무제한) 매우 길고 촘촘한 자료에 대해 응답 생성이 240초 타임아웃을
+    # 넘겨 ingest가 실패하는 사례가 있었다 — 위 프롬프트의 분량 상한과 함께 하드 캡을 둔다.
     return await upstage.chat_json(
-        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
+        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
+        max_tokens=4000,
     )
 
 async def generate_quiz(
@@ -438,6 +443,204 @@ Rules:
         temperature=0.25,
     )
     return _normalize_learning_plan(result, certification_name)
+
+
+async def generate_daily_learning_plan(
+    *,
+    certification_name: str,
+    material_title: str,
+    current_date: str,
+    target_exam_date: str,
+    remaining_days: int,
+    material_summary: str | None,
+    key_concepts: list | None,
+    learning_evaluation: dict | None,
+    quiz_results: list[dict],
+    context: str,
+) -> dict:
+    """남은 일수에 정확히 맞춘 일별 학습 플랜. 주차 수/일수를 모델이 임의로 고르지 않도록
+    먼저 파이썬에서 주차·일수 배분을 계산한 뒤, 주차 스켈레톤 1회 + 주차별 일일 계획을
+    asyncio.gather로 병렬 생성한다(각각 _generate_quiz_batch와 동일한 배치+검증+재시도 패턴)."""
+    total_weeks = max(1, ceil(remaining_days / 7))
+    day_counts = _distribute_days(remaining_days, total_weeks)
+
+    concept_text = "\n".join(
+        f"- {item.get('concept') or item.get('name')}: {item.get('description') or ''}"
+        if isinstance(item, dict)
+        else f"- {item}"
+        for item in (key_concepts or [])[:12]
+    )
+    result_text = "\n".join(
+        (
+            f"- order={item.get('question_order')}, correct={item.get('is_correct')}, "
+            f"difficulty={item.get('question_difficulty') or 'normal'}, "
+            f"topic={item.get('topic_tag') or 'general'}, "
+            f"question={item.get('question_text')}"
+        )
+        for item in quiz_results
+    )
+
+    skeleton = await _generate_weekly_skeleton(
+        certification_name=certification_name,
+        material_title=material_title,
+        total_weeks=total_weeks,
+        concept_text=concept_text,
+        result_text=result_text,
+        learning_evaluation=learning_evaluation,
+        context=context,
+    )
+
+    start_date = date.fromisoformat(current_date)
+    week_start_dates = []
+    cursor = start_date
+    for count in day_counts:
+        week_start_dates.append(cursor)
+        cursor += timedelta(days=count)
+
+    weeks = await asyncio.gather(
+        *[
+            _generate_week_days(
+                week=skeleton[i],
+                day_count=day_counts[i],
+                week_start_date=week_start_dates[i],
+                certification_name=certification_name,
+                material_title=material_title,
+                concept_text=concept_text,
+                context=context,
+            )
+            for i in range(total_weeks)
+        ]
+    )
+
+    return {
+        "certification_name": certification_name,
+        "target_exam_date": target_exam_date,
+        "total_days": remaining_days,
+        "weeks": weeks,
+    }
+
+
+def _distribute_days(remaining_days: int, total_weeks: int) -> list[int]:
+    """remaining_days를 total_weeks개 주차에 최대한 고르게 나눈다 (합이 정확히 remaining_days)."""
+    base, remainder = divmod(remaining_days, total_weeks)
+    return [base + 1 if i < remainder else base for i in range(total_weeks)]
+
+
+async def _generate_weekly_skeleton(
+    *,
+    certification_name: str,
+    material_title: str,
+    total_weeks: int,
+    concept_text: str,
+    result_text: str,
+    learning_evaluation: dict | None,
+    context: str,
+) -> list[dict]:
+    prompt = f"""Create a {total_weeks}-week study plan skeleton (themes only, no daily detail yet)
+for a certification learner preparing for "{certification_name}" using the uploaded material "{material_title}".
+
+Key concepts:
+{concept_text or "(none)"}
+
+Placement test learning evaluation:
+{_format_profile_for_prompt(learning_evaluation)}
+
+Placement test results:
+{result_text or "(none)"}
+
+Study-material context:
+{context}
+
+Return JSON only:
+{{
+  "weeks": [
+    {{"week_number": 1, "theme": "Korean weekly theme", "planned_hours": 8}}
+  ]
+}}
+The weeks array length must be exactly {total_weeks}, numbered 1 to {total_weeks} in order."""
+    messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
+
+    for _ in range(3):
+        result = await upstage.chat_json(messages, temperature=0.3)
+        weeks = result.get("weeks")
+        if isinstance(weeks, list) and len(weeks) == total_weeks:
+            return [
+                {
+                    "week_number": index + 1,
+                    "theme": str(week.get("theme") or f"{index + 1}주차 학습").strip(),
+                    "planned_hours": float(week.get("planned_hours") or 0) or None,
+                }
+                for index, week in enumerate(weeks)
+            ]
+    raise RuntimeError(f"AI가 {total_weeks}주차 학습 플랜 개요를 유효하게 만들지 못했습니다.")
+
+
+async def _generate_week_days(
+    *,
+    week: dict,
+    day_count: int,
+    week_start_date: date,
+    certification_name: str,
+    material_title: str,
+    concept_text: str,
+    context: str,
+) -> dict:
+    prompt = f"""Create exactly {day_count} daily study plans for week {week['week_number']}
+("{week['theme']}") of a certification study plan for "{certification_name}", based on the
+uploaded material "{material_title}".
+
+Key concepts:
+{concept_text or "(none)"}
+
+Study-material context:
+{context}
+
+Return JSON only:
+{{
+  "days": [
+    {{
+      "day_offset": 0,
+      "focus_topic": "Korean focus topic for this day",
+      "planned_minutes": 60,
+      "tasks": ["Korean study task"],
+      "checkpoint": "Korean short review/self-check instruction for this day"
+    }}
+  ]
+}}
+The days array length must be exactly {day_count}, with day_offset from 0 to {day_count - 1} in order."""
+    messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
+
+    for _ in range(3):
+        result = await upstage.chat_json(messages, temperature=0.4)
+        days = result.get("days")
+        if isinstance(days, list) and len(days) == day_count and all(_is_day_well_formed(d) for d in days):
+            normalized_days = [
+                {
+                    "day_offset": index,
+                    "date": (week_start_date + timedelta(days=index)).isoformat(),
+                    "focus_topic": str(day.get("focus_topic") or "").strip(),
+                    "planned_minutes": int(day.get("planned_minutes") or 60),
+                    "tasks": _as_text_list(day.get("tasks")),
+                    "checkpoint": str(day.get("checkpoint") or "").strip(),
+                }
+                for index, day in enumerate(days)
+            ]
+            return {
+                "week_number": week["week_number"],
+                "theme": week["theme"],
+                "planned_hours": week.get("planned_hours"),
+                "days": normalized_days,
+            }
+    raise RuntimeError(
+        f"AI가 {week['week_number']}주차의 {day_count}일 분량 학습 계획을 유효하게 만들지 못했습니다."
+    )
+
+
+def _is_day_well_formed(day: dict) -> bool:
+    if not isinstance(day, dict):
+        return False
+    focus_topic = str(day.get("focus_topic") or "").strip()
+    return len(focus_topic) >= 2
 
 
 async def generate_report(

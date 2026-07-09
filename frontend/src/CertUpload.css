@@ -104,3 +104,84 @@
   cursor: pointer;
   flex-shrink: 0;
 }
+
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+.upload-progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.upload-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-softest);
+}
+
+.upload-progress-marker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--card-border);
+  color: var(--card-bg);
+}
+
+.upload-progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.upload-progress-step-active {
+  color: var(--green-text-strong);
+  font-weight: 700;
+}
+
+.upload-progress-step-active .upload-progress-marker {
+  background: var(--green-tint-strong);
+  color: var(--green-text-strong);
+  animation: upload-progress-pulse 1.2s ease-in-out infinite;
+}
+
+.upload-progress-step-done {
+  color: var(--ink-soft);
+}
+
+.upload-progress-step-done .upload-progress-marker {
+  background: var(--green-text-strong);
+  color: var(--card-bg);
+}
+
+.upload-progress-timer {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-softest);
+}
+
+@keyframes upload-progress-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}

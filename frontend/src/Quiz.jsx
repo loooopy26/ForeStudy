@@ -106,10 +106,14 @@ function Quiz({ onNavigate }) {
       const data = await apiRequest(`/api/quizzes/${quiz.quiz_id}/submit`, {
         method: 'POST',
         body: JSON.stringify({
-          answers: questions.map((question) => ({
-            question_id: question.question_id,
-            answer: answers[question.question_id] || '',
-          })),
+          answers: questions.map((question) => {
+            const value = answers[question.question_id]
+            if (question.question_type === 'short_answer') {
+              return { question_id: question.question_id, answer: value || '' }
+            }
+            const questionOptions = normalizeOptions(question.options)
+            return { question_id: question.question_id, answer: value !== undefined ? questionOptions[value] ?? '' : '' }
+          }),
         }),
       })
       setLastAttemptId(data.attempt_id)
@@ -232,17 +236,17 @@ function Quiz({ onNavigate }) {
 
             <div className="option-list">
               {options.map((text, i) => {
-                const isSelected = selected === text
+                const isSelected = selected === i
                 return (
                   <button
-                    key={text}
+                    key={`${current.question_id}-${i}`}
                     type="button"
                     className="option-button"
                     style={{
                       borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
                       background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
                     }}
-                    onClick={() => selectOption(text)}
+                    onClick={() => selectOption(i)}
                   >
                     <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
                       {isSelected && <CheckIcon />}

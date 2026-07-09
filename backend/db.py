@@ -39,7 +39,20 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
         "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS processing_error text"
     )
     await pool.execute(
+        "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS processing_stage text"
+    )
+    await pool.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_certifications_name ON certifications (name)"
+    )
+    await pool.execute(
+        """
+        ALTER TABLE curriculum_days ADD COLUMN IF NOT EXISTS tasks JSONB;
+        ALTER TABLE curriculum_days ADD COLUMN IF NOT EXISTS checkpoint TEXT;
+        ALTER TABLE curriculum_days
+            ADD COLUMN IF NOT EXISTS edited_by TEXT NOT NULL DEFAULT 'ai'
+                CHECK (edited_by IN ('ai','user'));
+        ALTER TABLE curricula ADD COLUMN IF NOT EXISTS source_quiz_attempt_id UUID;
+        """
     )
 
 

@@ -14,7 +14,7 @@ from agents.nodes.analysis import (
     evaluate_learning_level_node,
 )
 from agents.nodes.ingest_summarizer import summarize_node
-from agents.nodes.planner import generate_learning_plan_node
+from agents.nodes.planner import generate_daily_learning_plan_node, generate_learning_plan_node
 from agents.nodes.quiz import generate_quiz_node, grade_short_answer_node
 from agents.nodes.report import generate_report_node
 from agents.nodes.tutor import tutor_node
@@ -28,6 +28,7 @@ _TASK_NODES = {
     "analyze_wrong_note": analyze_wrong_note_node,
     "evaluate_learning_level": evaluate_learning_level_node,
     "generate_learning_plan": generate_learning_plan_node,
+    "generate_daily_learning_plan": generate_daily_learning_plan_node,
     "summarize_material": summarize_node,
     "generate_report": generate_report_node,
 }
@@ -155,6 +156,38 @@ async def run_generate_learning_plan(
             "certification_name": certification_name,
             "material_title": material_title,
             "current_date": current_date,
+            "material_summary": material_summary,
+            "key_concepts": key_concepts,
+            "learning_evaluation": learning_evaluation,
+            "quiz_results": quiz_results,
+        },
+        context,
+    )
+    result = await _compiled_graph.ainvoke(state)
+    return result["output"]
+
+
+async def run_generate_daily_learning_plan(
+    *,
+    certification_name: str,
+    material_title: str,
+    current_date: str,
+    target_exam_date: str,
+    remaining_days: int,
+    material_summary: str | None,
+    key_concepts: list | None,
+    learning_evaluation: dict | None,
+    quiz_results: list[dict],
+    context: str,
+) -> dict:
+    state = new_state(
+        "generate_daily_learning_plan",
+        {
+            "certification_name": certification_name,
+            "material_title": material_title,
+            "current_date": current_date,
+            "target_exam_date": target_exam_date,
+            "remaining_days": remaining_days,
             "material_summary": material_summary,
             "key_concepts": key_concepts,
             "learning_evaluation": learning_evaluation,

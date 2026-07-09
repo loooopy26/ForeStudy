@@ -23,3 +23,22 @@ async def generate_learning_plan_node(state: AgentState) -> AgentState:
     state["output"] = plan
     log_node(state, "generate_learning_plan_node", weeks=len(plan.get("weekly_plan", [])))
     return state
+
+
+async def generate_daily_learning_plan_node(state: AgentState) -> AgentState:
+    payload = state["input"]
+    plan = await study_agent.generate_daily_learning_plan(
+        certification_name=payload["certification_name"],
+        material_title=payload["material_title"],
+        current_date=payload["current_date"],
+        target_exam_date=payload["target_exam_date"],
+        remaining_days=payload["remaining_days"],
+        material_summary=payload.get("material_summary"),
+        key_concepts=payload.get("key_concepts"),
+        learning_evaluation=payload.get("learning_evaluation"),
+        quiz_results=payload["quiz_results"],
+        context=state["context"],
+    )
+    state["output"] = plan
+    log_node(state, "generate_daily_learning_plan_node", weeks=len(plan.get("weeks", [])))
+    return state
