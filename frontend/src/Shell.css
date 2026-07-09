@@ -643,17 +643,6 @@
   font-weight: 700;
 }
 
-.curriculum-day-checkpoint {
-  margin: 6px 0 0;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--green-tint);
-  border: 1px solid var(--green-border);
-  color: var(--green-explain-text);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
 .tag-button {
   border: none;
   cursor: pointer;

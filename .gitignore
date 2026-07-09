@@ -46,3 +46,8 @@ frontend/dist/
 
 # Runtime logs
 *.log
+backend-server.err
+backend-server.out
+frontend-server.out
+frontend-server.err
+.gitignore

@@ -6,7 +6,7 @@ import re
 from datetime import date, timedelta
 from math import ceil
 
-from . import upstage
+from . import rag, upstage
 
 _SYSTEM = (
     "You are Forestudy's AI study coach. Answer in Korean. Use only the provided "
@@ -493,6 +493,7 @@ Rules:
 async def generate_daily_learning_plan(
     *,
     certification_name: str,
+    material_id: str,
     material_title: str,
     current_date: str,
     target_exam_date: str,
@@ -504,8 +505,18 @@ async def generate_daily_learning_plan(
     context: str,
 ) -> dict:
     """남은 일수에 정확히 맞춘 일별 학습 플랜. 주차 수/일수를 모델이 임의로 고르지 않도록
-    먼저 파이썬에서 주차·일수 배분을 계산한 뒤, 주차 스켈레톤 1회 + 주차별 일일 계획을
-    asyncio.gather로 병렬 생성한다(각각 _generate_quiz_batch와 동일한 배치+검증+재시도 패턴)."""
+    먼저 파이썬에서 주차·일수 배분을 계산한 뒤, 주차 스켈레톤을 1회 생성한다.
+
+    주차별 일일 계획은 스켈레톤 생성에 쓴 것과 같은 전역 context를 재사용하지 않고, 그 주차의
+    theme으로 RAG를 다시 검색해 주차마다 다른 자료 발췌를 사용한다 — 모든 주차가 동일한 상위 8개
+    청크만 우려먹어서 서로 다른 주차인데도 내용이 거의 그대로 반복되던 문제의 원인 중 하나였다.
+
+    주차별 일일 계획은 asyncio.gather 병렬 생성이 아니라 순차(sequential) 생성한다 — 병렬로 하면
+    각 주차가 다른 주차의 실제 일별 주제를 전혀 모른 채 동시에 생성되어, 서로 다른 주차인데도
+    같은 소주제(예: '결합도와 응집도')가 똑같은 깊이로 중복 등장하는 문제가 있었다. 순차 생성하며
+    이전 주차들의 실제 일별 focus_topic 목록을 다음 주차 프롬프트에 넘겨, 겹치는 주제는 더 깊은
+    난이도로 다루도록 유도한다. 주차 수가 많을수록 느려지는 대가가 있지만 1회성 백그라운드 생성이라
+    품질을 우선한다."""
     total_weeks = max(1, ceil(remaining_days / 7))
     day_counts = _distribute_days(remaining_days, total_weeks)
 
@@ -534,6 +545,7 @@ async def generate_daily_learning_plan(
         learning_evaluation=learning_evaluation,
         context=context,
     )
+    all_week_themes = "\n".join(f"{w['week_number']}주차: {w['theme']}" for w in skeleton)
 
     start_date = date.fromisoformat(current_date)
     week_start_dates = []
@@ -542,20 +554,25 @@ async def generate_daily_learning_plan(
         week_start_dates.append(cursor)
         cursor += timedelta(days=count)
 
-    weeks = await asyncio.gather(
-        *[
-            _generate_week_days(
-                week=skeleton[i],
-                day_count=day_counts[i],
-                week_start_date=week_start_dates[i],
-                certification_name=certification_name,
-                material_title=material_title,
-                concept_text=concept_text,
-                context=context,
-            )
-            for i in range(total_weeks)
-        ]
-    )
+    weeks = []
+    prior_days_summary = ""
+    for i in range(total_weeks):
+        week_result = await _generate_week_days(
+            week=skeleton[i],
+            day_count=day_counts[i],
+            week_start_date=week_start_dates[i],
+            certification_name=certification_name,
+            material_id=material_id,
+            material_title=material_title,
+            concept_text=concept_text,
+            all_week_themes=all_week_themes,
+            prior_days_summary=prior_days_summary,
+        )
+        weeks.append(week_result)
+        prior_days_summary += "\n".join(
+            f"- {week_result['week_number']}주차 {day['day_offset'] + 1}일차: {day['focus_topic']}"
+            for day in week_result["days"]
+        ) + "\n"
 
     return {
         "certification_name": certification_name,
@@ -633,13 +650,24 @@ async def _generate_week_days(
     day_count: int,
     week_start_date: date,
     certification_name: str,
+    material_id: str,
     material_title: str,
     concept_text: str,
-    context: str,
+    all_week_themes: str,
+    prior_days_summary: str,
 ) -> dict:
+    week_chunks = await rag.retrieve_chunks(material_id, week["theme"], top_k=6)
+    context = rag.format_context(week_chunks)
     prompt = f"""Create exactly {day_count} daily study plans for week {week['week_number']}
 ("{week['theme']}") of a certification study plan for "{certification_name}", based on the
 uploaded material "{material_title}".
+
+Full plan overview (every week's theme, for context only):
+{all_week_themes or "(none)"}
+
+Days already planned in earlier weeks (day + focus_topic, already generated and fixed — you cannot
+change these, only build on top of them):
+{prior_days_summary or "(none yet, this is the first week)"}
 
 Key concepts:
 {concept_text or "(none)"}
@@ -647,12 +675,29 @@ Key concepts:
 Study-material context:
 {context}
 
+Structure the {day_count} days as a progression, not a repeated restatement of the same content:
+- This week's days must stay inside this week's own theme above — do not restate a sub-topic that
+  clearly belongs to a different week's theme in the plan overview.
+- Each day should focus on a distinct, narrowly-scoped slice of a topic, not the whole topic restated.
+  Example of what NOT to do: Day A focus_topic "SOLID 원칙" with tasks defining all 5 principles, then
+  Day B focus_topic "SOLID 원칙과 객체지향 설계" that ALSO defines all 5 principles with examples — this
+  is a duplicate, even though the titles differ. Example of the CORRECT way to split the same broad
+  topic across two days: Day A focus_topic "SRP·OCP 개념과 판단 기준" (only those two principles,
+  definitions + how to judge them), Day B focus_topic "LSP·ISP·DIP 적용과 리팩터링 실습" (the remaining
+  three principles, applied to refactoring an existing design) — each day's tasks only ever touch the
+  narrow slice named in its own focus_topic, never the full topic again.
+- Before reusing any topic, check the "days already planned in earlier weeks" list above. If a topic
+  from that list overlaps this week's theme, this week's day(s) covering it must be scoped to a
+  DIFFERENT, narrower slice than that earlier day already used (different sub-principles, a specific
+  procedure, a comparison, numeric conditions, edge cases, or a worked example) — never the same full
+  topic restated under a slightly reworded title. If a topic from that list is unrelated to this
+  week's theme, ignore it.
+
 Do not include citation labels or source markers such as "발췌 0", "발췌 43에서", "출처 1", "[0]", or "(p.1)"
 anywhere in the output. Also never append a bare parenthetical number after a concept/topic name as a
 reference tag, e.g. "캡슐화(033)" or "소프트웨어 공학의 기본 원칙(001)" — the numbers in the "--- 발췌 N ---"
 context headers are internal excerpt indices for your own grounding only; never echo them, with or without
-the word "발췌". Write focus_topic, tasks, and checkpoint as plain study instructions, referring to
-concepts by name only.
+the word "발췌". Write focus_topic and tasks as plain study instructions, referring to concepts by name only.
 
 Return JSON only:
 {{
@@ -661,8 +706,7 @@ Return JSON only:
       "day_offset": 0,
       "focus_topic": "Korean focus topic for this day",
       "planned_minutes": 60,
-      "tasks": ["Korean study task"],
-      "checkpoint": "Korean short review/self-check instruction for this day"
+      "tasks": ["Korean study task"]
     }}
   ]
 }}
@@ -680,7 +724,7 @@ The days array length must be exactly {day_count}, with day_offset from 0 to {da
                     "focus_topic": _clean_source_labels(str(day.get("focus_topic") or "").strip()),
                     "planned_minutes": int(day.get("planned_minutes") or 60),
                     "tasks": _clean_source_labels(_as_text_list(day.get("tasks"))),
-                    "checkpoint": _clean_source_labels(str(day.get("checkpoint") or "").strip()),
+                    "checkpoint": "",
                 }
                 for index, day in enumerate(days)
             ]

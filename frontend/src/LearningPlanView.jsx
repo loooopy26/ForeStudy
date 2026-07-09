@@ -235,7 +235,6 @@ function LearningPlanView({ onNavigate, certName, planData }) {
                           <li key={idx}>{task}</li>
                         ))}
                       </ul>
-                      {day.checkpoint && <p className="curriculum-day-checkpoint">{day.checkpoint}</p>}
                     </div>
                   ))}
                 </article>

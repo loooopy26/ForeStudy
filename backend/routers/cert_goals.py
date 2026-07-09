@@ -101,6 +101,7 @@ async def create_curriculum(goal_id: str, req: CurriculumCreateRequest):
 
     plan = await agent_graph.run_generate_daily_learning_plan(
         certification_name=goal["certification_name"],
+        material_id=attempt_context["material_id"],
         material_title=attempt_context["material_title"],
         current_date=date.today().isoformat(),
         target_exam_date=goal["target_exam_date"].isoformat(),
@@ -150,6 +151,7 @@ async def regenerate_curriculum(goal_id: str, req: CurriculumRegenerateRequest):
 
     plan = await agent_graph.run_generate_daily_learning_plan(
         certification_name=goal["certification_name"],
+        material_id=attempt_context["material_id"],
         material_title=attempt_context["material_title"],
         current_date=date.today().isoformat(),
         target_exam_date=goal["target_exam_date"].isoformat(),
@@ -308,6 +310,7 @@ async def _load_attempt_context(pool, quiz_attempt_id: str) -> dict:
     chunks = await rag.retrieve_chunks(material_id, topics or attempt["material_title"], top_k=8)
 
     return {
+        "material_id": material_id,
         "material_title": attempt["material_title"] or "학습 자료",
         "material_summary": attempt["ai_summary"],
         "key_concepts": key_concepts,

@@ -29,6 +29,7 @@ async def generate_daily_learning_plan_node(state: AgentState) -> AgentState:
     payload = state["input"]
     plan = await study_agent.generate_daily_learning_plan(
         certification_name=payload["certification_name"],
+        material_id=payload["material_id"],
         material_title=payload["material_title"],
         current_date=payload["current_date"],
         target_exam_date=payload["target_exam_date"],

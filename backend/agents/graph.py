@@ -170,6 +170,7 @@ async def run_generate_learning_plan(
 async def run_generate_daily_learning_plan(
     *,
     certification_name: str,
+    material_id: str,
     material_title: str,
     current_date: str,
     target_exam_date: str,
@@ -184,6 +185,7 @@ async def run_generate_daily_learning_plan(
         "generate_daily_learning_plan",
         {
             "certification_name": certification_name,
+            "material_id": material_id,
             "material_title": material_title,
             "current_date": current_date,
             "target_exam_date": target_exam_date,
