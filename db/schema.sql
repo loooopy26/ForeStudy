@@ -263,6 +263,7 @@ CREATE TABLE quiz_answers (
     quiz_question_id UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
     user_answer      TEXT,
     is_correct       BOOLEAN,
+    feedback_explanation TEXT,
     UNIQUE (quiz_attempt_id, quiz_question_id)
 );
 
@@ -320,6 +321,7 @@ CREATE TABLE wrong_answer_notes (
     user_answer        TEXT,
     correct_answer     TEXT NOT NULL,
     explanation        TEXT,
+    mistake_analysis   TEXT,
     topic_tag          TEXT,
     status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewing','mastered')),
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),

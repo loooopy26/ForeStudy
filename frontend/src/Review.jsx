@@ -67,7 +67,6 @@ function Review({ onNavigate }) {
 
   useEffect(() => {
     loadAttempts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const selectAttempt = async (attemptId) => {
@@ -200,8 +199,11 @@ function Review({ onNavigate }) {
                       >
                         <span className="history-item-time">{formatTime(attempt.submitted_at)}</span>
                         <span>
-                          <span className="history-item-score">{attempt.correct_count}/{attempt.total_count}</span>
-                          {attempt.wrong_count > 0 && <span className="history-item-wrong">오답 {attempt.wrong_count}개</span>}
+                          {attempt.wrong_count > 0 ? (
+                            <span className="history-item-wrong">숙지가 덜 된 부분 {attempt.wrong_count}개</span>
+                          ) : (
+                            <span className="history-item-mastered">숙지 완료</span>
+                          )}
                         </span>
                       </button>
                     ))}
@@ -229,7 +231,7 @@ function Review({ onNavigate }) {
                       type="button"
                       className={`note-card${expanded ? ' expanded' : ''}`}
                       key={note.wrong_note_id}
-                      onClick={() => setExpandedNoteId((currentValue) => (currentValue === note.wrong_note_id ? null : note.wrong_note_id))}
+                      onClick={() => setExpandedNoteId((value) => (value === note.wrong_note_id ? null : note.wrong_note_id))}
                     >
                       <div className="note-question">
                         <span>{index + 1}. {note.question_text}</span>
@@ -239,7 +241,12 @@ function Review({ onNavigate }) {
                         <div className="note-detail">
                           <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
                           <div className="note-answer correct">정답: {note.correct_answer}</div>
-                          {note.explanation && <div className="note-explain">{note.explanation}</div>}
+                          {note.mistake_analysis && (
+                            <div className="note-analysis">
+                              <strong>왜 틀렸을까?</strong>
+                              <span>{note.mistake_analysis}</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </button>
@@ -331,7 +338,7 @@ function Review({ onNavigate }) {
       {view === 'quiz' && (
         <div className="cta-area">
           <button type="button" className="cta-button" disabled={!answered || submitting} onClick={next}>
-            {submitting ? '채점 중' : isLast ? '결과 보기' : '다음 문제'}
+            {submitting ? '채점 중...' : isLast ? '결과 보기' : '다음 문제'}
           </button>
         </div>
       )}

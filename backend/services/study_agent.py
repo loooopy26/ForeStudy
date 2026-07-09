@@ -1,3 +1,4 @@
+# ForeStudy: source file for study_agent.
 """Study Agent helpers for summary, quiz generation, grading, and tutoring."""
 
 import asyncio
@@ -31,7 +32,6 @@ Extract 5~10 key concepts."""
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
     )
 
-
 async def generate_quiz(
     context: str,
     *,
@@ -50,19 +50,28 @@ async def generate_quiz(
     silently coming back as all multiple_choice regardless of the requested
     mix. Splitting by type removes that ambiguity."""
     mix = question_mix or {"multiple_choice": num_questions}
+    # Large single prompts often come back capped around 10 items, so split each
+    # requested type into smaller model calls and merge the generated questions.
+    batch_size = 10
+    batch_requests = []
+    for question_type, count in mix.items():
+        remaining = count
+        while remaining > 0:
+            batch_requests.append((question_type, min(batch_size, remaining)))
+            remaining -= batch_size
+
     batches = await asyncio.gather(
         *[
             _generate_quiz_batch(
                 context,
                 question_type=question_type,
-                count=count,
+                count=batch_count,
                 difficulty=difficulty,
                 weak_topics=weak_topics,
                 quiz_kind=quiz_kind,
                 learner_profile=learner_profile,
             )
-            for question_type, count in mix.items()
-            if count > 0
+            for question_type, batch_count in batch_requests
         ]
     )
     return [question for batch in batches for question in batch]
@@ -204,6 +213,54 @@ Return JSON only:
     return await upstage.chat_json(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
     )
+
+
+async def analyze_wrong_note(
+    *,
+    question_text: str,
+    correct_answer: str,
+    user_answer: str | None,
+    explanation: str | None = None,
+    topic_tag: str | None = None,
+) -> str:
+    """Explain why a single wrong answer was likely missed."""
+    prompt = f"""Analyze this single wrong quiz answer for a Korean learner.
+
+Question:
+{question_text}
+
+Learner answer:
+{user_answer or "(미응답)"}
+
+Correct answer:
+{correct_answer}
+
+Original explanation:
+{explanation or "(none)"}
+
+Topic:
+{topic_tag or "general"}
+
+Write feedback that will be shown immediately after grading.
+Focus on the learner's actual wrong answer, not only on the correct answer.
+Include:
+- why the learner answer is wrong or incomplete
+- the concept that should be reviewed
+- common confusion points or traps
+- one concrete caution or study tip for next time
+
+Do not include citation labels or source markers such as "발췌 0", "발췌 43에서", "출처 1", "[0]", or "(p.1)".
+Do not mention that this is based on an excerpt.
+
+Return JSON only:
+{{
+  "mistake_analysis": "Korean feedback in 3~5 sentences. Directly compare the learner answer with the correct answer, explain the likely misconception, mention a confusing point or trap, and give a short study tip."
+}}"""
+    result = await upstage.chat_json(
+        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+    return result.get("mistake_analysis") or ""
 
 
 async def evaluate_learning_level(

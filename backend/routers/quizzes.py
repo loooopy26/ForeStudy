@@ -1,6 +1,9 @@
+# ForeStudy: source file for quizzes.
 """AI quiz routes for placement, study review, grading, and wrong-note review."""
 
+import asyncio
 import json
+import re
 from datetime import date
 
 from fastapi import APIRouter, HTTPException
@@ -239,13 +242,13 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
     if material is None:
         raise HTTPException(404, "학습 자료를 찾을 수 없습니다")
 
+    # Similar review mirrors the current wrong-note count instead of using a fixed 10-question set.
     source_notes = await pool.fetch(
         """
         SELECT id, question_text, correct_answer, topic_tag
         FROM wrong_answer_notes
         WHERE quiz_attempt_id = $1 AND status <> 'mastered'
         ORDER BY created_at, id
-        LIMIT 10
         """,
         attempt_id,
     )
@@ -283,6 +286,7 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
         quiz_kind="study_review",
         questions=questions[:num_questions],
     )
+    # Links generated questions to original wrong notes so mastered notes can be removed on submit.
     await _link_similar_quiz_notes(
         pool,
         source_attempt_id=attempt_id,
@@ -305,6 +309,7 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
 async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     pool = await get_pool()
     await _ensure_wrong_answer_tables(pool)
+    await _ensure_quiz_answer_feedback_column(pool)
     await _ensure_learning_profile_tables(pool)
     quiz = await pool.fetchrow(
         """
@@ -397,6 +402,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
             for result in results:
                 if not result["is_correct"]:
                     continue
+                # Correct answers on similar-review questions clear the source wrong-note entry.
                 deleted_rows = await conn.fetch(
                     """
                     DELETE FROM wrong_answer_notes n
@@ -452,6 +458,47 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                     )
 
     wrong = [result for result in results if not result["is_correct"]]
+    if wrong:
+        feedbacks = await asyncio.gather(
+            *[
+                study_agent.analyze_wrong_note(
+                    question_text=item["question_text"],
+                    correct_answer=item["correct_answer"],
+                    user_answer=item["user_answer"],
+                    explanation=_clean_source_labels(item["explanation"]),
+                    topic_tag=item["topic_tag"],
+                )
+                for item in wrong
+            ]
+        )
+        note_by_question_id = {note["question_id"]: note for note in wrong_note_rows}
+        answer_updates = []
+        note_updates = []
+        for item, feedback in zip(wrong, feedbacks):
+            cleaned_feedback = _clean_source_labels(feedback) or _clean_source_labels(item["explanation"])
+            item["explanation"] = cleaned_feedback
+            item["feedback_explanation"] = cleaned_feedback
+            answer_updates.append((cleaned_feedback, attempt_id, item["question_id"]))
+            note = note_by_question_id.get(item["question_id"])
+            if note:
+                note["explanation"] = cleaned_feedback
+                note["mistake_analysis"] = cleaned_feedback
+                note_updates.append((cleaned_feedback, note["wrong_note_id"]))
+        if answer_updates:
+            await pool.executemany(
+                """
+                UPDATE quiz_answers
+                SET feedback_explanation = $1
+                WHERE quiz_attempt_id = $2 AND quiz_question_id = $3
+                """,
+                answer_updates,
+            )
+        if note_updates:
+            await pool.executemany(
+                "UPDATE wrong_answer_notes SET explanation = $1, mistake_analysis = $1 WHERE id = $2",
+                note_updates,
+            )
+
     analysis = None
     previous_profile = await _get_learning_profile(
         pool, user_id, str(quiz["study_material_id"]) if quiz["study_material_id"] else None
@@ -627,7 +674,7 @@ async def get_wrong_answer_notes(attempt_id: str):
         SELECT
             n.id, n.quiz_attempt_id, n.quiz_question_id, n.question_text, q.question_type,
             q.options, n.user_answer, n.correct_answer, n.explanation, n.topic_tag,
-            n.status, n.created_at, n.last_reviewed_at
+            n.mistake_analysis, n.status, n.created_at, n.last_reviewed_at
         FROM wrong_answer_notes n
         JOIN quiz_questions q ON q.id = n.quiz_question_id
         WHERE n.quiz_attempt_id = $1
@@ -635,7 +682,28 @@ async def get_wrong_answer_notes(attempt_id: str):
         """,
         attempt_id,
     )
-    return {"attempt_id": attempt_id, "wrong_notes": [_wrong_note_response(row) for row in rows]}
+    wrong_notes = [_wrong_note_response(row) for row in rows]
+    missing = [item for item in wrong_notes if not item.get("mistake_analysis")]
+    if missing:
+        analyses = await asyncio.gather(
+            *[
+                study_agent.analyze_wrong_note(
+                    question_text=item["question_text"],
+                    correct_answer=item["correct_answer"],
+                    user_answer=item["user_answer"],
+                    explanation=_clean_source_labels(item["explanation"]),
+                    topic_tag=item["topic_tag"],
+                )
+                for item in missing
+            ]
+        )
+        for item, analysis in zip(missing, analyses):
+            item["mistake_analysis"] = _clean_source_labels(analysis)
+        await pool.executemany(
+            "UPDATE wrong_answer_notes SET mistake_analysis = $1 WHERE id = $2",
+            [(item["mistake_analysis"], item["wrong_note_id"]) for item in missing],
+        )
+    return {"attempt_id": attempt_id, "wrong_notes": wrong_notes}
 
 
 @router.post("/attempts/{attempt_id}/review/start", status_code=201)
@@ -878,8 +946,6 @@ async def _ensure_learning_profile_tables(pool) -> None:
         );
         """
     )
-
-
 async def _get_learning_profile(pool, user_id: str, study_material_id: str | None) -> dict | None:
     if not study_material_id:
         return None
@@ -1033,6 +1099,11 @@ async def _ensure_wrong_answer_tables(pool) -> None:
         );
         """
     )
+    await pool.execute("ALTER TABLE wrong_answer_notes ADD COLUMN IF NOT EXISTS mistake_analysis TEXT;")
+
+
+async def _ensure_quiz_answer_feedback_column(pool) -> None:
+    await pool.execute("ALTER TABLE quiz_answers ADD COLUMN IF NOT EXISTS feedback_explanation TEXT;")
 
 
 async def _link_similar_quiz_notes(
@@ -1076,12 +1147,30 @@ def _wrong_note_response(row) -> dict:
         "options": row["options"],
         "user_answer": row["user_answer"],
         "correct_answer": row["correct_answer"],
-        "explanation": row["explanation"],
+        "explanation": _clean_source_labels(row["explanation"]),
+        "mistake_analysis": _clean_source_labels(row["mistake_analysis"]),
         "topic_tag": row["topic_tag"],
         "status": row["status"],
         "created_at": row["created_at"],
         "last_reviewed_at": row["last_reviewed_at"],
     }
+
+
+_SOURCE_LABEL_RE = re.compile(r"(?:발췌|출처)\s*\d+\s*(?:\([^)]+\))?\s*(?:의|에서|:)?\s*")
+
+
+_SOURCE_LABEL_EXTRA_RE = re.compile(
+    r"(?:\uBC1C\uCDCC|\uCD9C\uCC98)\s*\d+\s*(?:\([^)]+\))?\s*(?:\uC5D0\uC11C|:)?\s*"
+    r"|\[\d+\]\s*|\(p\.\s*\d+\)"
+)
+
+
+def _clean_source_labels(text: str | None) -> str | None:
+    if text is None:
+        return None
+    cleaned = _SOURCE_LABEL_RE.sub("", text)
+    cleaned = _SOURCE_LABEL_EXTRA_RE.sub("", cleaned)
+    return cleaned.strip()
 
 
 def _review_item_prompt(item, note, item_order: int, time_limit_seconds: int) -> dict:
@@ -1115,7 +1204,7 @@ def _review_item_response(row) -> dict:
         "user_answer": row["review_answer"],
         "is_correct": row["review_correct"],
         "correct_answer": row["correct_answer"] if submitted_at else None,
-        "explanation": row["explanation"] if submitted_at else None,
+        "explanation": _clean_source_labels(row["explanation"]) if submitted_at else None,
         "wrong_note_status": row["note_status"],
     }
 
@@ -1130,6 +1219,7 @@ async def get_attempt_answers(attempt_id: str, only: str = "all"):
         raise HTTPException(400, "only 는 all/correct/wrong 중 하나여야 합니다")
 
     pool = await get_pool()
+    await _ensure_quiz_answer_feedback_column(pool)
     attempt = await pool.fetchrow(
         "SELECT id, score_pct, correct_count, total_count FROM quiz_attempts WHERE id = $1",
         attempt_id,
@@ -1142,10 +1232,15 @@ async def get_attempt_answers(attempt_id: str, only: str = "all"):
     rows = await pool.fetch(
         f"""
         SELECT q.id AS question_id, q.question_order, q.question_type, q.question_text,
-               q.options, q.correct_answer, q.explanation, q.topic_tag,
+               q.options, q.correct_answer,
+               COALESCE(a.feedback_explanation, n.mistake_analysis, q.explanation) AS explanation,
+               q.topic_tag,
                a.user_answer, a.is_correct
         FROM quiz_answers a
         JOIN quiz_questions q ON q.id = a.quiz_question_id
+        LEFT JOIN wrong_answer_notes n
+               ON n.quiz_attempt_id = a.quiz_attempt_id
+              AND n.quiz_question_id = a.quiz_question_id
         WHERE a.quiz_attempt_id = $1{filter_sql}
         ORDER BY q.question_order
         """,
@@ -1159,6 +1254,7 @@ async def get_attempt_answers(attempt_id: str, only: str = "all"):
         # options 는 JSONB. 코덱 미등록 시 문자열로 오므로 리스트로 복원 (서술형은 NULL)
         opts = item["options"]
         item["options"] = json.loads(opts) if isinstance(opts, str) else opts
+        item["explanation"] = _clean_source_labels(item["explanation"])
         answers.append(item)
 
     return {
