@@ -27,6 +27,7 @@ const PLACES = [
     label: '상점',
     top: '55%',
     left: '18%',
+    target:'shop',
     hotspot: { top: '56%', left: '18%', width: '32%', height: '17%' },
   },
   {
@@ -34,6 +35,7 @@ const PLACES = [
     label: '내 방',
     top: '53%',
     left: '75%',
+    target:'room',
     hotspot: { top: '55%', left: '76%', width: '37%', height: '23%' },
   },
 ]
