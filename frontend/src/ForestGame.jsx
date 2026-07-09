@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import QuestPage from './pages/QuestPage'
-import AchievementPage from './pages/AchievementPage'
+import QuestPage from './QuestPage'
+import AchievementPage from './AchievementPage'
 import './questTheme.css'
 
 // 퀘스트 게시판 + 업적/성장 화면의 상태·로직 묶음.
