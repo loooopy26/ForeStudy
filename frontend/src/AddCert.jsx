@@ -47,7 +47,7 @@ function AddCert({ onNavigate }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState('')
   const [error, setError] = useState('')
-  const suggestions = query
+  const suggestions = query && query !== selected
     ? ALL_CERTS.filter((s) => matchesQuery(s, query))
     : []
 
@@ -139,7 +139,11 @@ function AddCert({ onNavigate }) {
           <div className="ai-avatar">
             <BotIcon size={18} />
           </div>
-          <p>자격증과 시험일정을 등록하면 AI가 맞춤 학습 플랜을 만들어드려요.</p>
+          <p>
+            자격증과 시험일정을 등록하면
+            <br />
+            AI가 맞춤 학습 플랜을 만들어드려요.
+          </p>
         </div>
 
         <div className="addcert-submit-wrap">

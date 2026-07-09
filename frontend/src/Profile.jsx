@@ -40,6 +40,10 @@ function formatInfoValue(key, value) {
   if (/fee/i.test(key) && /^\d+$/.test(value)) return `${Number(value).toLocaleString()}원`
   return value
 }
+// TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패) 화면 확인용으로 보여줄 값.
+// 백엔드 세팅 후 이 상수와 아래 catch의 fallback 처리는 제거할 것.
+const DEV_FALLBACK_STATS = { focus: 72, comprehension: 65, persistence: 80, pass_rate: 68, current_streak_days: 5 }
+const DEV_FALLBACK_DOTORI = 320
 
 function Profile({ onNavigate }) {
   const [stats, setStats] = useState(null)
@@ -51,8 +55,12 @@ function Profile({ onNavigate }) {
   const [certificateInfoLoading, setCertificateInfoLoading] = useState(false)
 
   useEffect(() => {
-    getStats(TIMER_DEMO_USER_ID).then(setStats).catch(() => {})
-    getDemoUser().then((user) => setDotori(user.dotori)).catch(() => {})
+    getStats(TIMER_DEMO_USER_ID).then(setStats).catch((err) => {
+      if (err instanceof TypeError) setStats(DEV_FALLBACK_STATS)
+    })
+    getDemoUser().then((user) => setDotori(user.dotori)).catch((err) => {
+      if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
+    })
   }, [])
 
   const handleLogout = () => {
@@ -156,10 +164,10 @@ function Profile({ onNavigate }) {
             {statRows.map(({ key, label, value, Icon, suffix = '' }) => (
               <div className="status-row" key={key}>
                 <span className="status-label">
-                  <span className="status-badge">
+                  <span className="status-icon-badge">
                     <Icon size={14} />
                   </span>
-                  {label}
+                  <span className="status-label-text">{label}</span>
                 </span>
 
                 <div className="progress-track">

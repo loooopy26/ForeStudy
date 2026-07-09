@@ -96,7 +96,15 @@ function Auth({ onNavigate, initialSub }) {
       setCurrentUser(res.user)
       showSuccessToast(`${res.user.nickname}님, 성공적으로 로그인되었습니다!`, () => onNavigate('profile'))
     } catch (err) {
-      setErrors({ form: translateError(err.message) })
+      // TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패하는 TypeError)만
+      // 화면 확인용으로 로그인을 우회한다. 백엔드 세팅 후 이 블록은 제거할 것.
+      if (err instanceof TypeError) {
+        const devUser = { id: 'dev-demo', email, nickname: '테스트유저', level: 1, dotori: 0 }
+        setCurrentUser(devUser)
+        showSuccessToast('백엔드 미연결: 임시로 홈 화면을 보여드려요.', () => onNavigate('profile'))
+      } else {
+        setErrors({ form: translateError(err.message) })
+      }
     } finally {
       setSubmitting(false)
     }

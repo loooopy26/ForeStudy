@@ -100,6 +100,7 @@
 .popular-tags {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -144,10 +145,13 @@
 }
 
 .ai-callout p {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 12.5px;
   color: var(--green-text-strong);
   line-height: 1.5;
+  text-align: center;
 }
 
 .addcert-submit-wrap {

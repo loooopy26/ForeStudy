@@ -12,7 +12,7 @@ import Summary from './Summary'
 import Chat from './Chat'
 import ForestGame from './ForestGame'
 import Auth from './Auth'
-import { getMaterialId, setMaterialId as persistMaterialId } from './api'
+import { getCurrentUser, getMaterialId, setMaterialId as persistMaterialId } from './api'
 import './theme.css'
 import './Shell.css'
 import './App.css'
@@ -46,10 +46,11 @@ const PATH_ALIASES = {
 
 function resolveRouteFromPath() {
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
-  if (!path) return { page: 'auth', sub: undefined }
+  const landingPage = getCurrentUser() ? 'profile' : 'auth'
+  if (!path) return { page: landingPage, sub: undefined }
   if (path in SCREENS) return { page: path, sub: undefined }
   if (path in PATH_ALIASES) return PATH_ALIASES[path]
-  return { page: 'auth', sub: undefined }
+  return { page: landingPage, sub: undefined }
 }
 
 function App() {
