@@ -1,0 +1,274 @@
+.achievement-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-bg-main);
+  padding: 8px 16px 16px;
+  overflow-y: auto;
+  font-family: var(--font-sans);
+  color: var(--color-text-dark);
+}
+
+.achievement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 6px;
+  margin-bottom: 8px;
+}
+
+.header-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  transition: background-color 0.2s;
+}
+
+.header-icon-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.header-title {
+  font-weight: 700;
+  font-size: 19px;
+  color: var(--color-text-dark);
+  flex: 1;
+}
+
+/* Header HUD */
+.header-hud {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-text-dark);
+  background-color: rgba(0, 0, 0, 0.03);
+  padding: 6px 12px;
+  border-radius: 12px;
+}
+
+.hud-lvl {
+  color: var(--color-primary-light);
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  padding-right: 8px;
+}
+
+.hud-acorn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #a9853f;
+}
+
+/* List with compact gaps */
+.achievement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  justify-content: flex-start;
+  padding-bottom: 15px;
+}
+
+/* Prototype Card Styling */
+.achievement-card {
+  background-color: var(--color-bg-card);
+  border-radius: 20px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transform: translateZ(0);
+  will-change: transform, box-shadow, opacity;
+  transition: transform 180ms cubic-bezier(0.25, 0.8, 0.25, 1),
+              box-shadow 180ms cubic-bezier(0.25, 0.8, 0.25, 1),
+              opacity 160ms linear;
+  border: 1px solid #ece2ca;
+}
+
+.achievement-card:hover {
+  transform: translate3d(0, -4px, 0);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  opacity: 1;
+}
+
+/* Left Badge Container */
+.badge-icon-container {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.badge-icon-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Columns Structure */
+.achievement-content-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+
+.ach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+/* Row Heights for Perfect Alignments */
+.ach-middle-row {
+  min-height: 24px;
+  align-items: flex-start;
+}
+
+.ach-bottom-row {
+  min-height: 28px;
+}
+
+.achievement-top-row {
+  align-items: center;
+  gap: 10px;
+}
+
+.achievement-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-text-dark);
+  line-height: 1.2;
+}
+
+.achievement-top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.achievement-counter {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-dark);
+  font-family: var(--font-quick), var(--font-sans);
+  white-space: nowrap;
+  /* 하단의 완료/보상 표시와 같은 세로축에 오도록 동일한 인셋 적용 */
+  padding-right: 10px;
+}
+
+.achievement-status-icon-container {
+  width: auto;
+  min-width: 68px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  /* 받기 버튼/보상/완료 표시가 카드 오른쪽 끝에 붙지 않도록 살짝 왼쪽으로 */
+  padding-right: 10px;
+}
+
+.achievement-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.25;
+  margin: 0;
+}
+
+/* Progress bar styling */
+.ach-progress-container {
+  flex: 1;
+  height: 7px;
+  background-color: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ach-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 220ms cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: width;
+}
+
+/* Right Status Area Sizing */
+
+/* 완료/받기/보상은 카운터(7/7)와 같은 세로축(우측 10px 인셋)에 정렬한다 */
+.achievement-status-text {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.achievement-status-text.done {
+  color: var(--color-primary);
+}
+
+.diamond-reward {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  /* 보상 재화가 도토리로 바뀌어 값 색도 도토리 톤으로 */
+  color: #a9853f;
+  width: auto;
+}
+
+.reward-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.diamond-val {
+  font-family: var(--font-quick), var(--font-sans);
+}
+
+/* Claim Button */
+.claim-btn {
+  background-color: var(--color-primary-light);
+  color: #fff;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+  box-shadow: 0 3px 6px rgba(95, 122, 67, 0.2);
+}
+
+.claim-btn:hover {
+  background-color: #4a6034;
+}
+
+.claim-btn:active {
+  transform: scale(0.95);
+}
+
+.animate-bounce-mini {
+  animation: bounce-mini 420ms ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes bounce-mini {
+  0%, 100% { transform: translateY(0) translateZ(0); }
+  50% { transform: translateY(-3px) translateZ(0); }
+}
