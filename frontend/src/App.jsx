@@ -2,6 +2,9 @@ import { useState } from 'react'
 import Profile from './Profile'
 import Village from './Village'
 import AddCert from './AddCert'
+import CertUpload from './CertUpload'
+import PlacementIntro from './PlacementIntro'
+import PlacementTest from './PlacementTest'
 import Library from './Library'
 import Quiz from './Quiz'
 import Review from './Review'
@@ -18,6 +21,9 @@ const SCREENS = {
   profile: Profile,
   village: Village,
   addcert: AddCert,
+  certUpload: CertUpload,
+  placementIntro: PlacementIntro,
+  placementTest: PlacementTest,
   library: Library,
   quiz: Quiz,
   review: Review,
@@ -49,9 +55,11 @@ function resolveRouteFromPath() {
 function App() {
   const [route, setRoute] = useState(resolveRouteFromPath)
   const [materialId, setMaterialId] = useState(() => getMaterialId() || null)
+  const [selectedCert, setSelectedCert] = useState('')
   const Screen = SCREENS[route.page] || Profile
 
-  const navigate = (page) => {
+  const navigate = (page, payload) => {
+    if (payload?.cert) setSelectedCert(payload.cert)
     setRoute({ page, sub: undefined })
     window.history.pushState({}, '', page === 'auth' ? '/' : `/${page}`)
   }
@@ -69,6 +77,7 @@ function App() {
           materialId={materialId}
           onSelectMaterial={selectMaterial}
           initialSub={route.sub}
+          certName={selectedCert}
         />
       </div>
     </div>
