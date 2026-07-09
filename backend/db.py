@@ -54,6 +54,14 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
         ALTER TABLE curricula ADD COLUMN IF NOT EXISTS source_quiz_attempt_id UUID;
         """
     )
+    # quiz_type이 db/schema.sql에 추가되기 전에 만들어진 로컬 DB에는 컬럼이 없어
+    # 배치고사 생성(POST /api/materials/{id}/quiz)이 UndefinedColumnError로 실패한다.
+    await pool.execute(
+        """
+        ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS quiz_type TEXT
+            NOT NULL DEFAULT 'study_review' CHECK (quiz_type IN ('placement', 'study_review'))
+        """
+    )
 
 
 async def close_pool() -> None:
