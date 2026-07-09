@@ -491,6 +491,169 @@
   line-height: 1.55;
 }
 
+.plan-error {
+  margin: 0;
+  color: oklch(0.55 0.15 25);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.goal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--card-border);
+}
+
+.goal-section h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.goal-confirmed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.goal-relink {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 100px;
+  background: var(--card-bg);
+  border: 1px solid var(--green-border);
+  color: var(--green-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.goal-searching {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  color: var(--ink-softer);
+  font-size: 13px;
+}
+
+.goal-spinner {
+  display: flex;
+  gap: 5px;
+}
+
+.goal-spinner-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 100px;
+  background: var(--green-dot);
+  animation: goal-spinner-pulse 1s ease-in-out infinite;
+}
+
+.goal-spinner-dot:nth-child(2) { animation-delay: 0.15s; }
+.goal-spinner-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes goal-spinner-pulse {
+  0%, 80%, 100% { opacity: 0.35; }
+  40% { opacity: 1; }
+}
+
+.goal-confirm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--green-border);
+  border-radius: 14px;
+  background: var(--green-tint);
+}
+
+.goal-suggested-text {
+  margin: 0;
+  color: var(--green-explain-text);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.goal-confirm-question {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.goal-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.goal-confirm-actions .goal-relink {
+  align-self: flex-start;
+}
+
+.goal-manual-date {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.goal-manual-date input[type='date'] {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--ink);
+}
+
+.curriculum-weeks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.curriculum-day {
+  padding: 10px 0;
+  border-top: 1px solid rgba(226, 212, 174, 0.85);
+}
+
+.curriculum-day:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.curriculum-day-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-softer);
+  font-weight: 700;
+}
+
+.curriculum-day-topic {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.curriculum-day-checkpoint {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--green-tint);
+  border: 1px solid var(--green-border);
+  color: var(--green-explain-text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .tag-button {
   border: none;
   cursor: pointer;

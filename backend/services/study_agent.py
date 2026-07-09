@@ -2,6 +2,7 @@
 """Study Agent helpers for summary, quiz generation, grading, and tutoring."""
 
 import asyncio
+import re
 from datetime import date, timedelta
 from math import ceil
 
@@ -448,6 +449,13 @@ You do not have live web browsing. If exact official exam dates are not present 
 do not pretend they are confirmed. Give an estimated schedule basis and tell the learner to adjust
 the plan after confirming the official exam date.
 
+Do not include citation labels or source markers such as "발췌 0", "발췌 43에서", "출처 1", "[0]", or "(p.1)"
+anywhere in the output. Also never append a bare parenthetical number after a concept/topic name as a
+reference tag, e.g. "캡슐화(033)" or "소프트웨어 공학의 기본 원칙(001)" — the numbers in the "--- 발췌 N ---"
+context headers are internal excerpt indices for your own grounding only; never echo them, with or without
+the word "발췌". Write goals, tasks, and checkpoints as plain study instructions, referring to concepts by
+name only.
+
 Return JSON only:
 {{
   "certification_name": "certification name",
@@ -588,6 +596,12 @@ Placement test results:
 Study-material context:
 {context}
 
+Do not include citation labels or source markers such as "발췌 0", "발췌 43에서", "출처 1", "[0]", or "(p.1)"
+anywhere in the output. Also never append a bare parenthetical number after a concept/topic name as a
+reference tag, e.g. "캡슐화(033)" or "소프트웨어 공학의 기본 원칙(001)" — the numbers in the "--- 발췌 N ---"
+context headers are internal excerpt indices for your own grounding only; never echo them, with or without
+the word "발췌". Write themes as plain study topics, referring to concepts by name only.
+
 Return JSON only:
 {{
   "weeks": [
@@ -604,7 +618,8 @@ The weeks array length must be exactly {total_weeks}, numbered 1 to {total_weeks
             return [
                 {
                     "week_number": index + 1,
-                    "theme": str(week.get("theme") or f"{index + 1}주차 학습").strip(),
+                    "theme": _clean_source_labels(str(week.get("theme") or f"{index + 1}주차 학습").strip())
+                    or f"{index + 1}주차 학습",
                     "planned_hours": float(week.get("planned_hours") or 0) or None,
                 }
                 for index, week in enumerate(weeks)
@@ -632,6 +647,13 @@ Key concepts:
 Study-material context:
 {context}
 
+Do not include citation labels or source markers such as "발췌 0", "발췌 43에서", "출처 1", "[0]", or "(p.1)"
+anywhere in the output. Also never append a bare parenthetical number after a concept/topic name as a
+reference tag, e.g. "캡슐화(033)" or "소프트웨어 공학의 기본 원칙(001)" — the numbers in the "--- 발췌 N ---"
+context headers are internal excerpt indices for your own grounding only; never echo them, with or without
+the word "발췌". Write focus_topic, tasks, and checkpoint as plain study instructions, referring to
+concepts by name only.
+
 Return JSON only:
 {{
   "days": [
@@ -655,10 +677,10 @@ The days array length must be exactly {day_count}, with day_offset from 0 to {da
                 {
                     "day_offset": index,
                     "date": (week_start_date + timedelta(days=index)).isoformat(),
-                    "focus_topic": str(day.get("focus_topic") or "").strip(),
+                    "focus_topic": _clean_source_labels(str(day.get("focus_topic") or "").strip()),
                     "planned_minutes": int(day.get("planned_minutes") or 60),
-                    "tasks": _as_text_list(day.get("tasks")),
-                    "checkpoint": str(day.get("checkpoint") or "").strip(),
+                    "tasks": _clean_source_labels(_as_text_list(day.get("tasks"))),
+                    "checkpoint": _clean_source_labels(str(day.get("checkpoint") or "").strip()),
                 }
                 for index, day in enumerate(days)
             ]
@@ -782,23 +804,40 @@ def _normalize_learning_plan(result: dict, certification_name: str) -> dict:
         normalized_weeks.append(
             {
                 "week": int(week.get("week") or index),
-                "theme": week.get("theme") or f"{index}주차 학습",
-                "goals": _as_text_list(week.get("goals")),
-                "study_tasks": _as_text_list(week.get("study_tasks")),
-                "review_tasks": _as_text_list(week.get("review_tasks")),
-                "checkpoint": week.get("checkpoint") or "",
+                "theme": _clean_source_labels(week.get("theme")) or f"{index}주차 학습",
+                "goals": _clean_source_labels(_as_text_list(week.get("goals"))),
+                "study_tasks": _clean_source_labels(_as_text_list(week.get("study_tasks"))),
+                "review_tasks": _clean_source_labels(_as_text_list(week.get("review_tasks"))),
+                "checkpoint": _clean_source_labels(week.get("checkpoint")) or "",
             }
         )
     return {
         "certification_name": result.get("certification_name") or certification_name,
-        "exam_schedule_note": result.get("exam_schedule_note") or "공식 시험일을 확인한 뒤 학습 기간을 조정하세요.",
-        "learner_level_summary": result.get("learner_level_summary") or "",
+        "exam_schedule_note": _clean_source_labels(result.get("exam_schedule_note")) or "공식 시험일을 확인한 뒤 학습 기간을 조정하세요.",
+        "learner_level_summary": _clean_source_labels(result.get("learner_level_summary")) or "",
         "recommended_total_weeks": int(result.get("recommended_total_weeks") or len(normalized_weeks) or 4),
         "weekly_plan": normalized_weeks,
-        "daily_routine": _as_text_list(result.get("daily_routine")),
-        "weak_topic_strategy": _as_text_list(result.get("weak_topic_strategy")),
-        "adjustment_tips": _as_text_list(result.get("adjustment_tips")),
+        "daily_routine": _clean_source_labels(_as_text_list(result.get("daily_routine"))),
+        "weak_topic_strategy": _clean_source_labels(_as_text_list(result.get("weak_topic_strategy"))),
+        "adjustment_tips": _clean_source_labels(_as_text_list(result.get("adjustment_tips"))),
     }
+
+
+_SOURCE_LABEL_RE = re.compile(
+    r"(?:발췌|출처)\s*\d+\s*(?:\([^)]+\))?\s*(?:의|에서|:)?\s*"
+    r"|\[\d+\]\s*"
+    r"|\(p\.\s*\d+\)\s*"
+)
+
+
+def _clean_source_labels(text):
+    """RAG 컨텍스트의 '--- 발췌 N ---' 라벨이 프롬프트 지시를 어기고 출력에
+    그대로 새어나오는 경우를 대비한 후처리 필터 (routers/quizzes.py의 동일 패턴)."""
+    if text is None:
+        return text
+    if isinstance(text, list):
+        return [_clean_source_labels(item) for item in text]
+    return _SOURCE_LABEL_RE.sub("", str(text)).strip()
 
 
 def _as_text_list(value) -> list[str]:

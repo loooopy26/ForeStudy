@@ -51,11 +51,12 @@ const PATH_ALIASES = {
 }
 
 function resolveRouteFromPath() {
-  const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '')
   const landingPage = getCurrentUser() ? 'profile' : 'auth'
   if (!path) return { page: landingPage, sub: undefined }
   if (path in SCREENS) return { page: path, sub: undefined }
-  if (path in PATH_ALIASES) return PATH_ALIASES[path]
+  const lowerPath = path.toLowerCase()
+  if (lowerPath in PATH_ALIASES) return PATH_ALIASES[lowerPath]
   return { page: landingPage, sub: undefined }
 }
 

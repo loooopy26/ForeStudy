@@ -229,6 +229,17 @@ export function saveCertGoal(certificationName, targetExamDate) {
   })
 }
 
+export function getCertGoal(certificationName) {
+  return apiRequest(`/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}`)
+}
+
+export function sendCertGoalChat(certificationName, message, threadId) {
+  return apiRequest('/api/cert-goals/agent-chat', {
+    method: 'POST',
+    body: JSON.stringify({ certification_name: certificationName, message, thread_id: threadId || null }),
+  })
+}
+
 export function createCurriculum(goalId, attemptId) {
   return apiRequest(`/api/cert-goals/${goalId}/curricula`, {
     method: 'POST',
