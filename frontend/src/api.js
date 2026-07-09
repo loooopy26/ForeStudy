@@ -137,6 +137,10 @@ export function addCurrentCertificate(title) {
   return nextCertificates
 }
 
+export async function getCertificateInfo(name) {
+  return apiRequest(`/api/certifications/info?name=${encodeURIComponent(name)}`)
+}
+
 export async function getStats(userId) {
   return apiRequest(`/stats/${userId}`)
 }

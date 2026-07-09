@@ -3,7 +3,7 @@ import MainNav from './MainNav'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
-import { clearCurrentUser, getCurrentCertificates, getDemoUser, getStats } from './api'
+import { clearCurrentUser, getCertificateInfo, getCurrentCertificates, getDemoUser, getStats } from './api'
 import {
   AcornIcon,
   BellIcon,
@@ -18,10 +18,37 @@ import './Profile.css'
 // SQLite 타이머 데모 유저(Library.jsx의 TIMER_DEMO_USER_ID)와 동일한 고정 id.
 const TIMER_DEMO_USER_ID = 1
 
+const INFO_LABELS = {
+  description: '시험 회차',
+  docRegStartDt: '필기 접수 시작',
+  docRegEndDt: '필기 접수 종료',
+  docExamDt: '필기 시험일',
+  docPassDt: '필기 합격 발표',
+  pracRegStartDt: '실기 접수 시작',
+  pracRegEndDt: '실기 접수 종료',
+  pracExamStartDt: '실기 시험 시작',
+  pracExamEndDt: '실기 시험 종료',
+  pracPassDt: '최종 합격 발표',
+  contents: '구분',
+  fee: '응시 수수료',
+}
+
+function formatInfoValue(key, value) {
+  if (/Dt$/.test(key) && /^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)}`
+  }
+  if (/fee/i.test(key) && /^\d+$/.test(value)) return `${Number(value).toLocaleString()}원`
+  return value
+}
+
 function Profile({ onNavigate }) {
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
   const [certificates] = useState(getCurrentCertificates)
+  const [selectedCertificate, setSelectedCertificate] = useState(null)
+  const [certificateInfo, setCertificateInfo] = useState(null)
+  const [certificateInfoError, setCertificateInfoError] = useState('')
+  const [certificateInfoLoading, setCertificateInfoLoading] = useState(false)
 
   useEffect(() => {
     getStats(TIMER_DEMO_USER_ID).then(setStats).catch(() => {})
@@ -31,6 +58,26 @@ function Profile({ onNavigate }) {
   const handleLogout = () => {
     clearCurrentUser()
     onNavigate('auth')
+  }
+
+  const openCertificateInfo = async (certificate) => {
+    setSelectedCertificate(certificate)
+    setCertificateInfo(null)
+    setCertificateInfoError('')
+    setCertificateInfoLoading(true)
+    try {
+      setCertificateInfo(await getCertificateInfo(certificate.title))
+    } catch (error) {
+      setCertificateInfoError(error.message)
+    } finally {
+      setCertificateInfoLoading(false)
+    }
+  }
+
+  const closeCertificateInfo = () => {
+    setSelectedCertificate(null)
+    setCertificateInfo(null)
+    setCertificateInfoError('')
   }
 
   const statRows = [
@@ -167,8 +214,8 @@ function Profile({ onNavigate }) {
                     <p>{certificate.subtitle}</p>
                   </div>
                   <div className="cert-progress">진행률 {certificate.progress}%</div>
-                  <button type="button" className="start-button cert-start" onClick={() => onNavigate('village')}>
-                    시작하기
+                  <button type="button" className="start-button cert-start" onClick={() => openCertificateInfo(certificate)}>
+                    정보 보기
                   </button>
                 </article>
               ))}
@@ -185,6 +232,68 @@ function Profile({ onNavigate }) {
           </button>
         </section>
       </div>
+
+      {selectedCertificate && (
+        <div className="cert-info-backdrop" onMouseDown={(event) => event.target === event.currentTarget && closeCertificateInfo()}>
+          <section className="cert-info-modal" role="dialog" aria-modal="true" aria-labelledby="cert-info-title">
+            <div className="cert-info-header">
+              <div>
+                <p>국가기술자격 시험정보</p>
+                <h2 id="cert-info-title">{selectedCertificate.title}</h2>
+              </div>
+              <button type="button" onClick={closeCertificateInfo} aria-label="닫기">×</button>
+            </div>
+
+            {certificateInfoLoading && <p className="cert-info-status">공공데이터에서 정보를 불러오는 중입니다.</p>}
+            {certificateInfoError && (
+              <div className="cert-info-error" role="alert">
+                <p>{certificateInfoError}</p>
+                <div className="cert-info-error-actions">
+                  <button type="button" onClick={() => openCertificateInfo(selectedCertificate)}>
+                    다시 시도
+                  </button>
+                  <a href="https://www.q-net.or.kr" target="_blank" rel="noreferrer">
+                    Q-Net에서 확인
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {certificateInfo && (
+              <div className="cert-info-content">
+                <div className="cert-info-summary">
+                  <span>종목코드 {certificateInfo.code}</span>
+                  {certificateInfo.series && <span>{certificateInfo.series}</span>}
+                  {certificateInfo.sub_category && <span>{certificateInfo.sub_category}</span>}
+                </div>
+
+                <h3>시험 일정</h3>
+                {certificateInfo.schedules.length > 0 ? certificateInfo.schedules.slice(0, 3).map((schedule, index) => (
+                  <article className="cert-schedule" key={`${schedule.description || 'schedule'}-${index}`}>
+                    {Object.entries(schedule).map(([key, value]) => (
+                      <div key={key}>
+                        <span>{INFO_LABELS[key] || key}</span>
+                        <strong>{formatInfoValue(key, value)}</strong>
+                      </div>
+                    ))}
+                  </article>
+                )) : <p className="cert-info-status">등록된 시험 일정이 없습니다.</p>}
+
+                <h3>응시 수수료</h3>
+                {certificateInfo.fees.length > 0 ? certificateInfo.fees.map((fee, index) => (
+                  <div className="cert-fee" key={index}>
+                    {Object.entries(fee).map(([key, value]) => (
+                      <span key={key}>{INFO_LABELS[key] || key}: <strong>{formatInfoValue(key, value)}</strong></span>
+                    ))}
+                  </div>
+                )) : <p className="cert-info-status">등록된 수수료 정보가 없습니다.</p>}
+
+                <a href={certificateInfo.source_url} target="_blank" rel="noreferrer">공공데이터포털 원문 보기</a>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       <MainNav active="profile" onNavigate={onNavigate} />
     </div>

@@ -15,6 +15,7 @@ from routers import (
     achievements,
     auth,
     character,
+    certifications,
     dashboard,
     goals,
     growth_reports,
@@ -103,5 +104,6 @@ for api_router in [
     shop.router,
     room.router,
     character.router,
+    certifications.router,
 ]:
     register_router(api_router)
