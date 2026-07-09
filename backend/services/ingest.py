@@ -8,8 +8,9 @@ from pathlib import Path
 
 import httpx
 
+from agents import graph as agent_graph
 from db import get_pool, vector_literal
-from services import study_agent, upstage
+from services import upstage
 from services.chunking import build_chunks
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
             if len(sample) + len(c.content) > _SUMMARY_INPUT_CHARS:
                 break
             sample += c.content + "\n"
-        summary_result = await study_agent.summarize(title, sample)
+        summary_result = await agent_graph.run_summarize(title, sample)
 
         await pool.execute(
             """
@@ -87,13 +88,33 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
 
     except Exception as exc:
         logger.exception("ingest 실패: material=%s", study_material_id)
-        if isinstance(exc, httpx.HTTPStatusError):
-            error_message = f"Upstage API 오류 ({exc.response.status_code}): {exc.response.text[:300]}"
-        else:
-            # httpcore.ReadTimeout 등 일부 예외는 str(exc)가 빈 문자열이라 예외 타입명으로 대체
-            error_message = str(exc)[:500] or f"{type(exc).__name__} (메시지 없음)"
+        error_message = _describe_ingest_error(exc)
         await pool.execute(
             "UPDATE study_materials SET processed_status = 'failed', processing_error = $2 WHERE id = $1",
             study_material_id,
             error_message,
         )
+
+
+def _describe_ingest_error(exc: Exception) -> str:
+    """자주 발생하는 Upstage 오류는 사용자가 바로 조치할 수 있는 한국어 안내로 바꾸고,
+    그 외에는 기존처럼 원본 오류를 그대로 보여준다 (디버깅용)."""
+    if not isinstance(exc, httpx.HTTPStatusError):
+        # httpcore.ReadTimeout 등 일부 예외는 str(exc)가 빈 문자열이라 예외 타입명으로 대체
+        return str(exc)[:500] or f"{type(exc).__name__} (메시지 없음)"
+
+    try:
+        body = exc.response.json()
+        error = body.get("error") or {}
+        code = error.get("code")
+        message = error.get("message") or ""
+    except (ValueError, AttributeError):
+        code = None
+        message = exc.response.text[:300]
+
+    if code == "invalid_document":
+        if "password" in message.lower():
+            return "비밀번호로 보호된 파일은 업로드할 수 없습니다. 비밀번호를 해제한 뒤 다시 업로드해 주세요."
+        return f"이 파일을 처리할 수 없습니다: {message[:200]}" if message else "이 파일을 처리할 수 없습니다. 파일이 손상되지 않았는지 확인해 주세요."
+
+    return f"Upstage API 오류 ({exc.response.status_code}): {exc.response.text[:300]}"

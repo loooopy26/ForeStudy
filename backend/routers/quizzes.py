@@ -9,8 +9,9 @@ from datetime import date
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from agents import graph as agent_graph
 from db import get_pool
-from services import rag, study_agent
+from services import rag
 
 router = APIRouter(prefix="/api", tags=["AI quiz"])
 
@@ -118,15 +119,18 @@ async def _create_material_quiz(
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
-    questions = await study_agent.generate_quiz(
-        rag.format_context(chunks),
-        num_questions=forced_num_questions,
-        difficulty=requested_difficulty,
-        weak_topics=weak_topics or None,
-        question_mix=question_mix,
-        quiz_kind=quiz_kind,
-        learner_profile=learner_profile,
-    )
+    try:
+        questions = await agent_graph.run_generate_quiz(
+            rag.format_context(chunks),
+            num_questions=forced_num_questions,
+            difficulty=requested_difficulty,
+            weak_topics=weak_topics or None,
+            question_mix=question_mix,
+            quiz_kind=quiz_kind,
+            learner_profile=learner_profile,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
     if len(questions) < forced_num_questions:
         raise HTTPException(
             502,
@@ -263,15 +267,18 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
-    questions = await study_agent.generate_quiz(
-        rag.format_context(chunks),
-        num_questions=num_questions,
-        difficulty=attempt["difficulty"] or "normal",
-        weak_topics=weak_topics,
-        question_mix={"multiple_choice": num_questions},
-        quiz_kind="study_review",
-        learner_profile=None,
-    )
+    try:
+        questions = await agent_graph.run_generate_quiz(
+            rag.format_context(chunks),
+            num_questions=num_questions,
+            difficulty=attempt["difficulty"] or "normal",
+            weak_topics=weak_topics,
+            question_mix={"multiple_choice": num_questions},
+            quiz_kind="study_review",
+            learner_profile=None,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
     if len(questions) < num_questions:
         raise HTTPException(
             502, f"AI generated only {len(questions)} questions. Expected {num_questions}."
@@ -342,7 +349,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
         if user_answer is None:
             is_correct = False
         elif question["question_type"] == "short_answer":
-            is_correct = await study_agent.grade_short_answer(
+            is_correct = await agent_graph.run_grade_short_answer(
                 question["question_text"], question["correct_answer"], user_answer
             )
         else:
@@ -461,7 +468,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     if wrong:
         feedbacks = await asyncio.gather(
             *[
-                study_agent.analyze_wrong_note(
+                agent_graph.run_analyze_wrong_note(
                     question_text=item["question_text"],
                     correct_answer=item["correct_answer"],
                     user_answer=item["user_answer"],
@@ -503,7 +510,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     previous_profile = await _get_learning_profile(
         pool, user_id, str(quiz["study_material_id"]) if quiz["study_material_id"] else None
     )
-    learning_evaluation = await study_agent.evaluate_learning_level(
+    learning_evaluation = await agent_graph.run_evaluate_learning_level(
         quiz_type=quiz["quiz_type"],
         quiz_difficulty=quiz["difficulty"],
         results=results,
@@ -526,7 +533,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                 str(quiz["study_material_id"]), topics or "핵심 개념", top_k=4
             )
             context = rag.format_context(chunks)
-        analysis = await study_agent.analyze_wrong_answers(
+        analysis = await agent_graph.run_analyze_wrong_answers(
             [
                 {
                     "question_text": item["question_text"],
@@ -687,7 +694,7 @@ async def get_wrong_answer_notes(attempt_id: str):
     if missing:
         analyses = await asyncio.gather(
             *[
-                study_agent.analyze_wrong_note(
+                agent_graph.run_analyze_wrong_note(
                     question_text=item["question_text"],
                     correct_answer=item["correct_answer"],
                     user_answer=item["user_answer"],
@@ -829,7 +836,7 @@ async def submit_wrong_answer_review_item(session_id: str, item_id: str, req: Re
 
     timed_out = req.elapsed_seconds > row["time_limit_seconds"]
     if row["question_type"] == "short_answer":
-        is_correct = await study_agent.grade_short_answer(
+        is_correct = await agent_graph.run_grade_short_answer(
             row["question_text"], row["correct_answer"], req.answer
         )
     else:

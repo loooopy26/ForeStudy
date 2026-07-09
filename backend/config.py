@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     # 선택값으로 둔다: 이 키가 없어도 goals/quests 등 Upstage와 무관한 라우터는
     # 정상 기동해야 하므로, 앱 시작 시점이 아니라 실제 Upstage 호출 시점에 검증한다.
     upstage_api_key: str | None = None
-    public_data_service_key: str | None = None
     database_url: str = "postgresql://postgres:postgres@localhost:5432/forestudy"
 
     # TMAP API (위치 기반 학습장소 추천 / 시험 당일 어시스턴트). 없어도 서버는 기동되고

@@ -3,8 +3,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from agents import graph as agent_graph
 from db import get_pool
-from services import upstage
 
 router = APIRouter(prefix="/api/reports", tags=["학습 리포트"])
 
@@ -41,20 +41,12 @@ async def create_report(req: ReportCreateRequest):
         )
         weak_points = [dict(r) for r in weak_rows]
 
-    quiz_part = (
-        f"퀴즈 결과: {attempt['correct_count']}/{attempt['total_count']} ({attempt['score_pct']}점)\n"
-        + "\n".join(f"- 취약 주제 {w['topic_tag']} (점수 {w['weakness_score']}): {w['recommendation']}" for w in weak_points)
-        if attempt
-        else "퀴즈 미응시"
+    report_text = await agent_graph.run_generate_report(
+        material_title=material["title"],
+        material_summary=material["ai_summary"],
+        attempt=attempt,
+        weak_points=weak_points,
     )
-    prompt = f"""학습 자료 "{material['title']}"에 대한 학습 리포트를 작성하세요.
-
-자료 요약: {material['ai_summary'] or '(요약 없음)'}
-
-{quiz_part}
-
-학생을 격려하는 어조로, 잘한 점과 보완할 점, 다음 학습 추천을 담아 5~7문장으로 작성하세요."""
-    report_text = await upstage.chat([{"role": "user", "content": prompt}])
 
     wrong_analysis = "\n".join(
         f"[{w['topic_tag']}] {w['recommendation']}" for w in weak_points

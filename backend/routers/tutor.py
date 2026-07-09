@@ -3,8 +3,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from agents import graph as agent_graph
 from db import get_or_create_demo_user, get_pool
-from services import rag, study_agent
+from services import rag
 
 router = APIRouter(prefix="/api/tutor", tags=["튜터 챗봇"])
 
@@ -65,7 +66,7 @@ async def send_message(session_id: str, req: MessageRequest):
         if chunks:
             context = rag.format_context(chunks)
 
-    reply = await study_agent.tutor_reply(history, context)
+    reply = await agent_graph.run_tutor_reply(history, context)
 
     await pool.executemany(
         """

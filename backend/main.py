@@ -15,7 +15,7 @@ from routers import (
     achievements,
     auth,
     character,
-    certifications,
+    cert_goals,
     dashboard,
     goals,
     growth_reports,
@@ -94,6 +94,7 @@ for api_router in [
     dashboard.router,
     village.router,
     materials.router,
+    cert_goals.router,
     learning_plans.router,
     quests.router,
     timer.router,
@@ -107,7 +108,6 @@ for api_router in [
     shop.router,
     room.router,
     character.router,
-    certifications.router,
     location.router,
 ]:
     register_router(api_router)

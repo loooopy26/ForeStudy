@@ -6,8 +6,9 @@ from datetime import date
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from agents import graph as agent_graph
 from db import get_pool
-from services import rag, study_agent
+from services import rag
 
 router = APIRouter(prefix="/api/learning-plans", tags=["learning plans"])
 
@@ -65,7 +66,7 @@ async def create_learning_plan(req: LearningPlanCreateRequest):
         except (TypeError, json.JSONDecodeError):
             key_concepts = []
 
-    plan = await study_agent.generate_learning_plan(
+    plan = await agent_graph.run_generate_learning_plan(
         certification_name=req.certification_name,
         material_title=attempt["material_title"] or req.certification_name,
         current_date=date.today().isoformat(),

@@ -96,7 +96,10 @@ async def _generate_quiz_batch(
     if question_type == "multiple_choice":
         type_instruction = (
             "Every question's question_type must be exactly \"multiple_choice\". "
-            "Provide exactly 4 options and set correct_answer to the exact option text."
+            "Provide exactly 4 options and set correct_answer to the exact option text. "
+            "Each option must be a distinct, substantive answer choice written out in full — "
+            "never a bare letter like \"A\"/\"B\"/\"C\"/\"D\", never a placeholder, and never "
+            "duplicated or reworded from another option in the same question."
         )
         example_fields = '"question_type": "multiple_choice",\n      "options": ["option1", "option2", "option3", "option4"],\n      "correct_answer": "the exact matching option text",'
     elif question_type == "short_answer":
@@ -167,16 +170,48 @@ difficulty_score must be an integer from 1 to 100."""
             else:
                 question["question_type"] = question.get("question_type") or question_type
         last_normalized = normalized
-        broken = [
-            q for q in normalized
-            if q["question_type"] == "multiple_choice" and len(q["options"]) < 2
-        ]
+        broken = [q for q in normalized if not _is_question_well_formed(q)]
         if not broken and len(normalized) == count:
             return normalized
         # The model sometimes drops the "options" array for a question (more common on
-        # "hard" items) or returns fewer items than requested. Retry generation instead
-        # of silently shipping an incomplete/unanswerable batch.
-    return last_normalized
+        # "hard" items), returns duplicate/placeholder options, or returns fewer items
+        # than requested. Retry generation instead of silently shipping a broken quiz.
+    raise RuntimeError(
+        f"AI가 {count}개의 {question_type} 문제를 3번 시도해도 유효하게 만들지 못했습니다 "
+        "(중복되거나 비어있는 보기 포함)."
+    )
+
+
+def _is_question_well_formed(question: dict) -> bool:
+    """퀴즈로 내보내기 전 최소한의 무결성 검사.
+
+    사용자에게 보여주기 전에 걸러야 하는 실제 사례: 보기 두 개가 완전히 같은 문장인
+    경우(선택 시 두 버튼이 동시에 체크됨), 보기가 "A"/"B" 같은 자리표시자만 있는 경우,
+    correct_answer가 실제 보기 중 어느 것과도 일치하지 않아 채점이 항상 틀리게 되는 경우."""
+    question_text = str(question.get("question_text") or "").strip()
+    correct_answer = str(question.get("correct_answer") or "").strip()
+    if len(question_text) < 5 or not correct_answer:
+        return False
+
+    question_type = question.get("question_type")
+    if question_type == "multiple_choice":
+        options = [str(o).strip() for o in (question.get("options") or [])]
+        if len(options) < 2:
+            return False
+        if any(len(o) < 3 for o in options):
+            return False
+        if len({o.lower() for o in options}) != len(options):
+            return False
+        if correct_answer.lower() not in {o.lower() for o in options}:
+            return False
+    elif question_type == "short_answer":
+        if len(correct_answer) < 2:
+            return False
+    else:
+        options = [str(o).strip() for o in (question.get("options") or [])]
+        if options and correct_answer not in options:
+            return False
+    return True
 
 
 async def grade_short_answer(question: str, correct_answer: str, user_answer: str) -> bool:
@@ -403,6 +438,34 @@ Rules:
         temperature=0.25,
     )
     return _normalize_learning_plan(result, certification_name)
+
+
+async def generate_report(
+    *,
+    material_title: str,
+    material_summary: str | None,
+    attempt: dict | None,
+    weak_points: list[dict],
+) -> str:
+    """학습 리포트 생성. routers/reports.py에서 이관 — 프롬프트는 그대로이며
+    아직 _SYSTEM/JSON 모드를 적용하지 않았다 (톤 변화는 별도 승인 필요)."""
+    quiz_part = (
+        f"퀴즈 결과: {attempt['correct_count']}/{attempt['total_count']} ({attempt['score_pct']}점)\n"
+        + "\n".join(
+            f"- 취약 주제 {w['topic_tag']} (점수 {w['weakness_score']}): {w['recommendation']}"
+            for w in weak_points
+        )
+        if attempt
+        else "퀴즈 미응시"
+    )
+    prompt = f"""학습 자료 "{material_title}"에 대한 학습 리포트를 작성하세요.
+
+자료 요약: {material_summary or '(요약 없음)'}
+
+{quiz_part}
+
+학생을 격려하는 어조로, 잘한 점과 보완할 점, 다음 학습 추천을 담아 5~7문장으로 작성하세요."""
+    return await upstage.chat([{"role": "user", "content": prompt}])
 
 
 async def tutor_reply(history: list[dict], context: str | None) -> str:

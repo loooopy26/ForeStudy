@@ -38,6 +38,9 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
     await pool.execute(
         "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS processing_error text"
     )
+    await pool.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_certifications_name ON certifications (name)"
+    )
 
 
 async def close_pool() -> None:

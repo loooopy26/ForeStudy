@@ -110,6 +110,8 @@ CREATE TABLE certifications (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_certifications_name ON certifications (name);
+
 CREATE TABLE cert_exam_schedules (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     certification_id   UUID NOT NULL REFERENCES certifications(id) ON DELETE CASCADE,

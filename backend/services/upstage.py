@@ -83,6 +83,36 @@ async def chat_json(messages: list[dict], **kwargs) -> dict:
     return json.loads(text)
 
 
+async def chat_with_tools(
+    messages: list[dict],
+    *,
+    tools: list[dict],
+    tool_choice: str | dict = "auto",
+    temperature: float = 0.2,
+    max_tokens: int | None = None,
+) -> dict:
+    """Solar의 OpenAI 호환 tool-calling 응답 원본 메시지를 반환한다."""
+    body: dict = {
+        "model": settings.upstage_chat_model,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": tool_choice,
+        "temperature": temperature,
+    }
+    if max_tokens:
+        body["max_tokens"] = max_tokens
+
+    async with httpx.AsyncClient(timeout=240) as client:
+        resp = await client.post(
+            f"{settings.upstage_base_url}/chat/completions",
+            headers={**_auth_headers(), "Content-Type": "application/json"},
+            json=body,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Upstage tool-calling failed: {resp.status_code} {resp.text}")
+        return resp.json()["choices"][0]["message"]
+
+
 async def embed(texts: list[str], *, kind: str = "passage") -> list[list[float]]:
     """텍스트 목록을 임베딩. kind: 'passage'(문서 저장용) | 'query'(검색용)."""
     model = (

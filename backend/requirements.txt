@@ -8,3 +8,5 @@ asyncpg
 httpx
 python-multipart
 pypdf
+langgraph
+beautifulsoup4
