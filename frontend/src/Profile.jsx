@@ -248,6 +248,9 @@ function Profile({ onNavigate }) {
               {deleteConfirmOpen ? (
                 <div className="cert-delete-confirm" role="alert">
                   <p>삭제하시겠습니까?</p>
+                  <p className="cert-delete-warning">
+                    이 자격증으로 생성된 학습 자료 요약, 퀴즈, 학습 플랜이 함께 삭제되며 되돌릴 수 없습니다.
+                  </p>
                   {certDeleteError && <p className="cert-delete-error">{certDeleteError}</p>}
                   <div>
                     <button

@@ -113,7 +113,7 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
               <span>/ {result.total_count}</span>
             </div>
             <div>
-              <div className="done-title">학습 플랜 준비 완료</div>
+              <div className="done-title">{plan ? '학습 플랜 준비 완료' : '학습 플랜 생성 중'}</div>
               <div className="done-desc">
                 현재 수준: {result.learning_evaluation?.mastery_level || '-'}
                 <br />
@@ -127,9 +127,10 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
           <button
             type="button"
             className="cta-button"
+            disabled={!plan}
             onClick={() => onNavigate('learningPlan', { planData: { plan, attemptId } })}
           >
-            학습 플랜 계획 확인
+            {plan ? '학습 플랜 계획 확인' : '학습 플랜 생성 중...'}
           </button>
         </div>
       </>

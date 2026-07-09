@@ -639,9 +639,8 @@
 
 .cert-delete-confirm {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .cert-delete-confirm p {
@@ -651,8 +650,22 @@
   font-weight: 800;
 }
 
+.cert-delete-warning {
+  color: #a3433b !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.4;
+}
+
+.cert-delete-error {
+  color: #a3433b !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+}
+
 .cert-delete-confirm div {
   display: flex;
+  justify-content: flex-end;
   gap: 7px;
 }
 
