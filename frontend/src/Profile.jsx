@@ -5,6 +5,7 @@ import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
 import {
   clearCurrentUser,
+  deleteMaterial,
   getCurrentCertificates,
   getDemoUser,
   getStats,
@@ -35,6 +36,8 @@ function Profile({ onNavigate }) {
   const [certificates, setCertificates] = useState(getCurrentCertificates)
   const [selectedCertificate, setSelectedCertificate] = useState(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deletingCertificate, setDeletingCertificate] = useState(false)
+  const [certDeleteError, setCertDeleteError] = useState('')
 
   useEffect(() => {
     getStats(TIMER_DEMO_USER_ID).then(setStats).catch((err) => {
@@ -60,10 +63,21 @@ function Profile({ onNavigate }) {
     setDeleteConfirmOpen(false)
   }
 
-  const deleteSelectedCertificate = () => {
+  const deleteSelectedCertificate = async () => {
     if (!selectedCertificate) return
-    setCertificates(removeCurrentCertificate(selectedCertificate.id))
-    closeCertificateInfo()
+    setDeletingCertificate(true)
+    setCertDeleteError('')
+    try {
+      if (selectedCertificate.materialId) {
+        await deleteMaterial(selectedCertificate.materialId)
+      }
+      setCertificates(removeCurrentCertificate(selectedCertificate.id))
+      closeCertificateInfo()
+    } catch (err) {
+      setCertDeleteError(err.message || '학습 자료 삭제에 실패했습니다.')
+    } finally {
+      setDeletingCertificate(false)
+    }
   }
 
   const statRows = [
@@ -234,12 +248,23 @@ function Profile({ onNavigate }) {
               {deleteConfirmOpen ? (
                 <div className="cert-delete-confirm" role="alert">
                   <p>삭제하시겠습니까?</p>
+                  {certDeleteError && <p className="cert-delete-error">{certDeleteError}</p>}
                   <div>
-                    <button type="button" className="cert-delete-cancel" onClick={() => setDeleteConfirmOpen(false)}>
+                    <button
+                      type="button"
+                      className="cert-delete-cancel"
+                      onClick={() => setDeleteConfirmOpen(false)}
+                      disabled={deletingCertificate}
+                    >
                       취소
                     </button>
-                    <button type="button" className="cert-delete-confirm-button" onClick={deleteSelectedCertificate}>
-                      확인
+                    <button
+                      type="button"
+                      className="cert-delete-confirm-button"
+                      onClick={deleteSelectedCertificate}
+                      disabled={deletingCertificate}
+                    >
+                      {deletingCertificate ? '삭제 중…' : '확인'}
                     </button>
                   </div>
                 </div>

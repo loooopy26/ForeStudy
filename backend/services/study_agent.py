@@ -22,6 +22,43 @@ This summary is for exam study, so do not compress it into one vague paragraph.
 Keep it detailed enough to study from directly: preserve every definition, number,
 condition, example, and procedure that appears in the material.
 
+Before summarizing, distinguish learning content from layout/navigation artifacts.
+
+Ignore text that appears to be:
+- page numbers, running headers, footers, section indexes, table-of-contents page references
+- standalone numbers placed at line edges or after titles
+- repeated document labels, chapter labels, copyright/footer text
+- navigation-only entries that merely point to where content appears
+
+Do not summarize a table of contents as if it were the actual learning content.
+If the provided text is mostly a table of contents, produce only:
+1. a brief structural overview of the material
+2. the expected topics to study later
+3. a warning that detailed concept summary requires the actual body pages
+
+Keep numbers only when they are part of the actual concept, formula, condition, date, score, standard, procedure, or definition.
+When unsure, keep the concept but remove page-reference-like numbers.
+
+Line classification rule:
+Classify extracted lines internally as one of:
+- content: actual learning content
+- structure: chapter/section heading
+- artifact: page number, TOC page reference, header, footer, repeated label
+
+Use content and structure for the summary.
+Do not use artifact lines except when they are necessary to understand the document structure.
+
+Korean output instruction:
+요약 결과는 한국어로 작성한다.
+본문 개념, 정의, 조건, 절차, 예시, 공식, 기준, 시험 포인트는 유지한다.
+목차 페이지 번호, 우측 정렬된 페이지 참조 숫자, 반복되는 머리말/꼬리말, 단순 문서 장식 요소는 요약에 포함하지 않는다.
+
+예시 판단:
+- "1. 소프트웨어 설계 .... 12"에서 "12"는 페이지 참조일 가능성이 높으므로 제거한다.
+- "TCP 포트 80", "정규화 1NF/2NF/3NF", "응답 시간 3초 이하" 같은 숫자는 개념 일부이므로 유지한다.
+- 목차만 제공된 경우 세부 개념을 지어내지 말고, 교재 구조와 예상 학습 범위만 요약한다.
+- 전체 교재 본문이 제공된 경우 본문 중심으로 자세히 요약하되, 반복 라벨과 페이지 번호는 제외한다.
+
 Return JSON only:
 {{
   "summary": "A Korean study note, broken into sections/topics that follow the material's own structure. Each section should have a short heading and spell out concrete definitions, numbers, examples, and procedures. Aim for roughly 1500-2500 Korean words total — detailed, but not exhaustive to the point of restating the entire source. Markdown is fine.",

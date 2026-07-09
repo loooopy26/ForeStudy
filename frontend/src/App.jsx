@@ -5,6 +5,7 @@ import AddCert from './AddCert'
 import CertUpload from './CertUpload'
 import PlacementIntro from './PlacementIntro'
 import PlacementTest from './PlacementTest'
+import LearningPlanView from './LearningPlanView'
 import Library from './Library'
 import Quiz from './Quiz'
 import Review from './Review'
@@ -26,6 +27,7 @@ const SCREENS = {
   certUpload: CertUpload,
   placementIntro: PlacementIntro,
   placementTest: PlacementTest,
+  learningPlan: LearningPlanView,
   library: Library,
   quiz: Quiz,
   review: Review,
@@ -62,12 +64,14 @@ function App() {
   const [materialId, setMaterialId] = useState(() => getMaterialId() || null)
   const [selectedCert, setSelectedCert] = useState('')
   const [placementQuiz, setPlacementQuiz] = useState(null)
+  const [planData, setPlanData] = useState(null)
   const Screen = SCREENS[route.page] || Profile
 
   const navigate = (page, payload) => {
     if (payload?.cert) setSelectedCert(payload.cert)
     if (payload?.materialId) selectMaterial(payload.materialId)
     if (payload?.placementQuiz) setPlacementQuiz(payload.placementQuiz)
+    if (payload?.planData) setPlanData(payload.planData)
     setRoute({ page, sub: undefined })
     window.history.pushState({}, '', page === 'auth' ? '/' : `/${page}`)
   }
@@ -87,6 +91,7 @@ function App() {
           initialSub={route.sub}
           certName={selectedCert}
           placementQuiz={placementQuiz}
+          planData={planData}
         />
       </div>
     </div>

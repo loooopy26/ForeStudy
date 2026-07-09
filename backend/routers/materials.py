@@ -121,6 +121,29 @@ async def get_material(
     return result
 
 
+@router.delete("/{material_id}", status_code=204)
+async def delete_material(
+    material_id: str = PathParam(..., description="삭제할 자료의 id(UUID)"),
+):
+    """자료와 그로부터 생성된 요약/청크/퀴즈를 함께 삭제한다.
+    (자격증 삭제 시 연결된 학습 자료를 정리하는 용도로도 쓰인다.)
+    quizzes.study_material_id는 ON DELETE SET NULL이라 study_materials만 지우면
+    퀴즈가 고아로 남는다 — 퀴즈부터 명시적으로 지운다."""
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT file_url FROM study_materials WHERE id = $1", material_id)
+    if row is None:
+        raise HTTPException(404, "자료를 찾을 수 없습니다")
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM quizzes WHERE study_material_id = $1", material_id)
+            await conn.execute("DELETE FROM study_materials WHERE id = $1", material_id)
+
+    if row["file_url"]:
+        Path(row["file_url"]).unlink(missing_ok=True)
+    return None
+
+
 @router.get("/{material_id}/search")
 async def search_material(
     material_id: str = PathParam(..., description="검색 대상 자료의 id(UUID)"),

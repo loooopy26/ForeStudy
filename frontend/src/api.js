@@ -184,6 +184,11 @@ export async function getMaterial(materialId) {
   return res.json()
 }
 
+export async function deleteMaterial(materialId) {
+  const res = await fetch(`${API_BASE}/api/materials/${materialId}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) throw new Error('자료 삭제에 실패했습니다')
+}
+
 export async function uploadMaterial(file, title = '') {
   const form = new FormData()
   form.append('file', file)
