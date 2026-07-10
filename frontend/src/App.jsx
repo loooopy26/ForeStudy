@@ -18,8 +18,6 @@ import StudyMap from './StudyMap'
 import StudyPlaces from './StudyPlaces'
 import ExamAssistant from './ExamAssistant'
 import Auth from './Auth'
-import ShopPage from './ShopPage'
-import RoomPage from './RoomPage'
 import { getCurrentUser, getMaterialId, setMaterialId as persistMaterialId } from './api'
 import './theme.css'
 import './Shell.css'
@@ -45,8 +43,6 @@ const SCREENS = {
   studyplaces: StudyPlaces,
   examassistant: ExamAssistant,
   auth: Auth,
-  shop: ShopPage,
-  room: RoomPage,
 }
 
 // 실제 화면 키(SCREENS) 외에 URL로 바로 들어갈 수 있는 별칭들.
