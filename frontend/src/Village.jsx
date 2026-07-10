@@ -9,34 +9,42 @@ const PLACES = [
   {
     key: 'board',
     label: '퀘스트 게시판',
-    top: '19%',
-    left: '21%',
+    top: '24%',
+    left: '18%',
     target: 'forest',
-    hotspot: { top: '31%', left: '20%', width: '32%', height: '13%' },
+    hotspot: { top: '36%', left: '20%', width: '24%', height: '20%' },
+  },
+  {
+    key: 'studymap',
+    label: '스터디맵',
+    top: '15%',
+    left: '63%',
+    target: 'studymap',
+    hotspot: { top: '23%', left: '62%', width: '18%', height: '14%' },
   },
   {
     key: 'library',
     label: '도서관',
-    top: '18%',
+    top: '23%',
     left: '85%',
     target: 'library',
-    hotspot: { top: '31%', left: '83%', width: '34%', height: '20%' },
+    hotspot: { top: '34%', left: '87%', width: '28%', height: '24%' },
   },
   {
     key: 'shop',
     label: '상점',
-    top: '55%',
-    left: '18%',
-    target:'shop',
-    hotspot: { top: '56%', left: '18%', width: '32%', height: '17%' },
+    top: '60%',
+    left: '15%',
+    target: 'shop',
+    hotspot: { top: '71%', left: '18%', width: '32%', height: '21%' },
   },
   {
     key: 'room',
     label: '내 방',
-    top: '53%',
+    top: '57%',
     left: '75%',
-    target:'room',
-    hotspot: { top: '55%', left: '76%', width: '37%', height: '23%' },
+    target: 'room',
+    hotspot: { top: '69%', left: '76%', width: '36%', height: '23%' },
   },
 ]
 
@@ -51,8 +59,11 @@ function Village({ onNavigate }) {
         <span className="village-title">마을</span>
         <div className="village-currency">
           <div className="currency-pill">
-            <AcornIcon size={16} />
-            <span>2,450</span>
+            <span className="currency-pill-lvl">Lv.12</span>
+            <div className="currency-pill-acorn">
+              <AcornIcon size={16} />
+              <span>2,450</span>
+            </div>
           </div>
         </div>
       </header>

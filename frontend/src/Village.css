@@ -15,7 +15,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: top center;
+  object-position: center center;
   z-index: 0;
 }
 
@@ -44,15 +44,24 @@
 .currency-pill {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 100px;
-  padding: 6px 11px;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 6px 12px;
   font-size: 13.5px;
   font-weight: 800;
   color: var(--ink);
-  box-shadow: 0 4px 10px -4px oklch(0.42 0.03 80 / 0.4);
+}
+
+.currency-pill-lvl {
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  padding-right: 9px;
+}
+
+.currency-pill-acorn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .village-map {
@@ -69,6 +78,7 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+
 
 .place-pin {
   position: absolute;

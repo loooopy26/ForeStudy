@@ -154,6 +154,16 @@
   display: none;
 }
 
+.scroll-area {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 0;
+  display: none;
+}
+
 .progress-row {
   display: flex;
   flex-direction: column;

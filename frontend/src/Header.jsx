@@ -16,7 +16,7 @@ function Header({ title, subtitle, icon, onBack, bordered = false, action }) {
       </div>
       <div className="header-right">
         {action}
-        <div className="header-badge">{icon}</div>
+        {icon && <div className="header-badge">{icon}</div>}
       </div>
     </header>
   )

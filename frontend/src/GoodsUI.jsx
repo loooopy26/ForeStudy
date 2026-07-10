@@ -13,8 +13,11 @@ export function GoodsHeader({ title, wallet, onBack, rightSlot }) {
       <span className="goods-title">{title}</span>
       {rightSlot ?? (
         <div className="goods-coin-badge">
-          <CoinIcon size={17} />
-          <span>{wallet.toLocaleString()}</span>
+          <span className="goods-lvl">Lv.12</span>
+          <div className="goods-acorn">
+            <CoinIcon size={17} />
+            <span>{wallet.toLocaleString()}</span>
+          </div>
         </div>
       )}
     </div>
