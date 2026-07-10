@@ -8,9 +8,14 @@
 from datetime import date, datetime
 from typing import Any
 
+from sqlalchemy.orm import Session
+
+from services.generated_item_repository import get_generated_item, to_item_dict
+
 # MVP 임시 저장소입니다.
 # 현재는 DB 없이 서버 메모리에 저장하므로 서버를 재시작하면 데이터가 초기화됩니다.
-# (유저 계정은 이제 DB의 users 테이블에 저장 → auth_service.py 참고)
+# (유저 계정은 이제 DB의 users 테이블에 저장 → auth_service.py 참고,
+#  AI 생성 아이템도 DB에 저장 → services/generated_item_repository.py 참고)
 materials: dict[int, dict[str, Any]] = {}
 timer_sessions: dict[int, dict[str, Any]] = {}
 study_logs: list[dict[str, Any]] = []
@@ -27,6 +32,16 @@ shop_items = [
     {"item_id": 2, "name": "초록 화분", "item_type": "decoration", "price_token": 20, "theme_required": None},
     {"item_id": 3, "name": "새싹 벽지", "item_type": "theme", "price_token": 50, "theme_required": "새싹 테마"},
 ]
+
+
+def find_owned_item(db: Session, user_id: int, item_id: int) -> dict[str, Any] | None:
+    # 상점 아이템(공용 카탈로그, 메모리)과 사용자가 생성한 커스텀 아이템(DB)을 모두 뒤져 찾습니다.
+    item = next((shop_item for shop_item in shop_items if shop_item["item_id"] == item_id), None)
+    if item is not None:
+        return item
+
+    generated = get_generated_item(db, user_id=user_id, item_id=item_id)
+    return to_item_dict(generated) if generated is not None else None
 
 next_material_id = 1
 next_timer_session_id = 1

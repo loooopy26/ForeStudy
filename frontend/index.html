@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet" />
+    <!-- TMap JS SDK: document.write로 실제 SDK 파일을 추가 로드하는 부트스트랩 로더라
+         파싱 중에 실행되는 일반 <script> 태그로 넣어야 한다 (동적 주입 시 document.write가
+         무시돼 window.Tmapv2가 빈 껍데기로 남는다 — src/tmapLoader.js 참고). -->
+    <script src="https://apis.openapi.sk.com/tmap/jsv2?version=1&appKey=%VITE_TMAP_APP_KEY%"></script>
   </head>
   <body>
     <div id="root"></div>

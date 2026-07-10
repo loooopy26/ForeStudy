@@ -8,7 +8,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from config import settings
 from database import init_db
 from db import close_pool
 from routers import (
@@ -19,6 +21,7 @@ from routers import (
     dashboard,
     goals,
     growth_reports,
+    item_generation,
     learning_plans,
     location,
     materials,
@@ -59,6 +62,14 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# AI로 생성한 아이템 이미지(배경 투명 PNG)를 프론트에서 <img src="{API_BASE}/generated-items/...">로
+# 바로 쓸 수 있도록 정적 파일로 서빙합니다.
+app.mount(
+    "/generated-items",
+    StaticFiles(directory=settings.generated_items_dir),
+    name="generated-items",
 )
 
 
@@ -107,6 +118,7 @@ for api_router in [
     achievements.router,
     shop.router,
     room.router,
+    item_generation.router,
     character.router,
     location.router,
 ]:

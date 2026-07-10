@@ -31,7 +31,7 @@ from schemas import (
     ExamDayAssistantRequest,
     NearbyStudyPlacesRequest,
 )
-from services import tmap, upstage
+from services import naver, tmap, upstage
 
 router = APIRouter(prefix="/api/location", tags=["location"])
 logger = logging.getLogger(__name__)
@@ -60,7 +60,119 @@ _QUERY_KEYWORD_DICTIONARY = {
 # upstage.chat 자체 타임아웃(240초)은 문서 요약 등 정확도가 중요한 호출 기준이라 이 기능엔
 # 너무 느슨하다. 추천 문구는 없어도 rule-based로 대체 가능한 부가 정보이므로, 응답이 느리면
 # 기다리지 않고 바로 fallback한다 (실측: 20곳 동시 호출 시 일부 호출이 수십 초 이상 걸림).
-_LLM_REASON_TIMEOUT_SECONDS = 8.0
+# 속성 조건이 있는 경로(_generate_place_reason)는 스니펫 대신 블로그 원문(최대 3000자 x 3개)을
+# 프롬프트에 넣으면서 응답이 느려지는 경우가 늘어, 8초는 종종 부족했다. 15초로 여유를 둔다.
+_LLM_REASON_TIMEOUT_SECONDS = 15.0
+
+# TMap은 좌석/와이파이/콘센트/영업시간/가격/인기 같은 속성을 전혀 제공하지 않는다. 사용자가
+# 이런 조건을 물어보면(예: "넓고 조용한 카페") 그 부분만 Naver 블로그 검색으로 실제 후기를
+# 찾아보고, 검색 결과에 실제로 나온 내용만 답변에 반영한다 (없으면 지어내지 않고 "확인 안 됨" 처리).
+# 어떤 조건이든 대응할 수 있도록 고정 키워드 목록으로 매칭하지 않고, 매 요청마다 LLM이 사용자
+# 원문을 직접 해석한다. LLM이 없거나 실패했을 때만 최소한의 규칙 기반 사전으로 대체한다.
+_ATTRIBUTE_KEYWORD_FALLBACK = {
+    "넓": "좌석/공간이 넓은지",
+    "좁": "좌석/공간이 좁은지",
+    "조용": "조용한 분위기인지",
+    "시끄러": "시끄러운 편인지",
+    "와이파이": "와이파이 제공 여부",
+    "wifi": "와이파이 제공 여부",
+    "콘센트": "콘센트(전원) 여부",
+    "전원": "콘센트(전원) 여부",
+    "24시간": "24시간 운영 여부",
+    "밤늦": "심야 영업 여부",
+    "저렴": "가격대",
+    "가성비": "가격대",
+    "비싸": "가격대",
+    "인기": "인기/후기 평판",
+    "리뷰": "인기/후기 평판",
+    "평점": "인기/후기 평판",
+}
+_ATTRIBUTE_SEARCH_TIMEOUT_SECONDS = 6.0
+_ATTRIBUTE_SEARCH_MAX_RESULTS = 3
+_ATTRIBUTE_CONTENT_FETCH_TIMEOUT_SECONDS = 8.0
+
+
+def _rule_based_attribute_hints(query: str) -> list[str]:
+    found: list[str] = []
+    for term, hint in _ATTRIBUTE_KEYWORD_FALLBACK.items():
+        if term in query and hint not in found:
+            found.append(hint)
+    return found
+
+
+async def _analyze_attribute_intent(query: str | None) -> list[str]:
+    """사용자 원문에서 TMap이 못 주는 시설/분위기/가격/평판 조건을 LLM으로 그때그때 분석한다.
+    고정 사전 매칭이 아니라 자연어를 직접 해석하므로 사전에 등록되지 않은 표현(예: "노트북 펴기
+    좋은", "단체 손님 받는")도 대응할 수 있다. LLM이 없거나 실패/타임아웃하면 최소한의 규칙
+    기반 사전으로 대체한다."""
+    if not query or not query.strip():
+        return []
+    if not settings.upstage_api_key:
+        return _rule_based_attribute_hints(query)
+
+    try:
+        prompt = (
+            f'사용자 요청: "{query}"\n\n'
+            "이 요청에서 지도 API(장소 종류/위치/거리 정보만 제공)로는 확인할 수 없는 시설·분위기·"
+            "가격·평판 조건만 뽑아줘. 장소 종류(카페, 도서관 등)나 위치/거리 조건은 제외한다. "
+            "각 조건은 '~인지', '~여부'처럼 짧은 한국어 구로 표현해 "
+            "(예: '좌석/공간이 넓은지', '조용한 분위기인지', '24시간 운영 여부'). "
+            "해당하는 조건이 요청에 없으면 빈 배열을 반환해. 요청에 없는 조건을 지어내지 마.\n\n"
+            'Return JSON only: {"attributes": ["조건1", "조건2"]}'
+        )
+        result = await asyncio.wait_for(
+            upstage.chat_json(
+                [
+                    {"role": "system", "content": "너는 학습 장소 검색 요청에서 시설/분위기 조건을 분석하는 도우미야."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+            ),
+            timeout=_LLM_REASON_TIMEOUT_SECONDS,
+        )
+        hints = [h.strip() for h in (result.get("attributes") or []) if isinstance(h, str) and h.strip()]
+        return hints
+    except asyncio.TimeoutError:
+        logger.warning("속성 조건 분석 LLM 타임아웃 (query=%s)", query)
+        return _rule_based_attribute_hints(query)
+    except Exception:
+        logger.exception("속성 조건 분석 LLM 실패 (query=%s)", query)
+        return _rule_based_attribute_hints(query)
+
+
+async def _search_place_attributes(place: dict, attribute_hints: list[str]) -> list[dict]:
+    """속성 조건이 있을 때만 장소명으로 실제 후기/블로그 글을 Naver 검색으로 가져온다.
+    속성 설명 문구("좌석/공간이 넓은지" 등)를 그대로 검색어에 넣으면 웹에 없는 표현이라 매칭이
+    거의 안 된다 — 실제 블로그/후기 글이 걸리도록 "장소명 + 후기"로만 검색하고, 그 안에서 사용자가
+    물어본 속성이 실제로 언급됐는지는 LLM이 판단한다.
+    실패/타임아웃/미설정이어도 부가 정보이므로 조용히 빈 목록을 반환한다 (추천 자체는 계속 진행)."""
+    if not attribute_hints:
+        return []
+    search_query = f"{place['name']} 후기"
+    try:
+        results = await asyncio.wait_for(
+            naver.search_blog(search_query, max_results=_ATTRIBUTE_SEARCH_MAX_RESULTS),
+            timeout=_ATTRIBUTE_SEARCH_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.warning("장소 속성 Naver 검색 실패 (place=%s)", place.get("name"))
+        return []
+
+    # search_blog()의 snippet은 글 앞부분 100~200자만 잘려서 오기 때문에, 확인하려는 내용이
+    # 글 뒷부분에 있으면 놓치는 경우가 많았다. 블로그 원문을 가져와 snippet 대신 쓰면 그런
+    # 누락이 줄어든다. 원문 크롤링은 외부 페이지 구조에 의존하는 부가 기능이라, 실패하면
+    # (타임아웃/비-네이버블로그/파싱 실패 등) 원래 snippet으로 조용히 대체한다.
+    async def _enrich(result: dict) -> dict:
+        try:
+            content = await asyncio.wait_for(
+                naver.fetch_blog_content(result["url"]),
+                timeout=_ATTRIBUTE_CONTENT_FETCH_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            content = None
+        return {**result, "snippet": content} if content else result
+
+    return await asyncio.gather(*[_enrich(r) for r in results])
 
 
 def _require_tmap() -> None:
@@ -81,6 +193,7 @@ async def nearby_study_places(request: NearbyStudyPlacesRequest):
     _require_tmap()
     fallback_keywords = request.keywords or DEFAULT_STUDY_PLACE_KEYWORDS
     keywords = await _resolve_search_keywords(request.query, fallback_keywords)
+    attribute_hints = await _analyze_attribute_intent(request.query)
     modes = request.transport_modes or DEFAULT_TRANSPORT_MODES
     origin = {"latitude": request.latitude, "longitude": request.longitude}
 
@@ -120,8 +233,11 @@ async def nearby_study_places(request: NearbyStudyPlacesRequest):
             routes = await tmap.get_routes_for_modes(
                 origin, {"latitude": poi["latitude"], "longitude": poi["longitude"]}, modes
             )
-            reason = await _generate_place_reason(poi, routes)
-        return {
+            attribute_snippets = await _search_place_attributes(poi, attribute_hints)
+            reason, attributes_confirmed = await _generate_place_reason(
+                poi, routes, request.query, attribute_snippets, attribute_hints
+            )
+        result = {
             "id": poi["id"],
             "name": poi["name"],
             "category": poi["category"],
@@ -130,15 +246,25 @@ async def nearby_study_places(request: NearbyStudyPlacesRequest):
             "longitude": poi["longitude"],
             "routes": {mode: _serialize_route(info, request.debug) for mode, info in routes.items()},
             "recommendation_reason": reason,
+            "attributes_confirmed": attributes_confirmed,
         }
+        if request.debug:
+            result["attribute_search_results"] = attribute_snippets
+        return result
 
     places = await asyncio.gather(*[_build_place(poi) for poi in candidates])
+    # 사용자가 시설/분위기 조건을 물어봤으면(attribute_hints) 그 조건이 실제로 확인된
+    # 장소만 남긴다. "방문 전 확인 필요"처럼 애매한 곳까지 목록에 섞이면 조건에 안 맞는
+    # 장소를 걸러야 하는 부담이 사용자에게 넘어가므로, 확인 안 된 곳은 아예 제외한다.
+    if attribute_hints:
+        places = [place for place in places if place["attributes_confirmed"]]
     places.sort(key=lambda place: _place_sort_key(place, request.latitude, request.longitude))
 
     return {
         "origin": {"latitude": request.latitude, "longitude": request.longitude},
         "query": request.query,
         "resolved_keywords": keywords,
+        "resolved_attribute_hints": attribute_hints,
         "places": places,
     }
 
@@ -322,9 +448,24 @@ def _rule_based_place_reason(routes: dict) -> str:
     return f"{_MODE_LABELS.get(mode, mode)} 기준 이동 시간이 약 {minutes}분으로, 근처 후보 중 이동이 편한 곳입니다."
 
 
-async def _generate_place_reason(place: dict, routes: dict) -> str:
+async def _generate_place_reason(
+    place: dict,
+    routes: dict,
+    user_query: str | None,
+    attribute_snippets: list[dict],
+    attribute_hints: list[str],
+) -> tuple[str, bool]:
+    """추천 이유 문장과 함께, 사용자가 요청한 속성 조건(attribute_hints)이 실제 검색
+    결과로 전부 확인됐는지(두 번째 반환값)를 같이 판단한다. 호출부(nearby_study_places)는
+    이 값이 False인 장소를 최종 목록에서 제외한다 — "방문 전 확인 필요"처럼 애매하게 걸치는
+    장소를 보여주는 대신, 확인된 곳만 보여달라는 요구사항에 따른 것이다.
+    조건은 있는데 검색 스니펫이 아예 없으면 확인할 근거 자체가 없으므로 LLM 호출 없이 바로
+    미확인 처리한다 (불필요한 호출도 줄이고, 근거 없이 확인됐다고 지어낼 위험도 없앤다)."""
+    if attribute_hints and not attribute_snippets:
+        return _rule_based_place_reason(routes), False
     if not settings.upstage_api_key:
-        return _rule_based_place_reason(routes)
+        return _rule_based_place_reason(routes), not attribute_hints
+
     try:
         route_lines = (
             "\n".join(
@@ -334,30 +475,84 @@ async def _generate_place_reason(place: dict, routes: dict) -> str:
             )
             or "이동 정보 없음"
         )
+        query_line = f'사용자 요청 원문: "{user_query}"\n' if user_query and user_query.strip() else ""
+
+        if attribute_hints:
+            snippet_lines = "\n".join(
+                f"{i}. {s.get('title', '')} - {s.get('snippet', '')}" for i, s in enumerate(attribute_snippets, 1)
+            )
+            condition_lines = "\n".join(f"- {hint}" for hint in attribute_hints)
+            attribute_block = (
+                f"확인해야 할 조건:\n{condition_lines}\n\n"
+                f"웹 검색 결과(위 조건이 실제로 언급됐는지 확인용):\n{snippet_lines}\n\n"
+            )
+            # 조건이 여러 개일 때 "전부 확인됐는지"를 하나의 불린 값으로 한 번에 판단하게 하면,
+            # 개별 조건을 꼼꼼히 대조하지 않고 답부터 정하는 경향이 있었다(실측: 후기 스니펫에
+            # 전혀 없는 조건인데도 true로 잘못 판단하는 경우 발생). 조건마다 confirmed를 따로
+            # 받아서 Python에서 all()로 집계하면, 모델이 조건 하나하나를 스니펫과 대조하도록
+            # 강제할 수 있어 애매한 케이스가 새어나가는 걸 줄일 수 있다.
+            attribute_rule = (
+                "- 시설·환경·평판 관련 내용은 위 '웹 검색 결과'에 실제로 나온 내용일 때만 언급해라. "
+                "검색 결과에 없는 내용을 단정하지 말고, 부풀리거나 다른 속성으로 바꿔 말하지 마라.\n"
+                "- condition_checks에 '확인해야 할 조건' 각각에 대해 하나씩 항목을 만들어라(조건 개수와 "
+                "정확히 같은 개수). 그 조건이 위 '웹 검색 결과'에 명확하고 구체적으로 언급된 경우에만 "
+                "confirmed=true, 언급이 없거나 간접적/애매하게만 암시된 경우는 confirmed=false로 표시해라. "
+                "확신이 서지 않으면 반드시 false를 선택해라.\n"
+            )
+        else:
+            attribute_block = ""
+            attribute_rule = ""
+
         prompt = (
             f"장소명: {place['name']}\n분류: {place['category']}\n주소: {place.get('address') or '정보 없음'}\n"
+            f"{query_line}"
             f"현재 위치에서 이동 정보:\n{route_lines}\n\n"
-            "위 장소가 학습(공부)하기에 왜 적합한지 한국어 한 문장으로 추천 이유를 작성해줘. "
-            "이동시간/거리를 근거로 들고, 과장하지 말고 담백하게 작성해. 문장은 하나만 출력해."
+            f"{attribute_block}"
+            "위 장소가 학습(공부)하기에 왜 적합한지 한국어 한 문장으로 reason을 작성해줘.\n\n"
+            "규칙:\n"
+            "- 이동시간/거리, 장소명/분류는 항상 사실로 언급해도 된다.\n"
+            f"{attribute_rule}"
+            "- 위 정보 어디에도 없는 사실은 절대 지어내지 마라.\n"
+            "- 사용자 요청 원문이 있으면 그 요청이 원하는 장소 '종류'와 이 장소의 분류가 맞는지 정도는 짧게 짚어줘도 된다.\n"
+            "- 과장하지 말고 담백하게, reason은 한 문장만.\n\n"
+            'Return JSON only: {"reason": "...", "condition_checks": '
+            '[{"condition": "...", "confirmed": true 또는 false}, ...]}'
+            + ("" if attribute_hints else " (attribute_hints가 없으면 condition_checks는 빈 배열)")
         )
-        text = await asyncio.wait_for(
-            upstage.chat(
+        result = await asyncio.wait_for(
+            upstage.chat_json(
                 [
-                    {"role": "system", "content": "너는 학습 장소 추천 도우미야. 간결한 한국어 한 문장만 출력해."},
+                    {
+                        "role": "system",
+                        "content": "너는 학습 장소 추천 도우미야. 주어진 정보에 없는 시설/분위기 속성은 절대 지어내지 않고, "
+                        "근거 없이 조건이 확인됐다고 표시하지도 않아. 조건이 여러 개면 하나씩 꼼꼼히 대조해서 판단해.",
+                    },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.4,
-                max_tokens=150,
+                temperature=0.1,
+                max_tokens=400,
             ),
             timeout=_LLM_REASON_TIMEOUT_SECONDS,
         )
-        return text.strip() or _rule_based_place_reason(routes)
+        reason = (result.get("reason") or "").strip() or _rule_based_place_reason(routes)
+        if attribute_hints:
+            checks = result.get("condition_checks")
+            # 모델이 조건별 항목을 빠뜨리거나 개수를 다르게 반환하면 근거가 불완전한 것이므로
+            # 안전하게 미확인(false) 처리한다 — 애매하면 보여주지 않는다는 원칙을 그대로 적용.
+            confirmed = (
+                isinstance(checks, list)
+                and len(checks) == len(attribute_hints)
+                and all(isinstance(c, dict) and c.get("confirmed") is True for c in checks)
+            )
+        else:
+            confirmed = True
+        return reason, confirmed
     except asyncio.TimeoutError:
         logger.warning("추천 이유 LLM 생성 타임아웃 (place=%s)", place.get("name"))
-        return _rule_based_place_reason(routes)
+        return _rule_based_place_reason(routes), not attribute_hints
     except Exception:
         logger.exception("추천 이유 LLM 생성 실패 (place=%s)", place.get("name"))
-        return _rule_based_place_reason(routes)
+        return _rule_based_place_reason(routes), not attribute_hints
 
 
 def _fastest_route(routes: dict) -> tuple[str, dict] | None:

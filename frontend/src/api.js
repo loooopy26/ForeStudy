@@ -417,3 +417,51 @@ export async function sendTutorMessage(sessionId, content) {
   if (!res.ok) throw new Error('답변을 받지 못했습니다')
   return res.json()
 }
+
+// ── 위치(TMAP) 기능 ────────────────────────────────────────────────
+// LAN(http) 접속 등 보안 컨텍스트가 아니면 navigator.geolocation이 막히므로, 실패 시
+// 서울 시청 좌표로 폴백한다 (백엔드 예시/화면 표기 주소와 동일한 기본값).
+export const DEFAULT_ORIGIN = { latitude: 37.5665, longitude: 126.978 }
+
+export function getCurrentPositionSafe({ timeout = 8000 } = {}) {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({ ...DEFAULT_ORIGIN, fallback: true })
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, fallback: false }),
+      () => resolve({ ...DEFAULT_ORIGIN, fallback: true }),
+      { timeout, maximumAge: 60000, enableHighAccuracy: false },
+    )
+  })
+}
+
+export function getLocationHealth() {
+  return apiRequest('/api/location/health')
+}
+
+export function fetchNearbyStudyPlaces({ latitude, longitude, radiusMeters = 3000, query, transportModes }) {
+  return apiRequest('/api/location/nearby-study-places', {
+    method: 'POST',
+    body: JSON.stringify({
+      latitude,
+      longitude,
+      radius_meters: radiusMeters,
+      ...(query ? { query } : {}),
+      ...(transportModes ? { transport_modes: transportModes } : {}),
+    }),
+  })
+}
+
+export function fetchExamDayAssistant({ origin, exam, bufferMinutes = 30, transportModes }) {
+  return apiRequest('/api/location/exam-day-assistant', {
+    method: 'POST',
+    body: JSON.stringify({
+      origin,
+      exam,
+      buffer_minutes: bufferMinutes,
+      ...(transportModes ? { transport_modes: transportModes } : {}),
+    }),
+  })
+}

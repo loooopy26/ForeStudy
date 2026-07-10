@@ -1,70 +1,96 @@
-# 🌳 Forestudy
+# Forestudy
 
-## 프로젝트 소개
+Forestudy는 AI와 게임형 성장 요소를 결합한 학습 지원 웹 애플리케이션입니다. 학습 자료를 바탕으로 퀴즈를 풀고, 오답·학습 기록을 분석하며, 목표와 퀘스트를 통해 꾸준한 학습을 돕습니다.
 
-공부는 끝없는 의무처럼 느껴질 때가 많습니다. Forestudy는 AI와 게임 요소를 결합하여 공부를 즐거운 성장 경험으로 바꾸는 학습 플랫폼입니다.
+## 주요 기능
 
-사용자는 AI가 생성한 맞춤형 퀘스트를 수행하고, 도서관에서 학습하며, AI의 분석을 통해 자신의 학습 상태를 확인할 수 있습니다. 퀘스트를 완료하면 보상을 획득하여 캐릭터와 나만의 방을 꾸미고, 꾸준한 학습을 통해 자신의 성장을 시각적으로 경험할 수 있습니다.
+- PDF 학습 자료 업로드, 요약, 핵심 개념 추출 및 RAG 기반 AI 튜터
+- AI 퀴즈 생성·채점, 오답 노트 및 복습 세션
+- 학습 타이머, 일별 학습 계획, 퀘스트·보상·성장 현황
+- 상점, 방 꾸미기, 캐릭터·인벤토리 기능
+- TMAP 기반 주변 학습 장소 추천과 시험 당일 이동 어시스턴트
+- 자연어 요청으로 아이템 이미지를 생성하는 AI 아이템 공방
 
-Forestudy는 단순히 공부를 기록하는 서비스를 넘어, AI 기반 학습 지원과 게임형 성장 시스템을 결합하여 사용자가 즐겁게 공부를 지속할 수 있는 새로운 학습 경험을 제공합니다.
+## 기술 구성
 
+- Frontend: React, Vite
+- Backend: FastAPI, SQLAlchemy, asyncpg
+- AI: Upstage Solar, LangGraph, pgvector RAG
+- Location: TMAP API, Naver Search API(선택)
+- Database: PostgreSQL + pgvector
 
-## 핵심 목표
+## 실행 방법
 
-- AI 기반 맞춤형 학습 지원
-- 공부 타이머를 통한 학습 기록 수집
-- 퀘스트와 보상 시스템을 통한 동기부여
-- 캐릭터·방·숲 성장으로 시각적 성취감 제공
-- 꾸준한 학습 습관 형성
+### 1. 백엔드 설정
 
+Python 3.11 이상과 PostgreSQL을 준비한 뒤 환경 파일을 만듭니다.
 
-## MVP 핵심 기능
+```powershell
+cd backend
+Copy-Item .env.example .env
+```
 
-| 기능명            | 목적(사용자 가치)                 | 입력                            | 출력                                     | 우선순위 | AI/Agent 적용                |
-| -------------- | -------------------------- | ----------------------------- | -------------------------------------- | ---- | -------------------------- |
-| **로그인 / 회원가입** | 사용자 정보 및 학습 데이터 관리         | 이메일, 비밀번호, 닉네임                | 로그인, 회원 정보 생성 및 저장                     | MVP  | Auth                       |
-| **도서관**        | 집중 학습 공간 제공 및 학습 데이터 수집    | 학습 자료(PDF), 타이머 시작, 공부 종료     | 공부시간, AI 요약, 퀴즈 생성, 오답 분석, 학습 리포트      | MVP  | RAG + Study Agent          |
-| **퀘스트 게시판**    | 개인 맞춤형 학습 계획 제공 및 학습 습관 형성 | 목표 자격증, 시험일, 현재 능력치, 이전 학습 기록 | 메인 퀘스트, 서브 퀘스트, 보너스 퀘스트, 난이도 자동 조절     | MVP  | Planner Agent              |
-| **상태창**        | 학습 데이터를 분석하여 현재 학습 상태 시각화  | 공부시간, 퀴즈 점수, 연속 학습일, 퀘스트 완료율  | 집중력, 이해도, 학습 지속성, 합격 가능성, AI 피드백       | MVP  | Status Agent + Evaluator   |
-| **내 정보**       | 사용자의 학습 현황 및 자격증 관리        | 사용자 정보, 학습 기록, 자격증 추가         | 능력치 조회, 진행 중인 자격증, 자격증 추가/관리, 기초 진단 퀴즈 | MVP  | Profile Agent + Quiz Agent |
-| **성장 시스템**     | 게임 요소를 통해 지속적인 학습 동기 부여    | EXP, 도토리, 업적, 레벨              | 캐릭터 성장, 방 꾸미기, 상점 이용, 아이템 해금           | MVP  | Growth Agent               |
+`.env`에서 필요한 값을 설정합니다.
 
+```env
+# AI 자료 분석 및 튜터 기능에 필요
+UPSTAGE_API_KEY=up_xxxxxxxxxxxxxxxxxxxxxxxx
 
+# 주변 학습 장소 추천과 시험 당일 어시스턴트에 필요
+TMAP_APP_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
 
-## DB
+# PostgreSQL + pgvector
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/forestudy
 
-[db/schema.sql](db/schema.sql) — PostgreSQL 스키마.
+# 선택: 장소 후기 기반 시설 조건 확인에 사용
+NAVER_CLIENT_ID=your_naver_client_id
+NAVER_CLIENT_SECRET=your_naver_client_secret
+```
 
-- **사용자/활동**: `users`, `user_activity_days` (연속 접속일 = 학습 지속성)
-- **AI 상태창**: `user_stats`, `user_stat_snapshots` (집중력/이해도/학습지속성/성장도/합격가능성 + AI 피드백), `stat_definitions`(지표 표시 라벨: 집중력/학습 지속성/합격률), `trait_definitions`, `user_traits`
-- **자격증/학습 목표**: `certifications`, `cert_exam_schedules`, `user_cert_goals`
-- **AI 커리큘럼**: `curricula`, `curriculum_weeks`, `curriculum_days`
-- **퀘스트 게시판**: `quests` (main/sub/bonus, 난이도 자동 조절)
-- **도서관 타이머**: `study_sessions`, `study_session_interruptions` (이탈 시 타이머 정지)
-- **퀴즈/채점/약점 분석/오답노트**: `quizzes`, `quiz_questions`, `quiz_attempts`, `quiz_answers`, `weak_point_reports`, `wrong_answer_notes`, `wrong_answer_review_sessions`, `wrong_answer_review_items`
-- **학습자료 + 리포트 + 튜터 챗봇**: `study_materials` (AI 요약/핵심 개념), `study_reports`, `tutor_chat_sessions`, `tutor_chat_messages`
-- **게임화**: `level_definitions`, `xp_transactions`, `achievements`, `user_achievements`, `acorn_transactions`(도토리), `forests`/`forest_growth_events`(숲 성장)
-- **내 방/상점/캐릭터**: `themes`, `user_unlocked_themes`, `shop_items`, `user_inventory`, `rooms`, `room_placements`, `characters`, `character_equipment`, `llm_decoration_requests` (자연어 꾸미기)
-- **팀 스터디 파티**: `parties`, `party_members`, `party_goals`, `party_contributions`, `party_checkins`
-- **미래의 나 리포트**: `pass_probability_snapshots`, `simulation_scenarios`
-- **알림**: `notifications`, `notification_weekly_send_log` (주 최대 3회 제한)
+`UPSTAGE_API_KEY`, `TMAP_APP_KEY`, Naver 키는 해당 기능을 사용할 때만 필요합니다. 키가 없어도 서버는 실행되며, 관련 API 호출에서 설정 안내를 반환합니다.
 
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
-## 백엔드 실행
+백엔드 API 문서는 `http://localhost:8000/docs`에서 확인할 수 있습니다.
 
-FastAPI 백엔드 설치/실행 방법과 전체 API 목록은 [backend/README.md](backend/README.md)를 참고하세요.
+### 2. 프론트엔드 실행
 
-## 인증 화면과 로그아웃
+새 터미널에서 실행합니다.
 
-- 앱의 기본 경로(`/`)는 로그인·회원가입을 제공하는 인증 화면입니다.
-- 로그인 또는 회원가입에 성공하면 프로필 화면(`/profile`)으로 이동합니다.
-- 프로필 상단의 `로그아웃` 버튼을 누르면 브라우저에 저장된 `forestudy_user` 정보를 삭제하고 기본 경로(`/`)로 이동합니다.
-- 현재 로그인 상태는 브라우저 `localStorage`에 저장됩니다. 서버 세션이나 DB 토큰을 폐기하는 방식은 아직 구현되어 있지 않습니다.
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-## 프론트 연동 현황
+Vite가 출력하는 주소(기본 `http://localhost:5173`)로 접속합니다. API 서버 주소를 바꿔야 할 때는 `frontend/.env`에 아래처럼 설정합니다.
 
-- **도서관 / AI 요약**: 실제 백엔드(`/api/materials`)와 연동 완료. 도서관 화면 헤더의 업로드 버튼(또는 "내 자료" 목록의 업로드 버튼)으로 자료를 올리고 선택할 수 있으며, AI 요약 화면은 선택한 자료의 실제 `ai_summary`/`key_concepts`를 조회해 표시합니다 (처리 중이면 자동 폴링, 최대 30분). 폴링이 시간 초과돼도 백엔드는 계속 처리 중이므로 재업로드 없이 "이어서 확인" 버튼으로 이어볼 수 있습니다 (`CertUpload.jsx`).
-- **AI 질문**: 실제 백엔드(`/api/tutor/sessions`)와 연동 완료. 선택한 자료로 튜터 세션을 만들고, 질문마다 자료 청크를 검색해 근거로 삼아 답변합니다 (RAG 기반 1:1 튜터).
-- **홈 화면 상태창**: 집중력/이해도/학습 지속성/합격 가능성/보유 도토리를 실제 백엔드(`/stats`, `/auth/demo`)에서 조회합니다. 도서관 타이머(공부 시작/일시정지)도 `/timer/*`에 실제로 연결되어, 그 기록이 집중력·학습 지속성 계산의 근거가 됩니다. 이해도/합격 가능성은 실제 AI 퀴즈 결과(Postgres `quiz_attempts`) 기반. 로그인이 없어 고정 데모 유저를 사용하며, "진행 중인 자격증"은 아직 하드코딩입니다.
-- **복습하기**: 아직 화면 시안용 더미 데이터(하드코딩)입니다.
-- **로그인/회원가입/비밀번호 찾기** (`Auth.jsx`, `/login`, `/signup`): 실제 백엔드(`/auth/login`, `/auth/register`)와 연동 완료. 로그인·가입한 계정은 `localStorage`(`forestudy_user`)에 저장되지만, 아직 다른 화면들이 그 계정을 사용하도록 연결되진 않았고 전부 고정 데모 유저를 씁니다. 비밀번호 찾기는 실제 메일 발송 기능이 없어 화면 흐름만 동작하는 목업입니다.
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+## 위치 기반 기능
+
+`TMAP_APP_KEY`를 설정하면 다음 API와 화면이 활성화됩니다.
+
+- `POST /api/location/nearby-study-places`: 현재 위치와 자연어 요청을 기반으로 학습 장소를 추천합니다.
+- `POST /api/location/exam-day-assistant`: 시험장 주소를 좌표로 변환하고, 도보·자동차·대중교통별 이동 시간과 권장 출발 시각을 계산합니다.
+- `GET /api/location/health`: TMAP 키 설정 여부를 확인합니다.
+
+Naver Search API 키는 “조용한”, “24시간”, “넓은 좌석” 같은 시설 조건을 장소 후기에서 추가 확인할 때만 사용합니다.
+
+## 디렉터리 구조
+
+```text
+Forestudy/
+├── backend/       # FastAPI API, AI/RAG, TMAP 및 아이템 생성 서비스
+├── frontend/      # React/Vite 사용자 인터페이스
+└── db/schema.sql  # PostgreSQL + pgvector 스키마
+```
+
+상세 백엔드 API 설명은 [backend/README.md](backend/README.md)에서 확인할 수 있습니다.

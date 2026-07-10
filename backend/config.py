@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     tmap_app_key: str | None = None
     tmap_base_url: str = "https://apis.openapi.sk.com"
 
-    # Naver Search API (자격증 시험 일정 웹문서 검색)
+    # Naver Search API (블로그 검색). 주변 학습장소 추천에서 TMAP이 못 주는 속성(넓다/조용하다 등)
+    # 조건을 실제 후기로 확인할 때 쓴다 (routers/location.py, services/naver.py). 없으면 해당
+    # 속성 확인 기능만 조용히 건너뛴다.
     naver_client_id: str | None = None
     naver_client_secret: str | None = None
 
@@ -33,6 +35,9 @@ class Settings(BaseSettings):
     # (50MB 초과 시 services/upstage.py에서 자동으로 비동기 API로 전환)
     max_upload_mb: int = 200
 
+    # AI 생성 아이템 이미지(배경 투명화된 PNG) 저장 위치. main.py에서 /generated-items로 정적 서빙한다.
+    generated_items_dir: Path = BASE_DIR / "uploads" / "generated_items"
+
     # 청킹: 한국어 기준 대략 2~3자 = 1토큰, 임베딩 8k 컨텍스트 내에서 여유 있게
     chunk_max_chars: int = 1600
     chunk_overlap_chars: int = 200
@@ -41,3 +46,4 @@ class Settings(BaseSettings):
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
+settings.generated_items_dir.mkdir(parents=True, exist_ok=True)

@@ -4,8 +4,10 @@
 주요 API: GET /room/{user_id}, POST /room/decorate
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+from database import get_db
 from schemas import RoomDecorateRequest, RoomResponse
 from services.room_service import decorate_room, get_or_create_room
 
@@ -18,8 +20,9 @@ def read_user_room(user_id: int):
 
 
 @router.post("/decorate", response_model=RoomResponse)
-def decorate_user_room(request: RoomDecorateRequest):
+def decorate_user_room(request: RoomDecorateRequest, db: Session = Depends(get_db)):
     return decorate_room(
+        db=db,
         user_id=request.user_id,
         item_ids=request.item_ids,
         prompt=request.prompt,

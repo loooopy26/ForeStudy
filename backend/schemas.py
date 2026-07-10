@@ -222,6 +222,7 @@ class ShopItemResponse(BaseModel):
     item_type: str
     price_token: int
     theme_required: str | None = None
+    image_url: str | None = None  # AI로 생성된 커스텀 아이템만 값이 있음
 
 
 class PurchaseItemRequest(BaseModel):
@@ -247,6 +248,19 @@ class RoomDecorateRequest(BaseModel):
     user_id: int = Field(..., example=1)
     item_ids: list[int] = Field(default_factory=list, example=[1, 2])
     prompt: str | None = Field(None, example="책상 옆에 초록 식물을 배치해줘")
+
+
+# 아이템 생성: 도토리를 소모해 자연어 설명을 이미지로 변환하고 곧바로 인벤토리에 등록합니다.
+class GenerateItemRequest(BaseModel):
+    user_id: int = Field(..., example=1)
+    prompt: str = Field(..., min_length=1, example="포근한 나무 책상")
+
+
+class GeneratedItemResponse(BaseModel):
+    user_id: int
+    item: ShopItemResponse
+    remaining_token: int
+    message: str
 
 
 # Dashboard/Village: 홈 화면과 마을 허브 화면에서 한 번에 보여줄 요약 데이터입니다.

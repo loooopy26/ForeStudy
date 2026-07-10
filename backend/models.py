@@ -84,6 +84,20 @@ class StudySession(Base):
     )
 
 
+class GeneratedItem(Base):
+    """AI로 생성한 상점/방 꾸미기 아이템. 서버 재시작 후에도 유지되도록 DB에 저장한다."""
+
+    __tablename__ = "generated_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)  # Solar가 만든 최종 이미지 생성 프롬프트
+    image_url: Mapped[str] = mapped_column(String(255), nullable=False)  # /generated-items/{file}.png
+    price_token: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StudySessionInterruption(Base):
     __tablename__ = "study_session_interruptions"
 
