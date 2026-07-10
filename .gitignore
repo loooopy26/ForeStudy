@@ -50,4 +50,3 @@ backend-server.err
 backend-server.out
 frontend-server.out
 frontend-server.err
-.gitignore

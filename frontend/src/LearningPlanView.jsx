@@ -57,15 +57,9 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
 
   const startGoalFlow = async () => {
     setGoalError('')
+    setExamGoal(null)
     setPhase('searching')
     try {
-      const existing = await getCertGoal(resolvedCertName)
-      if (existing?.found && existing.target_exam_date) {
-        setExamGoal(existing)
-        setManualDate(existing.target_exam_date)
-        generateCurriculum(existing.goal_id)
-        return
-      }
       const res = await sendCertGoalChat(
         resolvedCertName,
         `${resolvedCertName} 시험 목표일을 찾아줘. 검색해서 가장 유력한 날짜를 알려줘.`,

@@ -262,6 +262,10 @@ export function regenerateCurriculum(goalId, attemptId, targetExamDate) {
   })
 }
 
+export function getActiveCurriculum(goalId) {
+  return apiRequest(`/api/cert-goals/${goalId}/curricula/active`)
+}
+
 export async function deleteCurriculum(curriculumId) {
   const res = await fetch(`${API_BASE}/api/cert-goals/curricula/${curriculumId}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) throw new Error('학습 플랜 삭제에 실패했습니다')

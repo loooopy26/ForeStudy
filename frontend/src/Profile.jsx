@@ -6,6 +6,7 @@ import homeCharacter from './assets/home-character.png'
 import {
   clearCurrentUser,
   deleteMaterial,
+  getCertGoal,
   getCurrentCertificates,
   getDemoUser,
   getStats,
@@ -33,6 +34,7 @@ const DEV_FALLBACK_DOTORI = 320
 function Profile({ onNavigate }) {
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
+  const [certGoalInfo, setCertGoalInfo] = useState(null)
   const [certificates, setCertificates] = useState(getCurrentCertificates)
   const [selectedCertificate, setSelectedCertificate] = useState(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -53,10 +55,28 @@ function Profile({ onNavigate }) {
     onNavigate('auth')
   }
 
-  const openCertificateInfo = (certificate) => {
-    setSelectedCertificate(certificate)
-    setDeleteConfirmOpen(false)
+  const openCertificateInfo = async (certificate) => {
+  setSelectedCertificate(certificate)
+  setDeleteConfirmOpen(false)
+  setCertGoalInfo(null)
+
+  try {
+    const goal = await getCertGoal(certificate.title)
+    setCertGoalInfo(goal)
+  } catch {
+    setCertGoalInfo(null)
   }
+}
+  const getRemainingDays = (targetDate) => {
+  if (!targetDate) return null
+
+  const today = new Date()
+  const target = new Date(targetDate)
+  today.setHours(0, 0, 0, 0)
+  target.setHours(0, 0, 0, 0)
+
+  return Math.ceil((target - today) / (1000 * 60 * 60 * 24))
+}
 
   const closeCertificateInfo = () => {
     setSelectedCertificate(null)
@@ -239,7 +259,14 @@ function Profile({ onNavigate }) {
             <div className="cert-info-header">
               <div>
                 <p>진행 중인 자격증</p>
-                <h2 id="cert-info-title">{selectedCertificate.title}</h2>
+                <h2 id="cert-info-title" className="cert-info-title-row">
+                  <span>{selectedCertificate.title}</span>
+                  {certGoalInfo?.target_exam_date && (
+                    <span className="cert-dday">
+                      D-{getRemainingDays(certGoalInfo.target_exam_date)}
+                    </span>
+                  )}
+                </h2>
               </div>
               <button type="button" onClick={closeCertificateInfo} aria-label="닫기">×</button>
             </div>

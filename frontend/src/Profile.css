@@ -450,6 +450,22 @@
   font-size: 12px;
 }
 
+.cert-info-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cert-dday {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e0edd9;
+  color: #3f6f3f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .cert-info-backdrop {
   position: absolute;
   inset: 0;
@@ -480,7 +496,8 @@
 
 .cert-info-header p,
 .cert-info-header h2 {
-  margin: 0;
+  margin-left: 0;
+  text-align: left;
 }
 
 .cert-info-header p {

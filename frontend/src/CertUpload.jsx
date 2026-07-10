@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { addCurrentCertificate, createPlacementQuiz, getMaterial, setMaterialId, uploadMaterial } from './api'
+import ConfirmModal from './ConfirmModal'
+import { addCurrentCertificate, createPlacementQuiz, deleteMaterial, getMaterial, setMaterialId, uploadMaterial } from './api'
 import { BackIcon, MedalIcon, UploadIcon, DocIcon, CheckIcon } from './icons'
 import './CertUpload.css'
 
@@ -31,6 +32,9 @@ function CertUpload({ certName, onNavigate }) {
   // 폴링이 시간 초과로 포기했지만 백엔드는 계속 처리 중인 material.
   // 재시도 시 이 값이 있으면 재업로드 대신 이어서 상태만 확인한다.
   const [pendingMaterialId, setPendingMaterialId] = useState(null)
+  // 지금 이 화면에서 생성/처리 중인 material — 화면을 나갈 때 정리 대상으로 추적한다.
+  const [activeMaterialId, setActiveMaterialId] = useState(null)
+  const [pendingLeave, setPendingLeave] = useState(false)
   const timerRef = useRef(null)
 
   useEffect(() => {
@@ -86,11 +90,13 @@ function CertUpload({ certName, onNavigate }) {
     try {
       let materialId = pendingMaterialId
       if (materialId) {
+        setActiveMaterialId(materialId)
         setStage('parsing')
       } else {
         setStage('uploaded')
         const uploaded = await uploadMaterial(files[0], `${certName} 학습 자료`)
         materialId = uploaded.material_id
+        setActiveMaterialId(materialId)
         setStage('parsing')
       }
       await waitForMaterialReady(materialId)
@@ -99,6 +105,7 @@ function CertUpload({ certName, onNavigate }) {
       const placementQuiz = await createPlacementQuiz(materialId)
       setMaterialId(materialId)
       addCurrentCertificate(certName, { materialId, subtitle: '학습 준비 중' })
+      setActiveMaterialId(null)
       onNavigate('placementIntro', { cert: certName, materialId, placementQuiz })
     } catch (err) {
       setError(err.message || '자료 업로드에 실패했습니다.')
@@ -109,11 +116,31 @@ function CertUpload({ certName, onNavigate }) {
   }
 
   const stageIndex = STAGES.findIndex((s) => s.key === stage)
+  const hasInFlightWork = uploading || !!activeMaterialId || !!pendingMaterialId
+
+  const handleBack = () => {
+    if (!hasInFlightWork) {
+      onNavigate('addcert')
+      return
+    }
+    setPendingLeave(true)
+  }
+
+  const confirmLeaveBack = () => {
+    setPendingLeave(false)
+    const materialToDelete = activeMaterialId || pendingMaterialId
+    if (materialToDelete) {
+      deleteMaterial(materialToDelete).catch(() => {})
+    }
+    onNavigate('addcert')
+  }
+
+  const cancelLeaveBack = () => setPendingLeave(false)
 
   return (
     <div className="upload-page">
       <header className="screen-header">
-        <button type="button" className="back-button" onClick={() => onNavigate('addcert')} aria-label="뒤로가기">
+        <button type="button" className="back-button" onClick={handleBack} aria-label="뒤로가기">
           <BackIcon />
         </button>
         <div className="header-title">자료 업로드</div>
@@ -202,6 +229,12 @@ function CertUpload({ certName, onNavigate }) {
               : '등록 완료'}
         </button>
       </div>
+      <ConfirmModal
+        open={pendingLeave}
+        message="작성 중인 자료 분석·배치고사가 사라집니다. 나가시겠습니까?"
+        onConfirm={confirmLeaveBack}
+        onCancel={cancelLeaveBack}
+      />
     </div>
   )
 }

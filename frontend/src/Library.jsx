@@ -3,7 +3,7 @@ import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { endTimer, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
+import { endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
@@ -26,7 +26,38 @@ function fmt(sec) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function Library({ onNavigate, materialId, onSelectMaterial }) {
+function toLocalDate(dateString) {
+  return new Date(`${dateString}T00:00:00`)
+}
+
+function toDateKey(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function flattenCurriculumDays(curriculum) {
+  return (curriculum?.weeks || []).flatMap((week) =>
+    (week.days || []).map((day) => ({
+      ...day,
+      week_number: week.week_number,
+      week_theme: week.theme,
+    }))
+  )
+}
+
+function getMonthCells(monthDate) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+  const last = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
+  const cells = Array.from({ length: first.getDay() }, () => null)
+  for (let day = 1; day <= last.getDate(); day += 1) {
+    cells.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day))
+  }
+  return cells
+}
+
+function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
   const [durationMin, setDurationMin] = useState(() => {
     const saved = Number(localStorage.getItem('forestudy_timer_duration_min'))
     return Number.isInteger(saved) && saved >= MIN_DURATION_MIN && saved <= MAX_DURATION_MIN
@@ -57,6 +88,12 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
   const fileInputRef = useRef(null)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [calendarError, setCalendarError] = useState('')
+  const [calendarCurriculum, setCalendarCurriculum] = useState(null)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date())
+  const [selectedPlanDay, setSelectedPlanDay] = useState(null)
 
   const refreshMaterials = () => {
     listMaterials().then(setMaterials).catch(() => {})
@@ -149,6 +186,44 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
     setDurationError('')
   }
 
+  const openCalendar = async () => {
+    setCalendarOpen(true)
+    setCalendarLoading(true)
+    setCalendarError('')
+    setCalendarCurriculum(null)
+    setSelectedPlanDay(null)
+
+    const fallbackCert = getCurrentCertificates()[0]?.title || ''
+    const activeCertName = certName || fallbackCert
+    if (!activeCertName) {
+      setCalendarError('자격증을 먼저 선택해 주세요.')
+      setCalendarLoading(false)
+      return
+    }
+
+    try {
+      const goal = await getCertGoal(activeCertName)
+      if (!goal?.found || !goal.goal_id) {
+        setCalendarError('생성된 목표 시험일이 없습니다.')
+        return
+      }
+
+      const curriculum = await getActiveCurriculum(goal.goal_id)
+      const days = flattenCurriculumDays(curriculum)
+      setCalendarCurriculum(curriculum)
+      if (days.length > 0) {
+        setSelectedPlanDay(days[0])
+        setCalendarMonth(toLocalDate(days[0].date))
+      } else {
+        setCalendarError('생성된 일별 학습 플랜이 없습니다.')
+      }
+    } catch (err) {
+      setCalendarError(err.message || '학습 캘린더를 불러오지 못했습니다.')
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
   const applyDuration = (event) => {
     event.preventDefault()
     const nextDuration = Number(durationDraft)
@@ -165,14 +240,22 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
   const timerStarted = running || studySec > 0
   const offset = RING_LENGTH * ((totalSec - remaining) / totalSec)
   const handleBack = () => onNavigate('village')
+  const calendarDays = flattenCurriculumDays(calendarCurriculum)
+  const calendarDayMap = new Map(calendarDays.map((day) => [day.date, day]))
+  const calendarCells = getMonthCells(calendarMonth)
+  const selectedDayTasks = selectedPlanDay?.tasks || []
 
   return (
     <div className="library-page">
       <StudyIllustration />
       <Header
         title="도서관"
-        icon={<LibraryIcon />}
         onBack={handleBack}
+        action={
+          <button type="button" className="header-action library-calendar-button" onClick={openCalendar} aria-label="학습 캘린더" title="학습 캘린더">
+            <LibraryIcon />
+          </button>
+        }
       />
 
       <div className="body-scroll library-body">
@@ -292,6 +375,77 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {calendarOpen && (
+        <div className="calendar-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setCalendarOpen(false)}>
+          <section className="calendar-modal" role="dialog" aria-modal="true" aria-labelledby="calendar-modal-title">
+            <div className="calendar-modal-head">
+              <div>
+                <p>일별 학습 플랜</p>
+                <h2 id="calendar-modal-title">
+                  {calendarMonth.getFullYear()}년 {calendarMonth.getMonth() + 1}월
+                </h2>
+              </div>
+              <button type="button" onClick={() => setCalendarOpen(false)} aria-label="닫기">×</button>
+            </div>
+
+            <div className="calendar-month-controls">
+              <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>이전</button>
+              <button type="button" onClick={() => setCalendarMonth(new Date())}>오늘</button>
+              <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>다음</button>
+            </div>
+
+            {calendarLoading && <p className="calendar-status">캘린더를 불러오는 중...</p>}
+            {!calendarLoading && calendarError && <p className="calendar-status calendar-error">{calendarError}</p>}
+
+            {!calendarLoading && !calendarError && (
+              <>
+                <div className="calendar-grid">
+                  {['일', '월', '화', '수', '목', '금', '토'].map((dayName) => (
+                    <span className="calendar-weekday" key={dayName}>{dayName}</span>
+                  ))}
+                  {calendarCells.map((date, index) => {
+                    if (!date) return <span className="calendar-day empty" key={`empty-${index}`} />
+                    const key = toDateKey(date)
+                    const planDay = calendarDayMap.get(key)
+                    const selected = selectedPlanDay?.date === key
+                    return (
+                      <button
+                        type="button"
+                        className={`calendar-day${planDay ? ' has-plan' : ''}${selected ? ' selected' : ''}`}
+                        key={key}
+                        onClick={() => planDay && setSelectedPlanDay(planDay)}
+                        disabled={!planDay}
+                      >
+                        <span>{date.getDate()}</span>
+                        {planDay && <small>{planDay.focus_topic}</small>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {selectedPlanDay && (
+                  <article className="calendar-detail">
+                    <div className="calendar-detail-head">
+                      <span>{selectedPlanDay.date}</span>
+                      {selectedPlanDay.planned_minutes && <span>{selectedPlanDay.planned_minutes}분</span>}
+                    </div>
+                    <h3>{selectedPlanDay.focus_topic}</h3>
+                    {selectedDayTasks.length > 0 && (
+                      <ul>
+                        {selectedDayTasks.slice(0, 4).map((task, index) => (
+                          <li key={`${selectedPlanDay.day_id}-${index}`}>{task}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {selectedPlanDay.checkpoint && <p>{selectedPlanDay.checkpoint}</p>}
+                  </article>
+                )}
+              </>
+            )}
+          </section>
         </div>
       )}
 
