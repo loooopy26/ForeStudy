@@ -144,6 +144,12 @@
   font-weight: 700;
 }
 
+.sp-chip-icon {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+}
+
 .sp-chip-radius-wrap {
   position: relative;
   margin-left: auto;

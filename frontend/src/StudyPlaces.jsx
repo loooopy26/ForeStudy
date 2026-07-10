@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import iconPinBadge from './assets/icon-pin-badge.png'
 import iconLightbulb from './assets/icon-lightbulb.png'
+import iconTransportWalk from './assets/icon-transport-walk.png'
+import iconTransportCar from './assets/icon-transport-car.png'
+import iconTransportBus from './assets/icon-transport-bus.png'
 import { BackIcon, BellIcon } from './icons'
 import './StudyPlaces.css'
 
@@ -72,26 +75,15 @@ function StudyPlaces({ onNavigate }) {
 
         <div className="sp-chips">
           <button type="button" className="sp-chip sp-chip-active">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="13" cy="4" r="2" />
-              <path d="M13 8l-3 5 4 3v5" />
-              <path d="M10 13l-3 2 1 6" />
-            </svg>
+            <img src={iconTransportWalk} alt="" className="sp-chip-icon" />
             도보
           </button>
           <button type="button" className="sp-chip">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a8078" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 16l1-5 2-4h8l2 4 1 5" />
-              <rect x="3" y="16" width="18" height="4" rx="1.5" />
-            </svg>
+            <img src={iconTransportCar} alt="" className="sp-chip-icon" />
             자동차
           </button>
           <button type="button" className="sp-chip">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a8078" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="4" y="4" width="16" height="13" rx="3" />
-              <circle cx="8.5" cy="19.5" r="1.3" />
-              <circle cx="15.5" cy="19.5" r="1.3" />
-            </svg>
+            <img src={iconTransportBus} alt="" className="sp-chip-icon" />
             대중교통
           </button>
           <div className="sp-chip-radius-wrap">

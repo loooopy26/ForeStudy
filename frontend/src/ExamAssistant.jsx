@@ -2,7 +2,18 @@ import { useState } from 'react'
 import { BackIcon, BellIcon } from './icons'
 import iconSquirrelAcorn from './assets/icon-squirrel-acorn.png'
 import iconSquirrelPoint from './assets/icon-squirrel-point.png'
+import iconSquirrelCheer from './assets/icon-squirrel-cheer.png'
+import iconLeaf1 from './assets/icon-leaf-1.png'
+import iconLeaf2 from './assets/icon-leaf-2.png'
+import iconLeaf3 from './assets/icon-leaf-3.png'
+import iconTransportWalk from './assets/icon-transport-walk.png'
+import iconTransportCar from './assets/icon-transport-car.png'
+import iconTransportBus from './assets/icon-transport-bus.png'
 import iconLightbulb from './assets/icon-lightbulb.png'
+import iconWarning from './assets/icon-warning.png'
+import iconAmenityFood from './assets/icon-amenity-food.png'
+import iconAmenityPrint from './assets/icon-amenity-print.png'
+import iconAmenityCafe from './assets/icon-amenity-cafe.png'
 import './ExamAssistant.css'
 
 const NOTICES = [
@@ -12,19 +23,19 @@ const NOTICES = [
 ]
 
 const TODOS = [
-  { n: 1, time: '07:40', text: '기상 및 준비물 최종 확인' },
+  { n: 1, time: '07:40', text: '기상' },
   { n: 2, time: '08:10', text: '출발 준비 완료' },
   { n: 3, time: '08:16', text: '차량 이동 시작' },
-  { n: 4, time: '08:30', text: '시험장 도착 후 주변 확인' },
+  { n: 4, time: '08:30', text: '시험장 도착' },
   { n: 5, time: '08:40', text: '입실 완료' },
 ]
 
 const CHECKLIST = ['신분증', '수험표', '검은 펜', '물', '휴대폰 무음 확인']
 
 const AMENITIES = [
-  { icon: '☕', name: '모닝카페', tag: '', addr: '세종대로 118', dist: '120m' },
-  { icon: '🍚', name: '한끼식당', tag: '식당', addr: '태평로 12', dist: '230m' },
-  { icon: '🖨', name: '프린트샵', tag: '', addr: '무교로 8', dist: '310m' },
+  { icon: iconAmenityCafe, name: '모닝카페', tag: '카페', tagColor: 'cafe', addr: '세종대로 118', dist: '120m' },
+  { icon: iconAmenityFood, name: '한식뷔페', tag: '식당', tagColor: 'food', addr: '태평로 12', dist: '230m' },
+  { icon: iconAmenityPrint, name: '스피드프린트', tag: '출력소', tagColor: 'print', addr: '무교로 8', dist: '310m' },
 ]
 
 function ExamAssistant({ onNavigate }) {
@@ -159,6 +170,8 @@ function ExamAssistant({ onNavigate }) {
           <div className="ea-departure-sub">(출발까지 1시간 20분)</div>
           <div className="ea-departure-hint">지금 출발하면 여유롭게 도착할 수 있어요!</div>
           <img src={iconSquirrelPoint} alt="" className="ea-departure-mascot" />
+          <img src={iconLeaf2} alt="" className="ea-departure-leaf ea-departure-leaf-2" />
+          <img src={iconLeaf3} alt="" className="ea-departure-leaf ea-departure-leaf-3" />
         </div>
 
         <div className="ea-map-placeholder" style={{ marginBottom: 14 }}>
@@ -175,14 +188,10 @@ function ExamAssistant({ onNavigate }) {
           </svg>
         </div>
 
-        <div className="ea-row" style={{ gap: 10, marginBottom: 16 }}>
+        <div className="ea-transport-group" style={{ marginBottom: 16 }}>
           <div className="ea-transport-card ea-transport-card-green">
             <div className="ea-transport-heading">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3d332b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="13" cy="4" r="2" />
-                <path d="M13 8l-3 5 4 3v5" />
-                <path d="M10 13l-3 2 1 6" />
-              </svg>
+              <img src={iconTransportWalk} alt="" className="ea-transport-icon" />
               <span>도보</span>
             </div>
             <div className="ea-transport-meta">1.8km · 26분</div>
@@ -190,10 +199,7 @@ function ExamAssistant({ onNavigate }) {
           </div>
           <div className="ea-transport-card ea-transport-card-blue">
             <div className="ea-transport-heading">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3d332b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 16l1-5 2-4h8l2 4 1 5" />
-                <rect x="3" y="16" width="18" height="4" rx="1.5" />
-              </svg>
+              <img src={iconTransportCar} alt="" className="ea-transport-icon" />
               <span>자동차</span>
             </div>
             <div className="ea-transport-meta">3.2km · 14분</div>
@@ -201,44 +207,44 @@ function ExamAssistant({ onNavigate }) {
           </div>
           <div className="ea-transport-card ea-transport-card-orange">
             <div className="ea-transport-heading">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3d332b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="4" width="16" height="13" rx="3" />
-                <circle cx="8.5" cy="19.5" r="1.3" />
-                <circle cx="15.5" cy="19.5" r="1.3" />
-              </svg>
+              <img src={iconTransportBus} alt="" className="ea-transport-icon" />
               <span>대중교통</span>
             </div>
-            <div className="ea-transport-meta ea-transport-meta-muted">정보 없음</div>
-            <div className="ea-transport-hint">해당 시간 수단은 한번 이용할 수 없습니다.</div>
+            <div className="ea-transport-meta">2.4km · 19분</div>
+            <div className="ea-transport-badge ea-transport-badge-orange">08:11 출발 권장</div>
           </div>
         </div>
 
-        <div className="ea-section-title">추천 및 유의사항</div>
-        <div className="ea-row" style={{ gap: 10, marginBottom: 16 }}>
-          <div className="ea-advice-card">
-            <div className="ea-advice-heading">
-              <span className="ea-advice-icon ea-advice-icon-blue">🚗</span>
-              <span>자동차 추천</span>
-              <span className="ea-best-badge">Best</span>
-            </div>
-            <div className="ea-advice-text">시험 시작 전 여유 시간을 확보하기 쉽고 도착 시간 변동이 상대적으로 적어요.</div>
+        <div className="ea-section-divider" />
+
+        <div className="ea-advice-group" style={{ marginBottom: 16 }}>
+          <div className="ea-section-title ea-section-title-inbox">
+            <img src={iconLightbulb} alt="" className="ea-advice-icon-img" />
+            <span>추천 및 유의사항</span>
           </div>
-          <div className="ea-advice-card">
-            <div className="ea-advice-heading">
-              <span className="ea-advice-icon ea-advice-icon-orange">⚠️</span>
-              <span>주의사항</span>
+          <div className="ea-advice-group-divider" />
+          <div className="ea-advice-group-row">
+            <div className="ea-advice-card">
+              <div className="ea-advice-heading">
+                <span className="ea-best-badge">Best</span>
+                <span>자동차 추천</span>
+              </div>
+              <div className="ea-advice-text ea-advice-text-push">시험 시작 전 여유 시간을 확보하기 쉽고 도착 시간 변동이 상대적으로 적어요.</div>
             </div>
-            <div className="ea-advice-text ea-advice-text-sm">
-              · 출근 시간대 정체를 고려해 최소 30분 여유를 두세요.
-              <br />
-              · 시험장 주차 가능 여부를 미리 확인하세요.
-              <br />
-              · 신분증과 수험표를 미리 챙기세요.
+            <div className="ea-advice-card">
+              <div className="ea-advice-heading">
+                <img src={iconWarning} alt="" className="ea-advice-icon-img" />
+                <span>주의사항</span>
+              </div>
+              <div className="ea-advice-text ea-advice-text-sm">
+                <div className="ea-advice-bullet">출근 시간대 정체를 고려해 최소 30분 여유를 두세요.</div>
+                <div className="ea-advice-bullet">시험장 주차 가능 여부를 미리 확인하세요.</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="ea-row" style={{ marginBottom: 16 }}>
+        <div className="ea-list-group" style={{ marginBottom: 16 }}>
           <div className="ea-list-card">
             <div className="ea-list-title">시험 당일 할 일</div>
             {TODOS.map((todo) => (
@@ -252,38 +258,48 @@ function ExamAssistant({ onNavigate }) {
             <div className="ea-list-title">준비물 체크리스트</div>
             {CHECKLIST.map((item) => (
               <div className="ea-check-row" key={item}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="#5FAE6E" stroke="none" style={{ flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="#4F8863" stroke="none" style={{ flexShrink: 0 }}>
                   <rect x="2" y="2" width="20" height="20" rx="5" />
                   <path d="M7 12l3 3 7-7" stroke="#fff" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span className="ea-check-text">{item}</span>
               </div>
             ))}
+            <img src={iconLeaf1} alt="" className="ea-checklist-leaf" />
           </div>
         </div>
 
-        <div className="ea-amenity-header">
-          <span>시험장 주변 편의시설</span>
-          <span className="ea-see-more">더보기 ›</span>
+        <div className="ea-cheer-box" style={{ marginBottom: 16 }}>
+          <img src={iconSquirrelCheer} alt="" className="ea-cheer-mascot" />
+          <div className="ea-cheer-text">"여러분의 노력이 가장 빛나는 하루가 되길 응원합니다!"</div>
         </div>
-        <div className="ea-row">
-          {AMENITIES.map((amenity) => (
-            <div className="ea-amenity-card" key={amenity.name}>
-              <div className="ea-amenity-heading">
-                <span>{amenity.icon}</span>
-                <span className="ea-amenity-name">{amenity.name}</span>
-                {amenity.tag && <span className="ea-amenity-tag">{amenity.tag}</span>}
+
+        <div className="ea-cheer-divider" />
+
+        <div className="ea-amenity-section">
+          <div className="ea-amenity-header">
+            <span>시험장 주변 편의시설</span>
+            <span className="ea-see-more">더보기 ›</span>
+          </div>
+          <div className="ea-row">
+            {AMENITIES.map((amenity) => (
+              <div className="ea-amenity-card" key={amenity.name}>
+                <div className="ea-amenity-top-row">
+                  <img src={amenity.icon} alt="" className="ea-amenity-icon-img" />
+                  {amenity.tag && <span className={`ea-amenity-tag ea-amenity-tag-${amenity.tagColor}`}>{amenity.tag}</span>}
+                </div>
+                <div className="ea-amenity-name">{amenity.name}</div>
+                <div className="ea-amenity-addr">{amenity.addr}</div>
+                <div className="ea-amenity-dist-row">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#5FAE6E" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z" />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                  <span className="ea-amenity-dist">{amenity.dist}</span>
+                </div>
               </div>
-              <div className="ea-amenity-addr">{amenity.addr}</div>
-              <div className="ea-amenity-dist-row">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#5FAE6E" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z" />
-                  <circle cx="12" cy="10" r="2.5" />
-                </svg>
-                <span className="ea-amenity-dist">{amenity.dist}</span>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>
