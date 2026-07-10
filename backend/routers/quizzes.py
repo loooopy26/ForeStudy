@@ -115,6 +115,13 @@ async def _create_material_quiz(
     weak_topics = [row["topic_tag"] for row in weak_rows]
 
     query = req.focus_query or f"{material['title']} 핵심 개념"
+    today_plan = (
+        await _load_today_plan_scope(pool, user_id, material_id)
+        if quiz_kind == "study_review"
+        else None
+    )
+    if not req.focus_query:
+        query = _plan_query(today_plan) or query
     chunks = await rag.retrieve_chunks(material_id, query, top_k=8)
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
@@ -128,6 +135,7 @@ async def _create_material_quiz(
             question_mix=question_mix,
             quiz_kind=quiz_kind,
             learner_profile=learner_profile,
+            plan_scope=today_plan,
         )
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)) from exc
@@ -141,10 +149,15 @@ async def _create_material_quiz(
         pool,
         user_id=user_id,
         material_id=material_id,
-        title=f"{material['title']} {title_suffix}",
+        title=(
+            f"{material['title']} {today_plan['focus_topic']} {title_suffix}"
+            if today_plan
+            else f"{material['title']} {title_suffix}"
+        ),
         difficulty=requested_difficulty,
         quiz_kind=quiz_kind,
         questions=questions[:forced_num_questions],
+        curriculum_day_id=today_plan["day_id"] if today_plan else None,
     )
 
     return {
@@ -154,8 +167,59 @@ async def _create_material_quiz(
         "adapted_from_profile": bool(quiz_kind == "study_review" and learner_profile),
         "learner_profile": learner_profile,
         "question_mix": question_mix,
+        "plan_scope": today_plan,
         "questions": persisted["questions"],
     }
+
+
+async def _load_today_plan_scope(pool, user_id: str, material_id: str) -> dict | None:
+    """Return today's active curriculum day when it was generated from this material."""
+    row = await pool.fetchrow(
+        """
+        SELECT cd.id, cd.day_date, cd.focus_topic, cd.tasks, cd.planned_minutes
+        FROM curricula c
+        JOIN user_cert_goals g ON g.id = c.user_cert_goal_id
+        JOIN curriculum_weeks cw ON cw.curriculum_id = c.id
+        JOIN curriculum_days cd ON cd.curriculum_week_id = cw.id
+        JOIN quiz_attempts source_attempt ON source_attempt.id = c.source_quiz_attempt_id
+        JOIN quizzes source_quiz ON source_quiz.id = source_attempt.quiz_id
+        WHERE c.status = 'active'
+          AND g.user_id = $1
+          AND source_quiz.study_material_id = $2
+          AND cd.day_date = $3
+        ORDER BY c.created_at DESC
+        LIMIT 1
+        """,
+        user_id,
+        material_id,
+        date.today(),
+    )
+    if row is None:
+        return None
+
+    tasks = row["tasks"]
+    if isinstance(tasks, str):
+        try:
+            tasks = json.loads(tasks)
+        except json.JSONDecodeError:
+            tasks = []
+    return {
+        "day_id": str(row["id"]),
+        "date": row["day_date"].isoformat(),
+        "focus_topic": row["focus_topic"] or "",
+        "planned_minutes": row["planned_minutes"],
+        "tasks": [str(task) for task in tasks] if isinstance(tasks, list) else [],
+    }
+
+
+def _plan_query(plan_scope: dict | None) -> str:
+    if not plan_scope:
+        return ""
+    return " ".join(
+        value.strip()
+        for value in [plan_scope.get("focus_topic", ""), *(plan_scope.get("tasks") or [])]
+        if isinstance(value, str) and value.strip()
+    )
 
 
 async def _persist_quiz(
@@ -167,17 +231,20 @@ async def _persist_quiz(
     difficulty: str,
     quiz_kind: str,
     questions: list[dict],
+    curriculum_day_id: str | None = None,
 ) -> dict:
     """quizzes/quiz_questions에 생성된 문제를 저장하고 프론트엔드 응답 형태로 돌려준다."""
     async with pool.acquire() as conn:
         async with conn.transaction():
             quiz_row = await conn.fetchrow(
                 """
-                INSERT INTO quizzes (user_id, study_material_id, quiz_date, title, difficulty, generated_by, status, quiz_type)
-                VALUES ($1, $2, $3, $4, $5, 'ai', 'pending', $6) RETURNING id
+                INSERT INTO quizzes
+                    (user_id, study_material_id, curriculum_day_id, quiz_date, title, difficulty, generated_by, status, quiz_type)
+                VALUES ($1, $2, $3, $4, $5, $6, 'ai', 'pending', $7) RETURNING id
                 """,
                 user_id,
                 material_id,
+                curriculum_day_id,
                 date.today(),
                 title,
                 difficulty,
@@ -523,6 +590,35 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
             await pool.executemany(
                 "UPDATE wrong_answer_notes SET explanation = $1, mistake_analysis = $1 WHERE id = $2",
                 note_updates,
+            )
+
+    correct = [result for result in results if result["is_correct"]]
+    if correct:
+        explanations = await asyncio.gather(
+            *[
+                agent_graph.run_explain_correct_answer(
+                    question_text=item["question_text"],
+                    correct_answer=item["correct_answer"],
+                    explanation=_clean_source_labels(item["explanation"]),
+                    topic_tag=item["topic_tag"],
+                )
+                for item in correct
+            ]
+        )
+        answer_updates = []
+        for item, explanation in zip(correct, explanations):
+            cleaned_explanation = _clean_source_labels(explanation) or _clean_source_labels(item["explanation"])
+            item["explanation"] = cleaned_explanation
+            item["feedback_explanation"] = cleaned_explanation
+            answer_updates.append((cleaned_explanation, attempt_id, item["question_id"]))
+        if answer_updates:
+            await pool.executemany(
+                """
+                UPDATE quiz_answers
+                SET feedback_explanation = $1
+                WHERE quiz_attempt_id = $2 AND quiz_question_id = $3
+                """,
+                answer_updates,
             )
 
     analysis = None

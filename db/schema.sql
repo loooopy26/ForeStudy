@@ -165,6 +165,8 @@ CREATE TABLE curriculum_days (
     planned_minutes      INT,
     tasks                JSONB,
     checkpoint           TEXT,
+    summary              TEXT,
+    study_tip            TEXT,
     edited_by            TEXT NOT NULL DEFAULT 'ai' CHECK (edited_by IN ('ai','user')),
     progress_status      TEXT NOT NULL DEFAULT 'not_started' CHECK (progress_status IN ('not_started','in_progress','completed')),
     UNIQUE (curriculum_week_id, day_date)
@@ -227,6 +229,7 @@ CREATE TABLE quizzes (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     quest_id          UUID REFERENCES quests(id) ON DELETE SET NULL,
+    curriculum_day_id UUID REFERENCES curriculum_days(id) ON DELETE SET NULL,
     study_material_id UUID,  -- FK는 study_materials 정의 후 ALTER로 추가 (아래 참조)
     quiz_date     DATE NOT NULL,
     title         TEXT,

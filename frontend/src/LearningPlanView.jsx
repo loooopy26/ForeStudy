@@ -258,11 +258,8 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
                         <span>{day.planned_minutes}분</span>
                       </div>
                       <p className="curriculum-day-topic">{day.focus_topic}</p>
-                      <ul>
-                        {day.tasks.map((task, idx) => (
-                          <li key={idx}>{task}</li>
-                        ))}
-                      </ul>
+                      {day.summary && <p>{day.summary}</p>}
+                      {day.study_tip && <p><strong>학습 팁:</strong> {day.study_tip}</p>}
                     </div>
                   ))}
                 </article>

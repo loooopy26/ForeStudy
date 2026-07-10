@@ -9,6 +9,19 @@ from agents.state import AgentState
 from services import study_agent
 
 
+async def explain_correct_answer_node(state: AgentState) -> AgentState:
+    payload = state["input"]
+    explanation = await study_agent.explain_correct_answer(
+        question_text=payload["question_text"],
+        correct_answer=payload["correct_answer"],
+        explanation=payload.get("explanation"),
+        topic_tag=payload.get("topic_tag"),
+    )
+    state["output"] = {"explanation": explanation}
+    log_node(state, "explain_correct_answer_node")
+    return state
+
+
 async def analyze_wrong_answers_node(state: AgentState) -> AgentState:
     payload = state["input"]
     result = await study_agent.analyze_wrong_answers(payload["wrong_items"], state["context"])

@@ -9,6 +9,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from agents.nodes.analysis import (
+    explain_correct_answer_node,
     analyze_wrong_answers_node,
     analyze_wrong_note_node,
     evaluate_learning_level_node,
@@ -25,6 +26,7 @@ _TASK_NODES = {
     "generate_quiz": generate_quiz_node,
     "grade_short_answer": grade_short_answer_node,
     "analyze_wrong_answers": analyze_wrong_answers_node,
+    "explain_correct_answer": explain_correct_answer_node,
     "analyze_wrong_note": analyze_wrong_note_node,
     "evaluate_learning_level": evaluate_learning_level_node,
     "generate_learning_plan": generate_learning_plan_node,
@@ -50,8 +52,10 @@ def build_graph():
 _compiled_graph = build_graph()
 
 
-async def run_tutor_reply(history: list[dict], context: str | None) -> str:
-    state = new_state("tutor_reply", {"history": history}, context)
+async def run_tutor_reply(
+    history: list[dict], context: str | None, plan_scope: dict | None = None
+) -> str:
+    state = new_state("tutor_reply", {"history": history, "plan_scope": plan_scope}, context)
     result = await _compiled_graph.ainvoke(state)
     return result["output"]["reply"]
 
@@ -65,6 +69,7 @@ async def run_generate_quiz(
     question_mix: dict[str, int] | None = None,
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
+    plan_scope: dict | None = None,
 ) -> list[dict]:
     state = new_state(
         "generate_quiz",
@@ -75,6 +80,7 @@ async def run_generate_quiz(
             "question_mix": question_mix,
             "quiz_kind": quiz_kind,
             "learner_profile": learner_profile,
+            "plan_scope": plan_scope,
         },
         context,
     )
@@ -89,6 +95,22 @@ async def run_grade_short_answer(question: str, correct_answer: str, user_answer
     )
     result = await _compiled_graph.ainvoke(state)
     return result["output"]["correct"]
+
+
+async def run_explain_correct_answer(
+    *, question_text: str, correct_answer: str, explanation: str | None = None, topic_tag: str | None = None
+) -> str:
+    state = new_state(
+        "explain_correct_answer",
+        {
+            "question_text": question_text,
+            "correct_answer": correct_answer,
+            "explanation": explanation,
+            "topic_tag": topic_tag,
+        },
+    )
+    result = await _compiled_graph.ainvoke(state)
+    return result["output"]["explanation"]
 
 
 async def run_analyze_wrong_answers(wrong_items: list[dict], context: str) -> dict:

@@ -266,6 +266,43 @@ export function getActiveCurriculum(goalId) {
   return apiRequest(`/api/cert-goals/${goalId}/curricula/active`)
 }
 
+function todayKey() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function flattenCurriculumDays(curriculum) {
+  return (curriculum?.weeks || []).flatMap((week) =>
+    (week.days || []).map((day) => ({
+      ...day,
+      week_number: week.week_number,
+      week_theme: week.theme,
+    }))
+  )
+}
+
+export async function getTodayCurriculumDay(certificationName) {
+  const fallbackCertName = getCurrentCertificates()[0]?.title || ''
+  const activeCertName = certificationName || fallbackCertName
+  if (!activeCertName) return null
+
+  const goal = await getCertGoal(activeCertName)
+  if (!goal?.found || !goal.goal_id) return null
+
+  const curriculum = await getActiveCurriculum(goal.goal_id)
+  const days = flattenCurriculumDays(curriculum)
+  return {
+    certification_name: activeCertName,
+    goal,
+    curriculum,
+    day: days.find((day) => day.date === todayKey()) || null,
+    days,
+  }
+}
+
 export async function generateAiItem(prompt, activeTab = 'wear') {
   const text = prompt.trim()
   const palette = [

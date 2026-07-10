@@ -48,10 +48,14 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
         """
         ALTER TABLE curriculum_days ADD COLUMN IF NOT EXISTS tasks JSONB;
         ALTER TABLE curriculum_days ADD COLUMN IF NOT EXISTS checkpoint TEXT;
+        ALTER TABLE curriculum_days ADD COLUMN IF NOT EXISTS summary TEXT;
+        ALTER TABLE curriculum_days ADD COLUMN IF NOT EXISTS study_tip TEXT;
         ALTER TABLE curriculum_days
             ADD COLUMN IF NOT EXISTS edited_by TEXT NOT NULL DEFAULT 'ai'
                 CHECK (edited_by IN ('ai','user'));
         ALTER TABLE curricula ADD COLUMN IF NOT EXISTS source_quiz_attempt_id UUID;
+        ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS curriculum_day_id UUID
+            REFERENCES curriculum_days(id) ON DELETE SET NULL;
         """
     )
     # quiz_type이 db/schema.sql에 추가되기 전에 만들어진 로컬 DB에는 컬럼이 없어

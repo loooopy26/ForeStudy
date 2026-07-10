@@ -18,6 +18,7 @@ async def generate_quiz_node(state: AgentState) -> AgentState:
         question_mix=payload.get("question_mix"),
         quiz_kind=payload.get("quiz_kind", "study_review"),
         learner_profile=payload.get("learner_profile"),
+        plan_scope=payload.get("plan_scope"),
     )
     state["output"] = {"questions": questions}
     log_node(state, "generate_quiz_node", question_count=len(questions))

@@ -42,6 +42,8 @@ class CurriculumDayUpdateRequest(BaseModel):
     focus_topic: str | None = None
     tasks: list[str] | None = None
     checkpoint: str | None = None
+    summary: str | None = None
+    study_tip: str | None = None
     planned_minutes: int | None = None
     progress_status: str | None = Field(None, pattern="^(not_started|in_progress|completed)$")
 
@@ -231,7 +233,7 @@ async def update_curriculum_day(day_id: str, req: CurriculumDayUpdateRequest):
     if row is None:
         raise HTTPException(404, "수정할 학습일을 찾을 수 없습니다 (이미 지난 버전일 수 있음)")
 
-    content_fields = {"focus_topic", "tasks", "checkpoint", "planned_minutes"}
+    content_fields = {"focus_topic", "tasks", "checkpoint", "summary", "study_tip", "planned_minutes"}
     updates = req.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(400, "변경할 값이 없습니다")
@@ -373,8 +375,8 @@ async def _persist_curriculum(pool, *, goal_id: str, version: int, source_quiz_a
                     await conn.execute(
                         """
                         INSERT INTO curriculum_days
-                            (curriculum_week_id, day_date, focus_topic, planned_minutes, tasks, checkpoint)
-                        VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                            (curriculum_week_id, day_date, focus_topic, planned_minutes, tasks, checkpoint, summary, study_tip)
+                        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
                         """,
                         week_id,
                         date.fromisoformat(day["date"]),
@@ -382,6 +384,8 @@ async def _persist_curriculum(pool, *, goal_id: str, version: int, source_quiz_a
                         day["planned_minutes"],
                         json.dumps(day["tasks"], ensure_ascii=False),
                         day["checkpoint"],
+                        day.get("summary", ""),
+                        day.get("study_tip", ""),
                     )
     return curriculum_id
 
@@ -401,7 +405,7 @@ async def _load_curriculum(pool, curriculum_id: str) -> dict:
     for week in weeks:
         days = await pool.fetch(
             """
-            SELECT id, day_date, focus_topic, planned_minutes, tasks, checkpoint, progress_status, edited_by
+            SELECT id, day_date, focus_topic, planned_minutes, tasks, checkpoint, summary, study_tip, progress_status, edited_by
             FROM curriculum_days WHERE curriculum_week_id = $1 ORDER BY day_date
             """,
             week["id"],
@@ -427,7 +431,7 @@ async def _load_curriculum(pool, curriculum_id: str) -> dict:
 
 async def _load_curriculum_day(pool, day_id: str) -> dict:
     day = await pool.fetchrow(
-        "SELECT id, day_date, focus_topic, planned_minutes, tasks, checkpoint, progress_status, edited_by FROM curriculum_days WHERE id = $1",
+        "SELECT id, day_date, focus_topic, planned_minutes, tasks, checkpoint, summary, study_tip, progress_status, edited_by FROM curriculum_days WHERE id = $1",
         day_id,
     )
     if day is None:
@@ -449,6 +453,8 @@ def _serialize_day(day) -> dict:
         "planned_minutes": day["planned_minutes"],
         "tasks": tasks or [],
         "checkpoint": day["checkpoint"],
+        "summary": day["summary"] or "",
+        "study_tip": day["study_tip"] or "",
         "progress_status": day["progress_status"],
         "edited_by": day["edited_by"],
     }

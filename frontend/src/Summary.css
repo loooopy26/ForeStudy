@@ -38,6 +38,63 @@
   margin: 0;
 }
 
+.today-plan-card {
+  padding: 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  background: var(--green-tint);
+  text-align: left;
+}
+
+.today-plan-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--green-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.today-plan-card h2 {
+  margin: 7px 0 8px;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.today-plan-guide,
+.today-plan-tip {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.today-plan-tip {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--card-border);
+}
+
+.today-plan-tip strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--green-text);
+  font-size: 12px;
+}
+
+.today-plan-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.today-plan-card li + li {
+  margin-top: 4px;
+}
+
 .summary-block {
   display: flex;
   flex-direction: column;

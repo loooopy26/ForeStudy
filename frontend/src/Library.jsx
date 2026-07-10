@@ -3,7 +3,7 @@ import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
+import { endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getTodayCurriculumDay, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
@@ -94,6 +94,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
   const [calendarCurriculum, setCalendarCurriculum] = useState(null)
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
   const [selectedPlanDay, setSelectedPlanDay] = useState(null)
+  const [todayPlanDay, setTodayPlanDay] = useState(null)
 
   const refreshMaterials = () => {
     listMaterials().then(setMaterials).catch(() => {})
@@ -104,6 +105,20 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
     const id = setInterval(refreshMaterials, 5000)
     return () => clearInterval(id)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    getTodayCurriculumDay(certName)
+      .then((result) => {
+        if (!cancelled) setTodayPlanDay(result?.day || null)
+      })
+      .catch(() => {
+        if (!cancelled) setTodayPlanDay(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [certName])
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
@@ -243,7 +258,6 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
   const calendarDays = flattenCurriculumDays(calendarCurriculum)
   const calendarDayMap = new Map(calendarDays.map((day) => [day.date, day]))
   const calendarCells = getMonthCells(calendarMonth)
-  const selectedDayTasks = selectedPlanDay?.tasks || []
 
   return (
     <div className="library-page">
@@ -266,7 +280,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
 
         <div className="study-goal">
           <p className="goal-label">오늘의 공부 목표</p>
-          <h1 className="goal-title">데이터베이스 개념 복습</h1>
+          <h1 className="goal-title">{todayPlanDay?.focus_topic || '오늘의 학습 플랜을 확인해 주세요'}</h1>
           <div className="goal-meta">
             <ClockIcon />
             <span>{durationMin}분</span>
@@ -309,39 +323,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
               {running ? '일시정지' : '공부 시작'}
             </button>
           </div>
-        </div>
 
-        <div className="material-section">
-          <div className="material-section-head">
-            <p className="goal-label">내 자료</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.ppt,.pptx,.doc,.docx"
-              hidden
-              onChange={handleFileChange}
-            />
-          </div>
-
-          {uploadError && <p className="material-upload-error">{uploadError}</p>}
-
-          <div className="material-list">
-            {materials.length === 0 && <p className="material-empty">아직 업로드한 자료가 없어요.</p>}
-            {materials.map((m) => (
-              <button
-                type="button"
-                key={m.id}
-                className={`material-item${m.id === materialId ? ' selected' : ''}`}
-                onClick={() => onSelectMaterial(m.id)}
-              >
-                <DocIcon />
-                <span className="material-item-title">{m.title}</span>
-                <span className={`material-status status-${m.processed_status}`}>
-                  {STATUS_LABEL[m.processed_status] || m.processed_status}
-                </span>
-              </button>
-            ))}
-          </div>
+        
         </div>
       </div>
 
@@ -433,14 +416,9 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
                       {selectedPlanDay.planned_minutes && <span>{selectedPlanDay.planned_minutes}분</span>}
                     </div>
                     <h3>{selectedPlanDay.focus_topic}</h3>
-                    {selectedDayTasks.length > 0 && (
-                      <ul>
-                        {selectedDayTasks.slice(0, 4).map((task, index) => (
-                          <li key={`${selectedPlanDay.day_id}-${index}`}>{task}</li>
-                        ))}
-                      </ul>
-                    )}
+                    {selectedPlanDay.summary && <p>{selectedPlanDay.summary}</p>}
                     {selectedPlanDay.checkpoint && <p>{selectedPlanDay.checkpoint}</p>}
+                    {selectedPlanDay.study_tip && <p><strong>학습 팁:</strong> {selectedPlanDay.study_tip}</p>}
                   </article>
                 )}
               </>

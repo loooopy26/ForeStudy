@@ -207,6 +207,13 @@ function Quiz({ onNavigate }) {
       <Header title="AI 퀴즈" icon={<QuizIcon />} onBack={() => onNavigate('library')} />
 
       <div className="body-scroll">
+        {quiz?.plan_scope && (
+          <section className="quiz-plan-scope" aria-label="오늘의 학습 범위">
+            <span>오늘의 학습 범위</span>
+            <strong>{quiz.plan_scope.focus_topic}</strong>
+          </section>
+        )}
+
         <div className="progress-row">
           <div className="progress-top">
             <span className="progress-count">문제 {idx + 1} / {questions.length}</span>

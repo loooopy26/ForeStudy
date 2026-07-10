@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import { SummaryIcon, DocIcon } from './icons'
-import { getMaterial } from './api'
+import { getMaterial, getTodayCurriculumDay } from './api'
 import './Summary.css'
 
 const POLL_STATUSES = new Set(['pending', 'processing'])
@@ -103,9 +103,51 @@ function SummaryBody({ text }) {
   )
 }
 
-function Summary({ onNavigate, materialId }) {
+function buildPlanKeywords(planDay) {
+  if (!planDay) return []
+  const source = [
+    planDay.focus_topic,
+    planDay.checkpoint,
+    ...(planDay.tasks || []),
+  ].join(' ')
+  const stopWords = new Set(['학습', '정리', '이해', '복습', '개념', '진행', '문제', '확인', '기본', '주요'])
+  return Array.from(new Set(
+    source
+      .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter((word) => word.length >= 2 && !stopWords.has(word))
+  )).slice(0, 12)
+}
+
+function getFocusedSummaryText(text, planDay) {
+  if (!text || !planDay) return text
+  const keywords = buildPlanKeywords(planDay)
+  if (keywords.length === 0) return text
+
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, index) => ({
+      block,
+      index,
+      score: keywords.reduce((score, keyword) => score + (block.includes(keyword) ? 1 : 0), 0),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, 6)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.block)
+
+  if (blocks.length === 0) return text
+  return blocks.join('\n\n')
+}
+
+function Summary({ onNavigate, materialId, certName }) {
   const [material, setMaterial] = useState(null)
   const [error, setError] = useState(null)
+  const [todayPlanDay, setTodayPlanDay] = useState(null)
 
   useEffect(() => {
     if (!materialId) return
@@ -133,6 +175,22 @@ function Summary({ onNavigate, materialId }) {
       if (timer) clearTimeout(timer)
     }
   }, [materialId])
+
+  useEffect(() => {
+    let cancelled = false
+    getTodayCurriculumDay(certName)
+      .then((result) => {
+        if (!cancelled) setTodayPlanDay(result?.day || null)
+      })
+      .catch(() => {
+        if (!cancelled) setTodayPlanDay(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [certName])
+
+  const focusedSummary = getFocusedSummaryText(material?.ai_summary, todayPlanDay)
 
   return (
     <>
@@ -167,31 +225,34 @@ function Summary({ onNavigate, materialId }) {
         {material?.processed_status === 'ready' && (
           <>
             <div>
-              <h1 className="summary-heading">핵심 개념 {material.key_concepts?.length ?? 0}가지를 정리했어요</h1>
-              <p className="summary-sub">업로드한 자료에서 자동으로 추출했어요</p>
+              <h1 className="summary-heading">
+                {todayPlanDay ? todayPlanDay.focus_topic : `핵심 개념 ${material.key_concepts?.length ?? 0}가지를 정리했어요`}
+              </h1>
+              <p className="summary-sub">
+                {todayPlanDay ? '오늘의 일별 학습 플랜에 맞춰 요약했어요' : '업로드한 자료에서 자동으로 추출했어요'}
+              </p>
             </div>
 
-            {material.ai_summary && (
-              <div className="summary-section">
-                <p className="summary-section-label">전체 요약</p>
-                <SummaryBody text={material.ai_summary} />
+            {todayPlanDay && (
+              <div className="summary-section today-plan-summary">
+                <p className="summary-section-label">오늘의 플랜</p>
+                <div className="today-plan-card">
+                  <div className="today-plan-meta">
+                    <span>{todayPlanDay.date}</span>
+                    {todayPlanDay.planned_minutes && <span>{todayPlanDay.planned_minutes}분</span>}
+                  </div>
+                  <h2>{todayPlanDay.focus_topic}</h2>
+                  {todayPlanDay.summary && <p className="today-plan-guide">{todayPlanDay.summary}</p>}
+                  {todayPlanDay.study_tip && (
+                    <p className="today-plan-tip"><strong>학습 팁</strong>{todayPlanDay.study_tip}</p>
+                  )}
+                </div>
               </div>
             )}
 
-            <div className="summary-section">
-              <p className="summary-section-label">핵심 개념</p>
-              <div className="bullet-list">
-                {(material.key_concepts || []).map((c, i) => (
-                  <div className="bullet-card" key={i}>
-                    <div className="bullet-num">{i + 1}</div>
-                    <div>
-                      <div className="bullet-term">{renderInline(c.concept)}</div>
-                      <div className="bullet-desc">{renderInline(c.description)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+           
+
+           
           </>
         )}
       </div>

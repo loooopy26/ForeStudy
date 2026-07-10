@@ -12,7 +12,8 @@ from services import study_agent
 async def tutor_node(state: AgentState) -> AgentState:
     history = state["input"]["history"]
     context = state.get("context")
-    reply = await study_agent.tutor_reply(history, context)
+    plan_scope = state["input"].get("plan_scope")
+    reply = await study_agent.tutor_reply(history, context, plan_scope)
     state["output"] = {"reply": reply}
-    log_node(state, "tutor_node", has_context=bool(context), history_len=len(history))
+    log_node(state, "tutor_node", has_context=bool(context), has_plan_scope=bool(plan_scope), history_len=len(history))
     return state

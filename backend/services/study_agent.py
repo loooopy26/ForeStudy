@@ -86,6 +86,7 @@ async def generate_quiz(
     question_mix: dict[str, int] | None = None,
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
+    plan_scope: dict | None = None,
 ) -> list[dict]:
     """Generate a quiz matching question_mix exactly.
 
@@ -118,6 +119,7 @@ async def generate_quiz(
                 weak_topics=weak_topics,
                 quiz_kind=quiz_kind,
                 learner_profile=learner_profile,
+                plan_scope=plan_scope,
             )
             for question_type, batch_count in batch_requests
         ]
@@ -134,6 +136,7 @@ async def _generate_quiz_batch(
     weak_topics: list[str] | None,
     quiz_kind: str,
     learner_profile: dict | None,
+    plan_scope: dict | None,
 ) -> list[dict]:
     weak_hint = (
         f"\nPrioritize these weak topics when relevant: {', '.join(weak_topics)}."
@@ -176,8 +179,24 @@ async def _generate_quiz_batch(
             f"{_format_profile_for_prompt(learner_profile)}"
         )
 
+    plan_instruction = ""
+    if plan_scope:
+        task_text = "\n".join(f"- {task}" for task in plan_scope.get("tasks", [])) or "- (no detailed tasks)"
+        plan_instruction = f"""
+Today's required learning-plan scope:
+- Focus topic: {plan_scope.get('focus_topic') or '(none)'}
+- Planned tasks:
+{task_text}
+
+Every question must directly assess this scope. Do not ask about unrelated parts of the uploaded
+material. Use the focus topic and tasks to decide what the learner should demonstrate, and only use
+facts supported by the study-material context below.
+"""
+
     prompt = f"""Create {count} {question_type} quiz questions from the study-material context below.
 Overall requested difficulty: {difficulty}.{weak_hint}
+
+{plan_instruction}
 
 {context}
 
@@ -191,7 +210,7 @@ Return JSON only:
     {{
       "question_text": "Korean question",
       {example_fields}
-      "explanation": "Korean explanation with evidence from the material",
+      "explanation": "Korean learner-facing explanation of why the answer is correct",
       "topic_tag": "topic keyword",
       "question_difficulty": "easy | normal | hard",
       "difficulty_score": 1,
@@ -200,7 +219,10 @@ Return JSON only:
   ]
 }}
 The questions array length must be exactly {count}.
-difficulty_score must be an integer from 1 to 100."""
+difficulty_score must be an integer from 1 to 100.
+For explanation, write only a natural Korean explanation of the correct answer. Never mention or
+copy context headers, excerpts, citations, source labels, pages, or markers such as "발췌", "출처",
+"[0]", or "(p.1)"."""
     messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
 
     max_attempts = 5
@@ -272,6 +294,41 @@ Return JSON only: {{"correct": true or false}}
 Mark true if the student's meaning matches the model answer, even if wording differs."""
     result = await upstage.chat_json([{"role": "user", "content": prompt}], temperature=0.0)
     return bool(result.get("correct"))
+
+
+async def explain_correct_answer(
+    *,
+    question_text: str,
+    correct_answer: str,
+    explanation: str | None = None,
+    topic_tag: str | None = None,
+) -> str:
+    """Create a concise, learner-facing explanation for a correctly answered question."""
+    prompt = f"""Write a clear Korean explanation for a quiz question the learner answered correctly.
+
+Question:
+{question_text}
+
+Correct answer:
+{correct_answer}
+
+Topic:
+{topic_tag or "general"}
+
+Reference explanation (use only for factual grounding; do not copy its format):
+{explanation or "(none)"}
+
+Explain why this answer is correct and the key concept to remember in 2–3 natural Korean sentences.
+Do not mention the learner's answer, sources, excerpts, pages, citations, or reference material.
+Never output labels or markers such as "발췌", "출처", "[0]", "(p.1)", or any page number.
+
+Return JSON only:
+{{"explanation": "Korean learner-facing explanation"}}"""
+    result = await upstage.chat_json(
+        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+    return _clean_source_labels(result.get("explanation"))
 
 
 async def analyze_wrong_answers(wrong_items: list[dict], context: str) -> dict:
@@ -705,6 +762,15 @@ reference tag, e.g. "캡슐화(033)" or "소프트웨어 공학의 기본 원칙
 context headers are internal excerpt indices for your own grounding only; never echo them, with or without
 the word "발췌". Write focus_topic and tasks as plain study instructions, referring to concepts by name only.
 
+For each day, also create an AI learning guide:
+- summary: In 3–5 natural Korean sentences, explain what concept the learner will study today, why it
+  matters, and how it connects to the material. Write for a learner reading this before study; do not
+  copy the textbook or merely list facts.
+- study_tip: In 2–3 natural Korean sentences, give concrete ways to study this topic effectively, such
+  as linking concepts, using examples, memorization cues, or solving practice questions. Avoid generic
+  encouragement such as "study hard".
+- focus_topic, summary, and study_tip must never contain source numbers, page numbers, or citations.
+
 Return JSON only:
 {{
   "days": [
@@ -712,7 +778,8 @@ Return JSON only:
       "day_offset": 0,
       "focus_topic": "Korean focus topic for this day",
       "planned_minutes": 60,
-      "tasks": ["Korean study task"]
+      "summary": "Korean AI learning guide in 3-5 sentences",
+      "study_tip": "Korean study tip in 2-3 sentences"
     }}
   ]
 }}
@@ -729,8 +796,9 @@ The days array length must be exactly {day_count}, with day_offset from 0 to {da
                     "date": (week_start_date + timedelta(days=index)).isoformat(),
                     "focus_topic": _clean_source_labels(str(day.get("focus_topic") or "").strip()),
                     "planned_minutes": int(day.get("planned_minutes") or 60),
-                    "tasks": _clean_source_labels(_as_text_list(day.get("tasks"))),
                     "checkpoint": "",
+                    "summary": _clean_source_labels(str(day.get("summary") or "").strip()),
+                    "study_tip": _clean_source_labels(str(day.get("study_tip") or "").strip()),
                 }
                 for index, day in enumerate(days)
             ]
@@ -780,7 +848,7 @@ async def generate_report(
     return await upstage.chat([{"role": "user", "content": prompt}])
 
 
-async def tutor_reply(history: list[dict], context: str | None) -> str:
+async def tutor_reply(history: list[dict], context: str | None, plan_scope: dict | None = None) -> str:
     system = _SYSTEM + (
         " You are now a 1:1 tutor. Prefer hints and Socratic questions over immediately "
         "revealing the answer, but if the student asks a direct factual question "
@@ -790,6 +858,16 @@ async def tutor_reply(history: list[dict], context: str | None) -> str:
         "no step-by-step reasoning, no English, no phrases like 'Let me check' or 'Wait' "
         "or 'excerpt N says' — do not narrate your own thought process."
     )
+    if plan_scope:
+        tasks = ", ".join(str(task) for task in plan_scope.get("tasks") or [] if str(task).strip())
+        system += (
+            "\n\n[Today's daily learning plan]\n"
+            f"Focus topic: {plan_scope.get('focus_topic') or 'Not specified'}\n"
+            f"Tasks: {tasks or 'Not specified'}\n"
+            "Keep the conversation focused on this plan. Explain the focus topic, help with its "
+            "tasks, and use examples related to it. If the student asks about an unrelated topic, "
+            "briefly answer only when possible, then guide them back to today's focus."
+        )
     if context:
         system += f"\n\n[Study-material context]\n{context}"
     messages = [{"role": "system", "content": system}] + history
