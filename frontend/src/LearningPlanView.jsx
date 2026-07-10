@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import ConfirmModal from './ConfirmModal'
 import Header from './Header'
+import MarkdownText from './MarkdownText'
 import {
   createCurriculum,
   deleteCurriculum,
@@ -189,7 +190,7 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
 
             {phase === 'confirming' && (
               <div className="goal-confirm-card">
-                <p className="goal-suggested-text">{suggestedReply}</p>
+                <MarkdownText className="goal-suggested-text">{suggestedReply}</MarkdownText>
                 <p className="goal-confirm-question">이 일정이 맞나요?</p>
                 <div className="goal-confirm-actions">
                   <button type="button" className="cta-button" onClick={confirmSuggested}>

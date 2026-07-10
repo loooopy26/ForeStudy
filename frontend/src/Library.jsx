@@ -257,7 +257,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
     const fallbackCert = getCurrentCertificates()[0]?.title || ''
     const activeCertName = certName || fallbackCert
     if (!activeCertName) {
-      setCalendarError('자격증을 먼저 선택해 주세요.')
+      setCalendarError('등록된 자격증이 없습니다. 자격증 등록을 먼저 진행해주세요.')
       setCalendarLoading(false)
       return
     }

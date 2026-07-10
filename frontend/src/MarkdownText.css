@@ -1,0 +1,82 @@
+.markdown-text {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: left;
+  /* 부모(.bubble/.goal-suggested-text)가 원문 줄바꿈 보존용으로 쓰는
+     white-space: pre-line을 그대로 물려받으면, 마크다운 파싱 후 요소 사이에
+     남는 개행 텍스트 노드까지 실제 줄바꿈으로 렌더링되어 번호/불릿과 내용이
+     떨어져 보인다. 여기서부터는 진짜 HTML 요소(p/li 등)로 구조를 표현하므로
+     기본 공백 처리로 되돌린다. */
+  white-space: normal;
+}
+
+.markdown-text > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-text > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-text p {
+  margin: 0 0 8px;
+}
+
+.markdown-text strong {
+  font-weight: 700;
+}
+
+.markdown-text ul,
+.markdown-text ol {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.markdown-text li {
+  margin-bottom: 2px;
+}
+
+.markdown-text li > ul,
+.markdown-text li > ol {
+  margin-top: 2px;
+  margin-bottom: 0;
+}
+
+.markdown-text code {
+  background: rgba(0, 0, 0, 0.07);
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 0.92em;
+}
+
+.markdown-text a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.markdown-table-wrap {
+  overflow-x: auto;
+  margin: 4px 0 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.markdown-text table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12px;
+}
+
+.markdown-text th,
+.markdown-text td {
+  border: 1px solid var(--card-border);
+  padding: 5px 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.markdown-text th {
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.04);
+}

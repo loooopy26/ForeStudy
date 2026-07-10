@@ -1,57 +1,40 @@
-"""가벼운 웹 검색 도구.
+"""네이버 검색 API 기반 웹 검색 도구."""
 
-DuckDuckGo의 no-JS HTML 결과를 읽어 제목/URL/스니펫만 반환한다.
-"""
-
-from urllib.parse import parse_qs, unquote, urlparse
+import re
 
 import httpx
 
+from config import settings
 
-def _clean_duck_url(raw_url: str) -> str:
-    parsed = urlparse(raw_url)
-    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-        uddg = parse_qs(parsed.query).get("uddg", [""])[0]
-        if uddg:
-            return unquote(uddg)
-    return raw_url
+
+def _strip_html(value: str) -> str:
+    """네이버 검색 결과의 강조 태그를 화면용 일반 텍스트로 바꾼다."""
+    return re.sub(r"<[^>]+>", "", value or "").strip()
 
 
 async def search(query: str, max_results: int = 5) -> list[dict]:
-    try:
-        from bs4 import BeautifulSoup
-    except ImportError as exc:
-        raise RuntimeError("beautifulsoup4가 설치되어 있지 않습니다. pip install -r requirements.txt를 실행해주세요.") from exc
+    if not settings.naver_client_id or not settings.naver_client_secret:
+        raise RuntimeError(
+            "네이버 검색 API 키가 설정되지 않았습니다. "
+            "backend/.env에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 추가해 주세요."
+        )
 
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-        resp = await client.get(
-            "https://html.duckduckgo.com/html/",
-            params={"q": query},
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(
+            "https://openapi.naver.com/v1/search/webkr.json",
+            params={"query": query, "display": min(max_results, 100), "sort": "sim"},
             headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-                )
+                "X-Naver-Client-Id": settings.naver_client_id,
+                "X-Naver-Client-Secret": settings.naver_client_secret,
             },
         )
-        resp.raise_for_status()
+        response.raise_for_status()
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    results: list[dict] = []
-    for result in soup.select(".result"):
-        link = result.select_one(".result__a")
-        snippet = result.select_one(".result__snippet")
-        if not link:
-            continue
-        title = link.get_text(" ", strip=True)
-        url = _clean_duck_url(link.get("href", ""))
-        results.append(
-            {
-                "title": title,
-                "url": url,
-                "snippet": snippet.get_text(" ", strip=True) if snippet else "",
-            }
-        )
-        if len(results) >= max_results:
-            break
-    return results
+    return [
+        {
+            "title": _strip_html(item.get("title", "")),
+            "url": item.get("link", ""),
+            "snippet": _strip_html(item.get("description", "")),
+        }
+        for item in response.json().get("items", [])
+    ][:max_results]

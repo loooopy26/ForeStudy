@@ -193,6 +193,8 @@ function Quiz({ onNavigate }) {
             </div>
           </div>
 
+          <div className="explain-box">복습하기 탭에서 오답 노트와 유사 문제를 확인할 수 있어요.</div>
+
           <div className="result-list">
             {result.results.map((item) => (
               <div className="result-card" key={item.question_id}>

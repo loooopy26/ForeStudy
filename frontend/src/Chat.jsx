@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Header from './Header'
+import MarkdownText from './MarkdownText'
 import { ChatIcon, BotIcon, SendIcon } from './icons'
 import { createTutorSession, getMaterial, sendTutorMessage } from './api'
 import './Chat.css'
@@ -107,7 +108,9 @@ function Chat({ onNavigate, materialId }) {
                     <BotIcon />
                   </div>
                 )}
-                <div className={`bubble ${m.isAI ? 'ai' : 'mine'}`}>{m.text}</div>
+                <div className={`bubble ${m.isAI ? 'ai' : 'mine'}`}>
+                  {m.isAI ? <MarkdownText>{m.text}</MarkdownText> : m.text}
+                </div>
               </div>
             ))}
             {thinking && (

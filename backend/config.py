@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     tmap_app_key: str | None = None
     tmap_base_url: str = "https://apis.openapi.sk.com"
 
+    # Naver Search API (자격증 시험 일정 웹문서 검색)
+    naver_client_id: str | None = None
+    naver_client_secret: str | None = None
+
     upstage_base_url: str = "https://api.upstage.ai/v1"
     upstage_chat_model: str = "solar-pro3"
     upstage_embedding_passage_model: str = "solar-embedding-2-passage"
