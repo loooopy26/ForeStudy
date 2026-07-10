@@ -465,6 +465,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     user_id = req.user_id or str(quiz["user_id"])
     wrong_note_rows = []
     mastered_wrong_note_ids = []
+    mastered_source_question_ids = []
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -495,20 +496,36 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
             for result in results:
                 if not result["is_correct"]:
                     continue
-                # Correct answers on similar-review questions clear the source wrong-note entry.
-                deleted_rows = await conn.fetch(
+                # 유사문제를 맞히면 원본 오답노트를 지우지 않고 'mastered'로 남긴다 — 오답노트
+                # 화면에서 전체 25문제를 계속 보여주면서 이 문항만 정답 처리하기 위해서다.
+                mastered_rows = await conn.fetch(
                     """
-                    DELETE FROM wrong_answer_notes n
-                    USING similar_quiz_note_links l
+                    UPDATE wrong_answer_notes n
+                    SET status = 'mastered', last_reviewed_at = now()
+                    FROM similar_quiz_note_links l
                     WHERE l.similar_quiz_id = $1
                       AND l.similar_question_id = $2
                       AND l.source_wrong_note_id = n.id
-                    RETURNING n.id
+                    RETURNING n.id, n.quiz_attempt_id AS source_attempt_id, n.quiz_question_id AS source_question_id
                     """,
                     quiz_id,
                     result["question_id"],
                 )
-                mastered_wrong_note_ids.extend(str(row["id"]) for row in deleted_rows)
+                for row in mastered_rows:
+                    mastered_wrong_note_ids.append(str(row["id"]))
+                    mastered_source_question_ids.append(str(row["source_question_id"]))
+                    # 이제 '맞은 문제'로 취급되므로, 원래 문항의 해설도 오답 분석 대신
+                    # 정답 해설로 바꿔둔다.
+                    await conn.execute(
+                        """
+                        UPDATE quiz_answers a
+                        SET feedback_explanation = q.explanation
+                        FROM quiz_questions q
+                        WHERE a.quiz_attempt_id = $1 AND a.quiz_question_id = $2 AND q.id = a.quiz_question_id
+                        """,
+                        row["source_attempt_id"],
+                        row["source_question_id"],
+                    )
 
             if quiz["quiz_type"] != "placement":
                 for result in results:
@@ -686,6 +703,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
         "results": results,
         "wrong_answer_notes": wrong_note_rows,
         "mastered_wrong_note_ids": mastered_wrong_note_ids,
+        "mastered_source_question_ids": mastered_source_question_ids,
         "learning_evaluation": learning_evaluation,
         "review": {
             "available": bool(wrong_note_rows),
@@ -756,7 +774,7 @@ async def list_material_attempts(material_id: str, user_id: str | None = None):
             COUNT(n.id) AS wrong_count
         FROM quiz_attempts a
         JOIN quizzes q ON q.id = a.quiz_id
-        LEFT JOIN wrong_answer_notes n ON n.quiz_attempt_id = a.id
+        LEFT JOIN wrong_answer_notes n ON n.quiz_attempt_id = a.id AND n.status <> 'mastered'
         WHERE q.study_material_id = $1
           AND a.user_id = $2
           AND NOT EXISTS (
@@ -799,7 +817,7 @@ async def get_wrong_answer_notes(attempt_id: str):
             n.mistake_analysis, n.status, n.created_at, n.last_reviewed_at
         FROM wrong_answer_notes n
         JOIN quiz_questions q ON q.id = n.quiz_question_id
-        WHERE n.quiz_attempt_id = $1
+        WHERE n.quiz_attempt_id = $1 AND n.status <> 'mastered'
         ORDER BY q.question_order
         """,
         attempt_id,
@@ -1369,14 +1387,20 @@ async def get_attempt_answers(attempt_id: str, only: str = "all"):
         raise HTTPException(404, "응시 기록을 찾을 수 없습니다")
 
     # only 값은 위에서 화이트리스트 검증했으므로 안전하게 조건만 덧붙인다.
-    filter_sql = {"all": "", "correct": " AND a.is_correct = true", "wrong": " AND a.is_correct = false"}[only]
+    # 유사문제를 맞혀 'mastered'가 된 문항은 원래는 틀렸었지만 지금은 정답으로 취급한다.
+    filter_sql = {
+        "all": "",
+        "correct": " AND (a.is_correct = true OR n.status = 'mastered')",
+        "wrong": " AND a.is_correct = false AND n.status IS DISTINCT FROM 'mastered'",
+    }[only]
     rows = await pool.fetch(
         f"""
         SELECT q.id AS question_id, q.question_order, q.question_type, q.question_text,
                q.options, q.correct_answer,
                COALESCE(a.feedback_explanation, n.mistake_analysis, q.explanation) AS explanation,
                q.topic_tag,
-               a.user_answer, a.is_correct
+               a.user_answer, a.is_correct,
+               (n.status = 'mastered') AS mastered
         FROM quiz_answers a
         JOIN quiz_questions q ON q.id = a.quiz_question_id
         LEFT JOIN wrong_answer_notes n
@@ -1396,6 +1420,7 @@ async def get_attempt_answers(attempt_id: str, only: str = "all"):
         opts = item["options"]
         item["options"] = json.loads(opts) if isinstance(opts, str) else opts
         item["explanation"] = _clean_source_labels(item["explanation"])
+        item["mastered"] = bool(item["mastered"])
         answers.append(item)
 
     return {

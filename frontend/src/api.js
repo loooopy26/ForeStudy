@@ -18,6 +18,16 @@ export function setLastAttemptId(attemptId) {
 }
 
 const QUIZ_PROGRESS_KEY = 'forestudy_quiz_progress'
+const DAILY_QUIZ_REQUIREMENT_KEY = 'forestudy_daily_quiz_requirement'
+const DAILY_QUIZ_UNLOCK_KEY = 'forestudy_daily_quiz_unlock'
+
+function localTodayKey() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 export function getQuizProgress(materialId) {
   try {
@@ -39,6 +49,32 @@ export function setQuizProgress(materialId, quiz, answers = {}, idx = 0) {
 
 export function clearQuizProgress() {
   localStorage.removeItem(QUIZ_PROGRESS_KEY)
+}
+
+export function requireDailyQuizCompletion(materialId, planDate = localTodayKey()) {
+  if (materialId) localStorage.setItem(DAILY_QUIZ_REQUIREMENT_KEY, JSON.stringify({ materialId, planDate }))
+}
+
+export function isDailyQuizCompletionRequired(materialId) {
+  try {
+    const requirement = JSON.parse(localStorage.getItem(DAILY_QUIZ_REQUIREMENT_KEY) || 'null')
+    return requirement?.materialId === materialId && requirement?.planDate === localTodayKey()
+  } catch {
+    return false
+  }
+}
+
+export function unlockDailyQuiz(materialId, planDate = localTodayKey()) {
+  if (materialId) localStorage.setItem(DAILY_QUIZ_UNLOCK_KEY, JSON.stringify({ materialId, planDate }))
+}
+
+export function isDailyQuizUnlocked(materialId) {
+  try {
+    const unlocked = JSON.parse(localStorage.getItem(DAILY_QUIZ_UNLOCK_KEY) || 'null')
+    return unlocked?.materialId === materialId && unlocked?.planDate === localTodayKey()
+  } catch {
+    return false
+  }
 }
 
 export async function apiRequest(path, options = {}) {
@@ -236,6 +272,13 @@ export function saveCertGoal(certificationName, targetExamDate) {
 
 export function getCertGoal(certificationName) {
   return apiRequest(`/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}`)
+}
+
+export function prepareReviewQuiz(materialId) {
+  return apiRequest(`/api/materials/${materialId}/review-quiz`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
 }
 
 export function sendCertGoalChat(certificationName, message, threadId) {

@@ -74,8 +74,8 @@ function Review({ onNavigate }) {
     setError('')
     setExpandedNoteId(null)
     try {
-      const data = await apiRequest(`/api/attempts/${attemptId}/wrong-notes`)
-      setNotes(data.wrong_notes || [])
+      const data = await apiRequest(`/api/attempts/${attemptId}/answers?only=all`)
+      setNotes(data.answers || [])
       setSelectedAttemptId(attemptId)
       setView('notes')
     } catch (err) {
@@ -154,9 +154,12 @@ function Review({ onNavigate }) {
         }),
       })
       setLastAttemptId(data.attempt_id)
-      const mastered = new Set(data.mastered_wrong_note_ids || [])
-      if (mastered.size > 0) {
-        setNotes((prev) => prev.filter((note) => !mastered.has(note.wrong_note_id)))
+      if (selectedAttemptId) {
+        // 유사문제를 맞히면 원본 문항이 정답 처리되므로, 오답노트 목록과 지난 응시 기록의
+        // "숙지가 덜 된 부분" 배지를 최신 상태로 다시 받아온다.
+        const refreshed = await apiRequest(`/api/attempts/${selectedAttemptId}/answers?only=all`)
+        setNotes(refreshed.answers || [])
+        loadAttempts()
       }
       setResult(data)
       setView('result')
@@ -226,29 +229,40 @@ function Review({ onNavigate }) {
             <div className="note-title">오답노트</div>
             <div className="note-list">
               {notes.length === 0 ? (
-                <div className="note-empty">이 회차에는 남은 오답이 없습니다.</div>
+                <div className="note-empty">이 회차에는 문제 기록이 없습니다.</div>
               ) : (
                 notes.map((note, index) => {
-                  const expanded = expandedNoteId === note.wrong_note_id
+                  const solved = note.is_correct || note.mastered
+                  const expanded = expandedNoteId === note.question_id
                   return (
                     <button
                       type="button"
-                      className={`note-card${expanded ? ' expanded' : ''}`}
-                      key={note.wrong_note_id}
-                      onClick={() => setExpandedNoteId((value) => (value === note.wrong_note_id ? null : note.wrong_note_id))}
+                      className={`note-card${expanded ? ' expanded' : ''}${solved ? ' note-card-solved' : ''}`}
+                      key={note.question_id}
+                      onClick={() => setExpandedNoteId((value) => (value === note.question_id ? null : note.question_id))}
                     >
                       <div className="note-question">
+                        <span className={`note-status-icon ${solved ? 'correct' : 'wrong'}`}>
+                          {solved ? <CheckIcon size={13} /> : <CrossIcon size={11} />}
+                        </span>
                         <span>{index + 1}. {note.question_text}</span>
                         <span className="note-question-chevron">›</span>
                       </div>
                       {expanded && (
                         <div className="note-detail">
-                          <div className="note-answer wrong">내 답: {note.user_answer || '미응답'}</div>
+                          {note.mastered ? (
+                            <>
+                              <span className="note-mastered-tag">유사 문제로 정답 전환</span>
+                              <div className="note-answer muted">처음 답안: {note.user_answer || '미응답'}</div>
+                            </>
+                          ) : (
+                            <div className={`note-answer ${solved ? 'correct' : 'wrong'}`}>내 답: {note.user_answer || '미응답'}</div>
+                          )}
                           <div className="note-answer correct">정답: {note.correct_answer}</div>
-                          {note.mistake_analysis && (
+                          {note.explanation && (
                             <div className="note-analysis">
-                              <strong>왜 틀렸을까?</strong>
-                              <span>{note.mistake_analysis}</span>
+                              <strong>{solved ? '정답 해설' : '왜 틀렸을까?'}</strong>
+                              <span>{note.explanation}</span>
                             </div>
                           )}
                         </div>
@@ -258,15 +272,28 @@ function Review({ onNavigate }) {
                 })
               )}
             </div>
-            {notes.length > 0 && (
+            {notes.some((note) => !note.is_correct && !note.mastered) ? (
               <button type="button" className="cta-button" onClick={startSimilarQuiz} disabled={generating}>
                 {generating ? 'AI가 비슷한 문제를 만드는 중...' : '이 회차 복습하기'}
               </button>
+            ) : (
+              notes.length > 0 && <div className="note-mastered-banner">이 회차 문제를 모두 숙지했어요!</div>
             )}
           </div>
         )}
 
-        {view === 'quiz' && current && (
+        {view === 'quiz' && current && submitting && (
+          <div className="goal-searching">
+            <div className="goal-spinner">
+              <div className="goal-spinner-dot" />
+              <div className="goal-spinner-dot" />
+              <div className="goal-spinner-dot" />
+            </div>
+            <span>AI가 채점하고 해설을 정리하고 있어요. 잠시만 기다려 주세요...</span>
+          </div>
+        )}
+
+        {view === 'quiz' && current && !submitting && (
           <>
             <div className="progress-row">
               <div className="progress-top">
@@ -315,7 +342,7 @@ function Review({ onNavigate }) {
               <div>
                 <div className="done-title">복습 채점 완료</div>
                 <div className="done-desc">
-                  맞힌 유사문제와 연결된 기존 오답 {result.mastered_wrong_note_ids?.length || 0}개를 오답노트에서 지웠습니다.
+                  맞힌 유사문제와 연결된 기존 오답 {result.mastered_source_question_ids?.length || 0}개를 정답으로 처리했습니다.
                 </div>
               </div>
             </div>
@@ -339,10 +366,10 @@ function Review({ onNavigate }) {
         )}
       </div>
 
-      {view === 'quiz' && (
+      {view === 'quiz' && !submitting && (
         <div className="cta-area">
-          <button type="button" className="cta-button" disabled={!answered || submitting} onClick={next}>
-            {submitting ? '채점 중...' : isLast ? '결과 보기' : '다음 문제'}
+          <button type="button" className="cta-button" disabled={!answered} onClick={next}>
+            {isLast ? '결과 보기' : '다음 문제'}
           </button>
         </div>
       )}

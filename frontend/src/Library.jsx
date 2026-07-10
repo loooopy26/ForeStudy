@@ -3,7 +3,7 @@ import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getTodayCurriculumDay, listMaterials, pauseTimer, startTimer, uploadMaterial } from './api'
+import { endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, listMaterials, pauseTimer, prepareReviewQuiz, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
@@ -35,6 +35,10 @@ function toDateKey(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function getTimerDurationKey(planDay) {
+  return `forestudy_timer_duration_${planDay.date}_${planDay.day_id}`
 }
 
 function flattenCurriculumDays(curriculum) {
@@ -95,6 +99,9 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
   const [selectedPlanDay, setSelectedPlanDay] = useState(null)
   const [todayPlanDay, setTodayPlanDay] = useState(null)
+  const [timerCompleted, setTimerCompleted] = useState(false)
+  const todayPlanRef = useRef(null)
+  const preparingQuizRef = useRef(false)
 
   const refreshMaterials = () => {
     listMaterials().then(setMaterials).catch(() => {})
@@ -110,7 +117,43 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
     let cancelled = false
     getTodayCurriculumDay(certName)
       .then((result) => {
-        if (!cancelled) setTodayPlanDay(result?.day || null)
+        if (cancelled) return
+        const planDay = result?.day || null
+        setTodayPlanDay(planDay)
+        todayPlanRef.current = planDay
+        if (!planDay || !materialId) return
+
+        const plannedMinutes = Number(planDay.planned_minutes)
+
+        if (
+          studySecRef.current === 0
+          && Number.isInteger(plannedMinutes)
+          && plannedMinutes >= MIN_DURATION_MIN
+          && plannedMinutes <= MAX_DURATION_MIN
+      ) {
+        const durationKey = getTimerDurationKey(planDay)
+        const savedDuration = Number(localStorage.getItem(durationKey))
+
+        const nextDuration = (
+          Number.isInteger(savedDuration)
+          && savedDuration >= MIN_DURATION_MIN
+          && savedDuration <= MAX_DURATION_MIN
+        )
+          ? savedDuration
+          : plannedMinutes
+
+        setDurationMin(nextDuration)
+        setRemaining(nextDuration * 60)
+      }
+
+        requireDailyQuizCompletion(materialId, planDay.date)
+        const savedQuiz = getQuizProgress(materialId)
+        if (savedQuiz?.quiz?.plan_scope?.day_id === planDay.day_id || preparingQuizRef.current) return
+        preparingQuizRef.current = true
+        prepareReviewQuiz(materialId)
+          .then((quiz) => setQuizProgress(materialId, quiz, {}, 0))
+          .catch(() => {})
+          .finally(() => { preparingQuizRef.current = false })
       })
       .catch(() => {
         if (!cancelled) setTodayPlanDay(null)
@@ -118,7 +161,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
     return () => {
       cancelled = true
     }
-  }, [certName])
+  }, [certName, materialId])
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
@@ -153,6 +196,9 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
         if (r <= 1) {
           setRunning(false)
           finishSession()
+          setTimerCompleted(true)
+          const planDay = todayPlanRef.current
+          if (materialId && planDay) unlockDailyQuiz(materialId, planDay.date)
           return 0
         }
         return r - 1
@@ -248,7 +294,13 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
     }
     setDurationMin(nextDuration)
     setRemaining(nextDuration * 60)
-    localStorage.setItem('forestudy_timer_duration_min', String(nextDuration))
+    setTimerCompleted(false)
+    if (todayPlanDay) {
+      localStorage.setItem(
+      getTimerDurationKey(todayPlanDay),
+      String(nextDuration)
+    )
+  }
     closeDurationModal()
   }
 
@@ -319,8 +371,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
             <div className="study-pill">
               <span>총 공부시간 {fmt(studySec)}</span>
             </div>
-            <button type="button" className="timer-button" onClick={handleTimerToggle}>
-              {running ? '일시정지' : '공부 시작'}
+            <button type="button" className="timer-button" onClick={timerCompleted ? () => onNavigate('quiz') : handleTimerToggle}>
+              {timerCompleted ? 'AI 퀴즈 풀기' : running ? '일시정지' : '공부 시작'}
             </button>
           </div>
 

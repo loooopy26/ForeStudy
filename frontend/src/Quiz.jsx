@@ -7,6 +7,8 @@ import {
   clearQuizProgress,
   getMaterialId,
   getQuizProgress,
+  isDailyQuizCompletionRequired,
+  isDailyQuizUnlocked,
   normalizeOptions,
   setLastAttemptId,
   setQuizProgress,
@@ -25,6 +27,7 @@ function Quiz({ onNavigate }) {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const quizLocked = isDailyQuizCompletionRequired(materialId) && !isDailyQuizUnlocked(materialId)
 
   const fetchQuiz = async () => {
     if (!materialId) {
@@ -60,7 +63,7 @@ function Quiz({ onNavigate }) {
   // 생성 요청이 첫 번째 응답을 덮어써 "문제가 갑자기 바뀌는" 현상을 막기 위해, 취소된
   // (ignore) 쪽은 loading/error/quiz 어느 것도 건드리지 않고 조용히 결과를 버린다.
   useEffect(() => {
-    if (quiz) return
+    if (quiz || quizLocked) return
     let ignore = false
     setLoading(true)
     setError('')
@@ -132,6 +135,22 @@ function Quiz({ onNavigate }) {
     else setIdx((value) => value + 1)
   }
 
+  if (quizLocked) {
+    return (
+      <>
+        <Header title="AI 퀴즈" icon={<QuizIcon />} onBack={() => onNavigate('library')} />
+        <div className="done-screen">
+          <div className="done-title">타이머를 완료하면 풀 수 있어요</div>
+          <div className="done-desc">오늘의 학습 시간을 모두 채운 뒤 AI 퀴즈를 시작해 주세요. 퀴즈는 미리 준비해 두었어요.</div>
+        </div>
+        <div className="cta-area">
+          <button type="button" className="cta-button" onClick={() => onNavigate('library')}>도서관으로 돌아가기</button>
+        </div>
+        <BottomNav active="quiz" onNavigate={onNavigate} />
+      </>
+    )
+  }
+
   if (loading || error || !quiz) {
     return (
       <>
@@ -190,11 +209,6 @@ function Quiz({ onNavigate }) {
             ))}
           </div>
         </div>
-        <div className="cta-area tight">
-          <button type="button" className="cta-button" onClick={startNewQuiz}>
-            새 퀴즈 풀기
-          </button>
-        </div>
         <BottomNav active="quiz" onNavigate={onNavigate} />
       </>
     )
@@ -207,71 +221,86 @@ function Quiz({ onNavigate }) {
       <Header title="AI 퀴즈" icon={<QuizIcon />} onBack={() => onNavigate('library')} />
 
       <div className="body-scroll">
-        {quiz?.plan_scope && (
-          <section className="quiz-plan-scope" aria-label="오늘의 학습 범위">
-            <span>오늘의 학습 범위</span>
-            <strong>{quiz.plan_scope.focus_topic}</strong>
-          </section>
-        )}
-
-        <div className="progress-row">
-          <div className="progress-top">
-            <span className="progress-count">문제 {idx + 1} / {questions.length}</span>
-            <span className="progress-tag">{current.question_difficulty || 'normal'}</span>
+        {submitting ? (
+          <div className="goal-searching">
+            <div className="goal-spinner">
+              <div className="goal-spinner-dot" />
+              <div className="goal-spinner-dot" />
+              <div className="goal-spinner-dot" />
+            </div>
+            <span>AI가 채점하고 해설을 정리하고 있어요. 잠시만 기다려 주세요...</span>
           </div>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-
-        <p className="question-text">{current.question_text}</p>
-
-        {isShortAnswer ? (
-          <textarea
-            className="short-answer-input"
-            placeholder="답을 입력하세요"
-            value={selected || ''}
-            onChange={(e) => selectOption(e.target.value)}
-          />
         ) : (
           <>
-            {options.length === 0 && (
-              <div className="done-desc" style={{ color: 'oklch(0.55 0.15 25)' }}>
-                이 문제의 선택지를 불러오지 못했습니다. 새 퀴즈 풀기로 다시 시도해 주세요.
-              </div>
+            {quiz?.plan_scope && (
+              <section className="quiz-plan-scope" aria-label="오늘의 학습 범위">
+                <span>오늘의 학습 범위</span>
+                <strong>{quiz.plan_scope.focus_topic}</strong>
+              </section>
             )}
 
-            <div className="option-list">
-              {options.map((text, i) => {
-                const isSelected = selected === i
-                return (
-                  <button
-                    key={`${current.question_id}-${i}`}
-                    type="button"
-                    className="option-button"
-                    style={{
-                      borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
-                      background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
-                    }}
-                    onClick={() => selectOption(i)}
-                  >
-                    <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
-                      {isSelected && <CheckIcon />}
-                    </span>
-                    <span className="option-label">{LETTERS[i]}. {text}</span>
-                  </button>
-                )
-              })}
+            <div className="progress-row">
+              <div className="progress-top">
+                <span className="progress-count">문제 {idx + 1} / {questions.length}</span>
+                <span className="progress-tag">{current.question_difficulty || 'normal'}</span>
+              </div>
+              <div className="progress-track">
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
             </div>
+
+            <p className="question-text">{current.question_text}</p>
+
+            {isShortAnswer ? (
+              <textarea
+                className="short-answer-input"
+                placeholder="답을 입력하세요"
+                value={selected || ''}
+                onChange={(e) => selectOption(e.target.value)}
+              />
+            ) : (
+              <>
+                {options.length === 0 && (
+                  <div className="done-desc" style={{ color: 'oklch(0.55 0.15 25)' }}>
+                    이 문제의 선택지를 불러오지 못했습니다. 새 퀴즈 풀기로 다시 시도해 주세요.
+                  </div>
+                )}
+
+                <div className="option-list">
+                  {options.map((text, i) => {
+                    const isSelected = selected === i
+                    return (
+                      <button
+                        key={`${current.question_id}-${i}`}
+                        type="button"
+                        className="option-button"
+                        style={{
+                          borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
+                          background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
+                        }}
+                        onClick={() => selectOption(i)}
+                      >
+                        <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
+                          {isSelected && <CheckIcon />}
+                        </span>
+                        <span className="option-label">{LETTERS[i]}. {text}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
 
-      <div className="cta-area">
-        <button type="button" className="cta-button" disabled={!answered || submitting} onClick={next}>
-          {submitting ? '채점 중' : isLast ? '결과 보기' : '다음 문제'}
-        </button>
-      </div>
+      {!submitting && (
+        <div className="cta-area">
+          <button type="button" className="cta-button" disabled={!answered} onClick={next}>
+            {isLast ? '결과 보기' : '다음 문제'}
+          </button>
+        </div>
+      )}
 
       <BottomNav active="quiz" onNavigate={onNavigate} />
     </>

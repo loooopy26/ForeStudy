@@ -790,6 +790,11 @@
   outline-offset: 2px;
 }
 
+.note-card-solved {
+  border-color: var(--green-border);
+  border-left-color: var(--green);
+}
+
 .note-question {
   display: flex;
   align-items: flex-start;
@@ -799,6 +804,50 @@
   font-weight: 700;
   color: var(--ink);
   line-height: 1.5;
+}
+
+.note-status-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-status-icon.correct {
+  background: #2563eb;
+  color: #dbeafe;
+}
+
+.note-status-icon.wrong {
+  background: #dc2626;
+  color: #fee2e2;
+}
+
+.note-mastered-banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--green-tint);
+  border: 1px solid var(--green-border);
+  color: var(--green-text-strong);
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.note-mastered-tag {
+  align-self: flex-start;
+  padding: 3px 9px;
+  border-radius: 100px;
+  background: var(--green-tint);
+  border: 1px solid var(--green-border);
+  color: var(--green-text-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
 }
 
 .note-card.expanded .note-question {
@@ -835,6 +884,12 @@
 
 .note-answer.correct {
   color: var(--green-text-strong);
+}
+
+.note-answer.muted {
+  color: var(--ink-softer);
+  text-decoration: line-through;
+  text-decoration-color: var(--red-solid);
 }
 
 .note-explain {
