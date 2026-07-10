@@ -6,6 +6,7 @@ const WALLET_KEY = 'forestudy_acorns_v4'
 const OWNED_KEY = 'forestudy_goods_owned_v1'
 const EQUIPPED_KEY = 'forestudy_equipped_v1'
 const ROOM_KEY = 'forestudy_room_v1'
+const CUSTOM_ITEMS_KEY = 'forestudy_custom_items_v1'
 
 export const WEARABLE_KINDS = ['outfit', 'hat', 'bag', 'accessory']
 
@@ -75,11 +76,13 @@ export function useGoods() {
     return saved ? parseInt(saved) : 2450
   })
   const [owned, setOwned] = useState(() => readJson(OWNED_KEY, []))
+  const [customItems, setCustomItems] = useState(() => readJson(CUSTOM_ITEMS_KEY, []))
   const [equipped, setEquipped] = useState(readEquipped)
   const [room, setRoom] = useState(() => ({ ...DEFAULT_ROOM, ...readJson(ROOM_KEY, {}) }))
 
   useEffect(() => { localStorage.setItem(WALLET_KEY, wallet) }, [wallet])
   useEffect(() => { localStorage.setItem(OWNED_KEY, JSON.stringify(owned)) }, [owned])
+  useEffect(() => { localStorage.setItem(CUSTOM_ITEMS_KEY, JSON.stringify(customItems)) }, [customItems])
   useEffect(() => { localStorage.setItem(EQUIPPED_KEY, JSON.stringify(equipped)) }, [equipped])
 
   const isOwned = useCallback((id) => owned.includes(id), [owned])
@@ -92,6 +95,17 @@ export function useGoods() {
     setOwned((prev) => [...prev, item.id])
     return true
   }, [owned, wallet])
+
+  const spend = useCallback((amount) => {
+    if (wallet < amount) return false
+    setWallet((prev) => prev - amount)
+    return true
+  }, [wallet])
+
+  const addCustomItem = useCallback((item) => {
+    setCustomItems((prev) => (prev.some((saved) => saved.id === item.id) ? prev : [...prev, item]))
+    setOwned((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]))
+  }, [])
 
   // 착용 중이면 벗고, 아니면 같은 부위 아이템을 교체 착용.
   const toggleEquip = useCallback((item) => {
@@ -126,5 +140,19 @@ export function useGoods() {
     localStorage.setItem(ROOM_KEY, JSON.stringify(room))
   }, [room])
 
-  return { wallet, owned, equipped, room, isOwned, buy, toggleEquip, toggleRoomItem, moveRoomItem, saveRoom }
+  return {
+    wallet,
+    owned,
+    customItems,
+    equipped,
+    room,
+    isOwned,
+    buy,
+    spend,
+    addCustomItem,
+    toggleEquip,
+    toggleRoomItem,
+    moveRoomItem,
+    saveRoom,
+  }
 }

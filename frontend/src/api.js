@@ -266,6 +266,53 @@ export function getActiveCurriculum(goalId) {
   return apiRequest(`/api/cert-goals/${goalId}/curricula/active`)
 }
 
+export async function generateAiItem(prompt, activeTab = 'wear') {
+  const text = prompt.trim()
+  const palette = [
+    ['#7d9c62', '#5f7a43'],
+    ['#e8a4b0', '#d3808f'],
+    ['#9ec1d9', '#7ba3bf'],
+    ['#e9c46a', '#d4a83f'],
+    ['#a9825f', '#8a6647'],
+  ]
+  const [color, trim] = palette[Math.abs(hashText(text)) % palette.length]
+  const kindByTab = {
+    wear: 'outfit',
+    furniture: 'furniture',
+    decor: 'decor',
+    surface: 'wallpaper',
+  }
+  const artByKind = {
+    outfit: 'hoodie',
+    furniture: 'shelf',
+    decor: 'plant',
+    wallpaper: 'wallpaper-forest',
+  }
+  const kind = kindByTab[activeTab] || 'outfit'
+  const nameBase = text.split(/\s+/).slice(0, 2).join(' ') || 'AI 아이템'
+
+  return {
+    id: `ai-${crypto.randomUUID()}`,
+    name: `${nameBase} 아이템`,
+    price: 0,
+    kind,
+    art: artByKind[kind] || 'hoodie',
+    color,
+    trim,
+    description: `"${text}" 느낌으로 만든 AI 커스텀 아이템이에요.`,
+    tags: text.split(/\s+/).filter(Boolean).slice(0, 3),
+    generated: true,
+  }
+}
+
+function hashText(text) {
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0
+  }
+  return hash
+}
+
 export async function deleteCurriculum(curriculumId) {
   const res = await fetch(`${API_BASE}/api/cert-goals/curricula/${curriculumId}`, { method: 'DELETE' })
   if (!res.ok && res.status !== 404) throw new Error('학습 플랜 삭제에 실패했습니다')
