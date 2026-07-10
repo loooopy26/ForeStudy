@@ -18,7 +18,9 @@ const BACKEND_STAGE_TO_UI_STAGE = {
   summarizing: 'summarizing',
 }
 
-const MAX_POLL_ATTEMPTS = 180 // 2초 간격 * 180회 = 최대 6분
+// 2초 간격 * 900회 = 최대 30분. 대용량 문서는 백엔드 파싱만 최대 20분(services/upstage.py의
+// _ASYNC_POLL_TIMEOUT_SECONDS)이 걸릴 수 있어 그보다 여유 있게 잡는다.
+const MAX_POLL_ATTEMPTS = 900
 
 function CertUpload({ certName, onNavigate }) {
   const [files, setFiles] = useState([])
@@ -26,6 +28,9 @@ function CertUpload({ certName, onNavigate }) {
   const [stage, setStage] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
+  // 폴링이 시간 초과로 포기했지만 백엔드는 계속 처리 중인 material.
+  // 재시도 시 이 값이 있으면 재업로드 대신 이어서 상태만 확인한다.
+  const [pendingMaterialId, setPendingMaterialId] = useState(null)
   const timerRef = useRef(null)
 
   useEffect(() => {
@@ -47,10 +52,12 @@ function CertUpload({ certName, onNavigate }) {
       return next
     })
     setError('')
+    setPendingMaterialId(null)
   }
 
   const removeFile = (name) => {
     setFiles((prev) => prev.filter((file) => file.name !== name))
+    setPendingMaterialId(null)
   }
 
   const waitForMaterialReady = async (materialId) => {
@@ -64,20 +71,30 @@ function CertUpload({ certName, onNavigate }) {
       setStage(uiStage)
       await new Promise((resolve) => setTimeout(resolve, 2000))
     }
-    throw new Error('자료 처리 시간이 많이 길어지고 있습니다. 잠시 후 다시 시도해 주세요.')
+    // 서버에서는 계속 처리 중이므로 material은 살려두고, 재시도 시 이어서 확인하게 한다.
+    setPendingMaterialId(materialId)
+    throw new Error(
+      '자료 처리 시간이 많이 길어지고 있습니다. 서버에서는 계속 처리 중이니 잠시 후 "이어서 확인"을 눌러주세요.',
+    )
   }
 
   const completeUpload = async () => {
-    if (!certName || files.length === 0 || uploading) return
+    if (!certName || (files.length === 0 && !pendingMaterialId) || uploading) return
     setUploading(true)
     setElapsed(0)
     setError('')
     try {
-      setStage('uploaded')
-      const uploaded = await uploadMaterial(files[0], `${certName} 학습 자료`)
-      const materialId = uploaded.material_id
-      setStage('parsing')
+      let materialId = pendingMaterialId
+      if (materialId) {
+        setStage('parsing')
+      } else {
+        setStage('uploaded')
+        const uploaded = await uploadMaterial(files[0], `${certName} 학습 자료`)
+        materialId = uploaded.material_id
+        setStage('parsing')
+      }
       await waitForMaterialReady(materialId)
+      setPendingMaterialId(null)
       setStage('quiz')
       const placementQuiz = await createPlacementQuiz(materialId)
       setMaterialId(materialId)
@@ -175,10 +192,14 @@ function CertUpload({ certName, onNavigate }) {
         <button
           type="button"
           className="cta-button"
-          disabled={files.length === 0 || uploading}
+          disabled={(files.length === 0 && !pendingMaterialId) || uploading}
           onClick={completeUpload}
         >
-          {uploading ? STAGES[stageIndex]?.label || '처리 중...' : '등록 완료'}
+          {uploading
+            ? STAGES[stageIndex]?.label || '처리 중...'
+            : pendingMaterialId
+              ? '이어서 확인'
+              : '등록 완료'}
         </button>
       </div>
     </div>
