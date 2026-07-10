@@ -46,7 +46,7 @@
 .goods-coin-badge {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   background: var(--color-bg-card-light);
   border: 1px solid var(--color-border);
   border-radius: 14px;
@@ -55,6 +55,19 @@
   font-size: 14px;
   color: #a9853f;
   box-shadow: 0 2px 6px rgba(102, 83, 42, 0.08);
+}
+
+.goods-lvl {
+  color: var(--color-text-dark);
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  padding-right: 9px;
+  font-size: 13px;
+}
+
+.goods-acorn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .goods-icon-btn {

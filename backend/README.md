@@ -81,7 +81,7 @@ VITE_API_BASE_URL=http://192.168.0.10:8000
 | **AI 도서관** | GET | `/api/materials?user_id?` | 자료 목록 조회 (최신 업로드 순). 프론트 자료 선택 화면용 | **실제 동작** |
 | **AI 도서관** | POST | `/api/materials` | 파일 업로드 (multipart: `file`, `title?`, `user_id?`) → 202 + `material_id` | **실제 동작** |
 | **AI 도서관** | GET | `/api/materials/{id}` | `processed_status`가 `ready` 될 때까지 폴링. 시험공부용 상세 요약(섹션별 학습 노트)/핵심개념 포함. 실패 시 `processing_error`에 원인 기록 | **실제 동작** |
-| **AI 도서관** | POST | `/api/materials/{id}/quiz` | 퀴즈 생성 `{num_questions, difficulty}` → 문항(정답 미포함) | **실제 동작** |
+| **AI 도서관** | POST | `/api/materials/{id}/quiz` | 퀴즈 생성 `{num_questions, difficulty}` → 문항(정답 미포함). 문항은 5개 단위 배치로 생성하며 배치당 최대 5회까지 재시도해 중복/빈 보기를 걸러낸다 (`study_agent.py`) | **실제 동작** |
 | **AI 도서관** | POST | `/api/quizzes/{id}/submit` | 답안 제출 `{answers:[{question_id, answer}]}` → 서버 채점 후 맞은/틀린 답 모두 `quiz_answers` 저장 (+해설·오답노트 생성) | **실제 동작** |
 | **AI 도서관** | GET | `/api/attempts/{attempt_id}/answers?only=all\|correct\|wrong` | 채점 결과 조회. 문항별 `is_correct`, 객관식 `options`(서술형 null) 포함. `only`로 정답/오답 필터 | **실제 동작** |
 | **AI 도서관** | GET | `/api/attempts/{id}/wrong-notes` | 오답노트 탭 목록 조회 | **실제 동작** |

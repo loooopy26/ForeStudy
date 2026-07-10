@@ -97,7 +97,10 @@ async def generate_quiz(
     mix = question_mix or {"multiple_choice": num_questions}
     # Large single prompts often come back capped around 10 items, so split each
     # requested type into smaller model calls and merge the generated questions.
-    batch_size = 10
+    # Smaller batches also shrink the blast radius of a malformed-option retry
+    # (see _generate_quiz_batch): fewer questions per call means fewer chances
+    # for one of them to come back with duplicate/empty options.
+    batch_size = 5
     batch_requests = []
     for question_type, count in mix.items():
         remaining = count
@@ -200,8 +203,9 @@ The questions array length must be exactly {count}.
 difficulty_score must be an integer from 1 to 100."""
     messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
 
+    max_attempts = 5
     last_normalized: list[dict] = []
-    for attempt in range(3):
+    for attempt in range(max_attempts):
         result = await upstage.chat_json(messages, temperature=0.5)
         questions = result["questions"][:count]
         normalized = [_normalize_question(question) for question in questions]
@@ -222,7 +226,7 @@ difficulty_score must be an integer from 1 to 100."""
         # "hard" items), returns duplicate/placeholder options, or returns fewer items
         # than requested. Retry generation instead of silently shipping a broken quiz.
     raise RuntimeError(
-        f"AI가 {count}개의 {question_type} 문제를 3번 시도해도 유효하게 만들지 못했습니다 "
+        f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 유효하게 만들지 못했습니다 "
         "(중복되거나 비어있는 보기 포함)."
     )
 

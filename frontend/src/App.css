@@ -11,12 +11,12 @@
 }
 
 .phone-frame {
-  width: min(384px, 94vw);
-  aspect-ratio: 384 / 772;
-  background: var(--phone-bg);
-  border-radius: 36px;
-  box-shadow: 0 24px 55px -14px var(--phone-shadow);
-  border: 1px solid var(--phone-border);
+  width: min(390px, 94vw);
+  height: min(844px, calc(100vh - 80px));
+  background: #FBF3E7;
+  border-radius: 40px;
+  box-shadow: 0 24px 60px rgba(90, 70, 40, 0.18);
+  border: 1px solid rgba(230, 214, 184, 0.7);
   overflow: hidden;
   display: flex;
   flex-direction: column;

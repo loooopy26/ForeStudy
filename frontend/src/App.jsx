@@ -12,6 +12,11 @@ import Review from './Review'
 import Summary from './Summary'
 import Chat from './Chat'
 import ForestGame from './ForestGame'
+import ShopPage from './ShopPage'
+import RoomPage from './RoomPage'
+import StudyMap from './StudyMap'
+import StudyPlaces from './StudyPlaces'
+import ExamAssistant from './ExamAssistant'
 import Auth from './Auth'
 import ShopPage from './ShopPage'
 import RoomPage from './RoomPage'
@@ -34,6 +39,11 @@ const SCREENS = {
   summary: Summary,
   chat: Chat,
   forest: ForestGame,
+  shop: ShopPage,
+  room: RoomPage,
+  studymap: StudyMap,
+  studyplaces: StudyPlaces,
+  examassistant: ExamAssistant,
   auth: Auth,
   shop: ShopPage,
   room: RoomPage,
