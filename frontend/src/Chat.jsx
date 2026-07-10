@@ -15,6 +15,9 @@ function Chat({ onNavigate, materialId }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
+  // null이면 스트리밍 중이 아님. ''는 요청은 갔지만 아직 첫 조각이 안 온 상태(점 3개 표시),
+  // 그 이후엔 도착한 조각들을 이어붙인 진행 중인 답변 텍스트.
+  const [streamingReply, setStreamingReply] = useState(null)
   const [showSuggestions, setShowSuggestions] = useState(true)
   const logRef = useRef(null)
 
@@ -60,13 +63,17 @@ function Chat({ onNavigate, materialId }) {
     setInput('')
     setShowSuggestions(false)
     setThinking(true)
+    setStreamingReply('')
     try {
-      const { reply } = await sendTutorMessage(sessionId, trimmed)
+      const { reply } = await sendTutorMessage(sessionId, trimmed, (_delta, fullText) => {
+        setStreamingReply(fullText)
+      })
       setMessages((m) => [...m, { isAI: true, text: reply }])
     } catch (err) {
       setMessages((m) => [...m, { isAI: true, text: `답변을 받지 못했어요: ${err.message}` }])
     } finally {
       setThinking(false)
+      setStreamingReply(null)
     }
   }
 
@@ -118,11 +125,17 @@ function Chat({ onNavigate, materialId }) {
                 <div className="avatar">
                   <BotIcon />
                 </div>
-                <div className="thinking">
-                  <div className="dot" />
-                  <div className="dot" />
-                  <div className="dot" />
-                </div>
+                {streamingReply ? (
+                  <div className="bubble ai">
+                    <MarkdownText>{streamingReply}</MarkdownText>
+                  </div>
+                ) : (
+                  <div className="thinking">
+                    <div className="dot" />
+                    <div className="dot" />
+                    <div className="dot" />
+                  </div>
+                )}
               </div>
             )}
           </div>

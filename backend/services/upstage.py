@@ -73,6 +73,36 @@ async def chat(
         return resp.json()["choices"][0]["message"]["content"]
 
 
+async def chat_stream(messages: list[dict], *, temperature: float = 0.3):
+    """Solar 챗 스트리밍 호출. OpenAI 호환 SSE(`data: {...}` 라인)를 그대로 파싱해서
+    각 청크의 텍스트 조각(delta)만 하나씩 yield한다. JSON mode는 스트리밍과 같이 쓰지
+    않으므로(응답이 문장 단위 자연어인 튜터 채팅 전용) json_mode 옵션은 없다."""
+    body = {
+        "model": settings.upstage_chat_model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+    }
+    async with httpx.AsyncClient(timeout=280) as client:
+        async with client.stream(
+            "POST",
+            f"{settings.upstage_base_url}/chat/completions",
+            headers={**_auth_headers(), "Content-Type": "application/json"},
+            json=body,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload = line[len("data: "):]
+                if payload == "[DONE]":
+                    break
+                chunk = json.loads(payload)
+                delta = chunk["choices"][0]["delta"].get("content")
+                if delta:
+                    yield delta
+
+
 async def chat_json(messages: list[dict], **kwargs) -> dict:
     """JSON Mode 호출 후 파싱까지. 모델이 코드펜스를 붙이는 경우도 방어."""
     content = await chat(messages, json_mode=True, **kwargs)

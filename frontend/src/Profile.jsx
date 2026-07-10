@@ -5,6 +5,7 @@ import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
 import {
   clearCurrentUser,
+  deleteCertGoal,
   deleteMaterial,
   getCertGoal,
   getCurrentCertificates,
@@ -91,6 +92,8 @@ function Profile({ onNavigate }) {
       if (selectedCertificate.materialId) {
         await deleteMaterial(selectedCertificate.materialId)
       }
+      // 목표 시험일 + 일별 학습 플랜(curricula)도 함께 정리 — 없으면 그냥 조용히 넘어간다.
+      await deleteCertGoal(selectedCertificate.title).catch(() => {})
       setCertificates(removeCurrentCertificate(selectedCertificate.id))
       closeCertificateInfo()
     } catch (err) {

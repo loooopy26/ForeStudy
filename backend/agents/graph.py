@@ -18,11 +18,9 @@ from agents.nodes.ingest_summarizer import summarize_node
 from agents.nodes.planner import generate_daily_learning_plan_node, generate_learning_plan_node
 from agents.nodes.quiz import generate_quiz_node, grade_short_answer_node
 from agents.nodes.report import generate_report_node
-from agents.nodes.tutor import tutor_node
 from agents.state import AgentState, new_state
 
 _TASK_NODES = {
-    "tutor_reply": tutor_node,
     "generate_quiz": generate_quiz_node,
     "grade_short_answer": grade_short_answer_node,
     "analyze_wrong_answers": analyze_wrong_answers_node,
@@ -50,14 +48,6 @@ def build_graph():
 
 
 _compiled_graph = build_graph()
-
-
-async def run_tutor_reply(
-    history: list[dict], context: str | None, plan_scope: dict | None = None
-) -> str:
-    state = new_state("tutor_reply", {"history": history, "plan_scope": plan_scope}, context)
-    result = await _compiled_graph.ainvoke(state)
-    return result["output"]["reply"]
 
 
 async def run_generate_quiz(

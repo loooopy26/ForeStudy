@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import ConfirmModal from './ConfirmModal'
-import { addCurrentCertificate, createPlacementQuiz, deleteMaterial, getMaterial, setMaterialId, uploadMaterial } from './api'
+import { createPlacementQuiz, deleteMaterial, getMaterial, setMaterialId, uploadMaterial } from './api'
 import { BackIcon, MedalIcon, UploadIcon, DocIcon } from './icons'
 import './CertUpload.css'
 
@@ -100,7 +100,9 @@ function CertUpload({ certName, onNavigate }) {
       setProgressMessage(PROCESSING_MESSAGES.quiz)
       const placementQuiz = await createPlacementQuiz(materialId)
       setMaterialId(materialId)
-      addCurrentCertificate(certName, { materialId, subtitle: '학습 준비 중' })
+      // 자격증은 아직 "등록된 것"이 아니다 — 일별 학습 플랜까지 다 만들고 최종 확인을
+      // 눌러야 진짜로 등록된다(LearningPlanView의 confirmAndFinish). 그 전에 나가면
+      // 배치고사/자료가 전부 정리되고 자격증도 목록에 안 남아야 하기 때문.
       setActiveMaterialId(null)
       onNavigate('placementIntro', { cert: certName, materialId, placementQuiz })
     } catch (err) {

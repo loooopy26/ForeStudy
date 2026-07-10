@@ -3,7 +3,9 @@ import ConfirmModal from './ConfirmModal'
 import Header from './Header'
 import MarkdownText from './MarkdownText'
 import {
+  addCurrentCertificate,
   createCurriculum,
+  deleteCertGoal,
   deleteCurriculum,
   deleteMaterial,
   getCertGoal,
@@ -22,6 +24,10 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   const plan = planData?.plan
   const attemptId = planData?.attemptId
   const resolvedCertName = certName || plan?.certification_name || '선택한 자격증'
+  // 이미 "확인"까지 눌러서 정식 등록된 자격증을 다시 보러 온 것인지 — 그렇다면 이번엔
+  // 나가도 아무것도 지우면 안 된다(이미 확정된 데이터이므로). 아직 등록 전이면(처음 설정
+  // 흐름 중이면) 나갈 때 지금까지 만든 걸 전부 되돌리는 기존 동작을 그대로 적용한다.
+  const alreadyRegistered = !!materialId && getCurrentCertificates().some((c) => c.materialId === materialId)
 
   const [phase, setPhase] = useState('idle')
   const [examGoal, setExamGoal] = useState(null)
@@ -53,9 +59,12 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
     const { page, payload } = pendingLeave
     setPendingLeave(null)
     abandonedRef.current = true
+    // "확인"을 누르기 전까지는 아무것도 진짜로 등록된 게 아니다 — 이 화면에서 나가면
+    // 목표 시험일/일별 플랜/자료(+배치고사 기록)까지 전부 없던 일로 되돌린다.
     if (curriculum?.curriculum_id) {
       deleteCurriculum(curriculum.curriculum_id).catch(() => {})
     }
+    deleteCertGoal(resolvedCertName).catch(() => {})
     if (materialId) {
       deleteMaterial(materialId).catch(() => {})
       const match = getCurrentCertificates().find((c) => c.materialId === materialId)
@@ -65,6 +74,12 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   }
 
   const cancelLeave = () => setPendingLeave(null)
+
+  const confirmAndFinish = () => {
+    // 여기서 처음으로 자격증이 "등록됨" 목록에 실제로 올라간다.
+    addCurrentCertificate(resolvedCertName, { materialId, subtitle: '학습 중' })
+    onNavigate('profile')
+  }
 
   const startGoalFlow = async () => {
     setGoalError('')
@@ -172,7 +187,11 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
 
   return (
     <>
-      <Header title="학습 플랜" icon={<SummaryIcon />} onBack={() => discardAndLeave('profile')} />
+      <Header
+        title="학습 플랜"
+        icon={<SummaryIcon />}
+        onBack={() => (alreadyRegistered ? onNavigate('profile') : discardAndLeave('profile'))}
+      />
       <div className="body-scroll">
         <section className="learning-plan-card">
           <h2>{plan.certification_name} 맞춤 학습 플랜</h2>
@@ -296,11 +315,13 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
           )}
         </section>
       </div>
-      <div className="cta-area">
-        <button type="button" className="cta-button" onClick={() => onNavigate('profile')}>
-          확인
-        </button>
-      </div>
+      {phase === 'done' && (
+        <div className="cta-area">
+          <button type="button" className="cta-button" onClick={confirmAndFinish}>
+            확인
+          </button>
+        </div>
+      )}
       <ConfirmModal
         open={!!pendingLeave}
         message="작성 중인 학습 플랜이 사라집니다. 나가시겠습니까?"

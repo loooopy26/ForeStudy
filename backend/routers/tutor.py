@@ -4,11 +4,11 @@ import json
 from datetime import date
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from agents import graph as agent_graph
 from db import get_or_create_demo_user, get_pool
-from services import rag
+from services import rag, study_agent
 
 router = APIRouter(prefix="/api/tutor", tags=["튜터 챗봇"])
 
@@ -74,16 +74,28 @@ async def send_message(session_id: str, req: MessageRequest):
         if chunks:
             context = rag.format_context(chunks)
 
-    reply = await agent_graph.run_tutor_reply(history, context, plan_scope)
+    async def event_stream():
+        full_reply = ""
+        try:
+            async for delta in study_agent.tutor_reply_stream(history, context, plan_scope):
+                full_reply += delta
+                yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001 — 스트림 중간의 어떤 실패든 클라이언트에 알려야 한다
+            yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+            return
 
-    await pool.executemany(
-        """
-        INSERT INTO tutor_chat_messages (tutor_chat_session_id, role, content)
-        VALUES ($1, $2, $3)
-        """,
-        [(session_id, "user", req.content), (session_id, "assistant", reply)],
-    )
-    return {"reply": reply}
+        # 스트림이 끝까지 정상적으로 흐른 뒤에만 저장한다 — 중간에 끊기면 대화 기록에
+        # 잘린 답변이 남지 않는다.
+        await pool.executemany(
+            """
+            INSERT INTO tutor_chat_messages (tutor_chat_session_id, role, content)
+            VALUES ($1, $2, $3)
+            """,
+            [(session_id, "user", req.content), (session_id, "assistant", full_reply)],
+        )
+        yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 async def _load_today_plan_scope(pool, user_id: str, material_id: str | None) -> dict | None:

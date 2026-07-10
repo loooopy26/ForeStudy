@@ -4,11 +4,14 @@ import BottomNav from './BottomNav'
 import { QuizIcon, CheckIcon, CrossIcon } from './icons'
 import {
   apiRequest,
+  clearQuizGenerating,
   clearQuizProgress,
   getMaterialId,
   getQuizProgress,
   isDailyQuizCompletionRequired,
   isDailyQuizUnlocked,
+  isQuizGenerating,
+  markQuizGenerating,
   normalizeOptions,
   setLastAttemptId,
   setQuizProgress,
@@ -31,7 +34,7 @@ function Quiz({ onNavigate }) {
 
   const fetchQuiz = async () => {
     if (!materialId) {
-      throw new Error('자료 ID가 필요합니다. localStorage에 forestudy_material_id를 저장하거나 VITE_MATERIAL_ID를 설정해 주세요.')
+      throw new Error('자격증을 먼저 설정해주세요.')
     }
     return apiRequest(`/api/materials/${materialId}/review-quiz`, {
       method: 'POST',
@@ -69,10 +72,38 @@ function Quiz({ onNavigate }) {
     setError('')
     ;(async () => {
       try {
-        const data = await fetchQuiz()
+        // Library.jsx가 오늘의 복습 퀴즈를 이미 백그라운드로 생성 중이면, 여기서 또
+        // 새로 만들지 않고 그 결과가 저장될 때까지 기다렸다가 재사용한다 — 안 그러면
+        // 같은 자료에 같은 주제로 퀴즈가 두 번 만들어진다.
+        if (isQuizGenerating(materialId)) {
+          for (let i = 0; i < 90 && !ignore; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+            const progress = getQuizProgress(materialId)
+            if (progress?.quiz) {
+              if (!ignore) {
+                setQuiz(progress.quiz)
+                setLoading(false)
+              }
+              return
+            }
+            if (!isQuizGenerating(materialId)) break
+          }
+        }
         if (ignore) return
-        setQuiz(data)
-        setQuizProgress(materialId, data, {}, 0)
+        // 여기까지 왔다면 아무도 생성 중이 아니었다는 뜻 — 지금부터 우리가 생성하니,
+        // Library.jsx가 뒤늦게 같은 자료로 또 생성을 시작하지 않도록 표시를 남긴다.
+        markQuizGenerating(materialId)
+        try {
+          const data = await fetchQuiz()
+          // StrictMode가 이 실행을 취소했더라도(ignore=true) 이미 받은 결과는 버리지
+          // 않고 공유 캐시에 저장해둔다 — 그래야 두 번째 mount(또는 대기 중이던 다른
+          // 화면)가 이 결과를 재사용하고, 또 새로 생성하지 않는다.
+          setQuizProgress(materialId, data, {}, 0)
+          if (ignore) return
+          setQuiz(data)
+        } finally {
+          clearQuizGenerating(materialId)
+        }
       } catch (err) {
         if (!ignore) setError(err.message)
       } finally {

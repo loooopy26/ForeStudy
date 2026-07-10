@@ -848,7 +848,7 @@ async def generate_report(
     return await upstage.chat([{"role": "user", "content": prompt}])
 
 
-async def tutor_reply(history: list[dict], context: str | None, plan_scope: dict | None = None) -> str:
+def _build_tutor_messages(history: list[dict], context: str | None, plan_scope: dict | None) -> list[dict]:
     system = _SYSTEM + (
         " You are now a 1:1 tutor. Prefer hints and Socratic questions over immediately "
         "revealing the answer, but if the student asks a direct factual question "
@@ -870,8 +870,15 @@ async def tutor_reply(history: list[dict], context: str | None, plan_scope: dict
         )
     if context:
         system += f"\n\n[Study-material context]\n{context}"
-    messages = [{"role": "system", "content": system}] + history
-    return await upstage.chat(messages, temperature=0.4)
+    return [{"role": "system", "content": system}] + history
+
+
+async def tutor_reply_stream(history: list[dict], context: str | None, plan_scope: dict | None = None):
+    """튜터 챗봇 답변을 완성된 문자열이 아니라 텍스트 조각 단위로 하나씩 yield한다 —
+    routers/tutor.py가 이걸 그대로 SSE로 흘려보낸다."""
+    messages = _build_tutor_messages(history, context, plan_scope)
+    async for delta in upstage.chat_stream(messages, temperature=0.4):
+        yield delta
 
 
 def _normalize_question(question: dict) -> dict:

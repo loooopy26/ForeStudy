@@ -77,6 +77,35 @@ export function isDailyQuizUnlocked(materialId) {
   }
 }
 
+// Library.jsx가 오늘의 복습 퀴즈를 미리 생성하는 동안, Quiz.jsx가 같은 자료에 대해
+// 중복으로 또 생성하지 않도록 두 화면이 공유하는 "생성 중" 표시. 탭이 닫히는 등으로
+// 마커가 못 지워지는 경우를 대비해 일정 시간이 지나면 stale로 취급한다.
+const QUIZ_GENERATING_KEY = 'forestudy_quiz_generating'
+const QUIZ_GENERATING_STALE_MS = 3 * 60 * 1000
+
+export function markQuizGenerating(materialId) {
+  if (materialId) localStorage.setItem(QUIZ_GENERATING_KEY, JSON.stringify({ materialId, startedAt: Date.now() }))
+}
+
+export function clearQuizGenerating(materialId) {
+  try {
+    const marker = JSON.parse(localStorage.getItem(QUIZ_GENERATING_KEY) || 'null')
+    if (!marker || marker.materialId === materialId) localStorage.removeItem(QUIZ_GENERATING_KEY)
+  } catch {
+    localStorage.removeItem(QUIZ_GENERATING_KEY)
+  }
+}
+
+export function isQuizGenerating(materialId) {
+  try {
+    const marker = JSON.parse(localStorage.getItem(QUIZ_GENERATING_KEY) || 'null')
+    if (!marker || marker.materialId !== materialId) return false
+    return Date.now() - marker.startedAt <= QUIZ_GENERATING_STALE_MS
+  } catch {
+    return false
+  }
+}
+
 export async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -274,6 +303,16 @@ export function getCertGoal(certificationName) {
   return apiRequest(`/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}`)
 }
 
+// 자격증 삭제 시 목표 시험일 + 일별 학습 플랜(curricula)까지 함께 정리한다.
+// DELETE는 204(빈 응답)라서 apiRequest의 response.json() 파싱을 피하려고 raw fetch를 쓴다.
+export async function deleteCertGoal(certificationName) {
+  const res = await fetch(
+    `${API_BASE}/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}`,
+    { method: 'DELETE' }
+  )
+  if (!res.ok && res.status !== 404) throw new Error('목표 시험일 삭제에 실패했습니다')
+}
+
 export function prepareReviewQuiz(materialId) {
   return apiRequest(`/api/materials/${materialId}/review-quiz`, {
     method: 'POST',
@@ -408,14 +447,41 @@ export async function createTutorSession(materialId) {
   return res.json()
 }
 
-export async function sendTutorMessage(sessionId, content) {
+// 서버가 SSE(text/event-stream)로 답변을 조각(delta) 단위로 흘려보낸다. onDelta가 있으면
+// 조각이 도착할 때마다 (delta, 지금까지 합친 전체 텍스트)로 호출해준다. 최종적으로는
+// 기존 호출부와 호환되게 { reply: 전체 텍스트 }를 반환한다.
+export async function sendTutorMessage(sessionId, content, onDelta) {
   const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
   })
-  if (!res.ok) throw new Error('답변을 받지 못했습니다')
-  return res.json()
+  if (!res.ok || !res.body) throw new Error('답변을 받지 못했습니다')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let fullReply = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const events = buffer.split('\n\n')
+    buffer = events.pop() ?? ''
+    for (const event of events) {
+      const line = event.trim()
+      if (!line.startsWith('data: ')) continue
+      const payload = JSON.parse(line.slice('data: '.length))
+      if (payload.error) throw new Error(payload.error)
+      if (payload.delta) {
+        fullReply += payload.delta
+        onDelta?.(payload.delta, fullReply)
+      }
+      if (payload.done) return { reply: fullReply }
+    }
+  }
+  return { reply: fullReply }
 }
 
 // ── 위치(TMAP) 기능 ────────────────────────────────────────────────

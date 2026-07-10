@@ -3,7 +3,7 @@ import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, listMaterials, pauseTimer, prepareReviewQuiz, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, uploadMaterial } from './api'
+import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, pauseTimer, prepareReviewQuiz, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
@@ -41,6 +41,24 @@ function getTimerDurationKey(planDay) {
   return `forestudy_timer_duration_${planDay.date}_${planDay.day_id}`
 }
 
+function restoreTimerState(timerState) {
+  const defaultDuration = Number(localStorage.getItem('forestudy_timer_duration_min'))
+  const durationMin = Number.isInteger(defaultDuration) && defaultDuration >= MIN_DURATION_MIN && defaultDuration <= MAX_DURATION_MIN
+    ? defaultDuration
+    : DEFAULT_DURATION_MIN
+
+  if (!timerState) {
+    return { durationMin, remaining: durationMin * 60, studySec: 0, running: false }
+  }
+
+  const elapsed = timerState.running && timerState.updatedAt
+    ? Math.floor((Date.now() - timerState.updatedAt) / 1000)
+    : 0
+  const passed = Math.min(elapsed, timerState.remaining)
+  const remaining = Math.max(0, timerState.remaining - passed)
+  return { ...timerState, remaining, studySec: timerState.studySec + passed, running: timerState.running && remaining > 0 }
+}
+
 function flattenCurriculumDays(curriculum) {
   return (curriculum?.weeks || []).flatMap((week) =>
     (week.days || []).map((day) => ({
@@ -61,32 +79,43 @@ function getMonthCells(monthDate) {
   return cells
 }
 
-function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
-  const [durationMin, setDurationMin] = useState(() => {
-    const saved = Number(localStorage.getItem('forestudy_timer_duration_min'))
-    return Number.isInteger(saved) && saved >= MIN_DURATION_MIN && saved <= MAX_DURATION_MIN
-      ? saved
-      : DEFAULT_DURATION_MIN
-  })
+function Library({ onNavigate, materialId, onSelectMaterial, certName, timerState, onTimerStateChange }) {
+  const [restoredTimer] = useState(() => restoreTimerState(timerState))
+  const [durationMin, setDurationMin] = useState(restoredTimer.durationMin)
   const totalSec = durationMin * 60
-  const [remaining, setRemaining] = useState(() => durationMin * 60)
-  const [studySec, setStudySec] = useState(0)
-  const [running, setRunning] = useState(false)
+  const [remaining, setRemaining] = useState(restoredTimer.remaining)
+  const [studySec, setStudySec] = useState(restoredTimer.studySec)
+  const [running, setRunning] = useState(restoredTimer.running)
   const [durationModalOpen, setDurationModalOpen] = useState(false)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [focusMode, setFocusMode] = useState(false)
   const [durationDraft, setDurationDraft] = useState(String(durationMin))
   const [durationError, setDurationError] = useState('')
   const runningRef = useRef(running)
-  const studySecRef = useRef(0)
+  const studySecRef = useRef(restoredTimer.studySec)
 
   useEffect(() => {
     runningRef.current = running
   }, [running])
 
   // 타이머 세션 상태는 렌더링과 무관해서 ref로 관리한다.
-  const sessionIdRef = useRef(null)
-  const segmentStartRef = useRef(null)
-  const maxUninterruptedMinRef = useRef(0)
+  const sessionIdRef = useRef(restoredTimer.sessionId || null)
+  const segmentStartRef = useRef(restoredTimer.segmentStartAt || (restoredTimer.running ? restoredTimer.updatedAt : null))
+  const maxUninterruptedMinRef = useRef(restoredTimer.maxUninterruptedMin || 0)
   const endedRef = useRef(false)
+
+  useEffect(() => {
+    onTimerStateChange({
+      durationMin,
+      remaining,
+      studySec,
+      running,
+      sessionId: sessionIdRef.current,
+      segmentStartAt: segmentStartRef.current,
+      maxUninterruptedMin: maxUninterruptedMinRef.current,
+      updatedAt: Date.now(),
+    })
+  }, [durationMin, remaining, studySec, running, onTimerStateChange])
 
   const [materials, setMaterials] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -148,12 +177,20 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
 
         requireDailyQuizCompletion(materialId, planDay.date)
         const savedQuiz = getQuizProgress(materialId)
-        if (savedQuiz?.quiz?.plan_scope?.day_id === planDay.day_id || preparingQuizRef.current) return
+        if (
+          savedQuiz?.quiz?.plan_scope?.day_id === planDay.day_id
+          || preparingQuizRef.current
+          || isQuizGenerating(materialId)
+        ) return
         preparingQuizRef.current = true
+        markQuizGenerating(materialId)
         prepareReviewQuiz(materialId)
           .then((quiz) => setQuizProgress(materialId, quiz, {}, 0))
           .catch(() => {})
-          .finally(() => { preparingQuizRef.current = false })
+          .finally(() => {
+            preparingQuizRef.current = false
+            clearQuizGenerating(materialId)
+          })
       })
       .catch(() => {
         if (!cancelled) setTodayPlanDay(null)
@@ -189,11 +226,42 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
     endTimer(sessionIdRef.current, studiedMin, maxMin).catch(() => {})
   }
 
+  const pauseRunningTimer = (reason) => {
+    if (!runningRef.current) return
+
+    // Update the ref immediately so closely-spaced visibility/unmount events
+    // cannot create duplicate interruption records.
+    runningRef.current = false
+    const segmentMin = segmentStartRef.current
+      ? Math.round((Date.now() - segmentStartRef.current) / 60000)
+      : 0
+
+    maxUninterruptedMinRef.current = Math.max(maxUninterruptedMinRef.current, segmentMin)
+    segmentStartRef.current = null
+    setRunning(false)
+
+    onTimerStateChange({
+      durationMin,
+      remaining,
+      studySec,
+      running: false,
+      sessionId: sessionIdRef.current,
+      segmentStartAt: null,
+      maxUninterruptedMin: maxUninterruptedMinRef.current,
+      updatedAt: Date.now(),
+    })
+
+    if (sessionIdRef.current) {
+      pauseTimer(sessionIdRef.current, segmentMin, reason).catch(() => {})
+    }
+  }
+
   useEffect(() => {
     const id = setInterval(() => {
       if (!runningRef.current) return
       setRemaining((r) => {
         if (r <= 1) {
+          runningRef.current = false
           setRunning(false)
           finishSession()
           setTimerCompleted(true)
@@ -223,16 +291,37 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
         }
       }
       segmentStartRef.current = Date.now()
+      runningRef.current = true
+      onTimerStateChange({
+        durationMin,
+        remaining,
+        studySec,
+        running: true,
+        sessionId: sessionIdRef.current,
+        segmentStartAt: segmentStartRef.current,
+        maxUninterruptedMin: maxUninterruptedMinRef.current,
+        updatedAt: Date.now(),
+      })
       setRunning(true)
     } else {
-      const segmentMin = segmentStartRef.current ? Math.round((Date.now() - segmentStartRef.current) / 60000) : 0
-      maxUninterruptedMinRef.current = Math.max(maxUninterruptedMinRef.current, segmentMin)
-      segmentStartRef.current = null
-      setRunning(false)
-      if (sessionIdRef.current) {
-        pauseTimer(sessionIdRef.current, segmentMin, 'leave_library').catch(() => {})
-      }
+      pauseRunningTimer('manual_pause')
     }
+  }
+
+  const handleTimerReset = () => {
+    finishSession()
+    runningRef.current = false
+    sessionIdRef.current = null
+    segmentStartRef.current = null
+    maxUninterruptedMinRef.current = 0
+    endedRef.current = false
+    studySecRef.current = 0
+    setRemaining(durationMin * 60)
+    setStudySec(0)
+    setRunning(false)
+    setTimerCompleted(false)
+    onTimerStateChange(null)
+    setResetConfirmOpen(false)
   }
 
   const openDurationModal = () => {
@@ -306,15 +395,18 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
 
   const timerStarted = running || studySec > 0
   const offset = RING_LENGTH * ((totalSec - remaining) / totalSec)
-  const handleBack = () => onNavigate('village')
+  const handleBack = () => {
+    pauseRunningTimer('leave_library')
+    onNavigate('village')
+  }
   const calendarDays = flattenCurriculumDays(calendarCurriculum)
   const calendarDayMap = new Map(calendarDays.map((day) => [day.date, day]))
   const calendarCells = getMonthCells(calendarMonth)
 
   return (
-    <div className="library-page">
+    <div className={`library-page${focusMode ? ' focus-mode' : ''}`}>
       <StudyIllustration />
-      <Header
+      {!focusMode && <Header
         title="도서관"
         onBack={handleBack}
         action={
@@ -322,13 +414,13 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
             <LibraryIcon />
           </button>
         }
-      />
+      />}
 
       <div className="body-scroll library-body">
-        <div className="focus-pill">
+        <button type="button" className="focus-pill" onClick={() => setFocusMode((value) => !value)}>
           <FocusIcon />
-          <span>집중 모드</span>
-        </div>
+          <span>{focusMode ? '기본 모드로 전환' : '집중 모드'}</span>
+        </button>
 
         <div className="study-goal">
           <p className="goal-label">오늘의 공부 목표</p>
@@ -374,6 +466,11 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
             <button type="button" className="timer-button" onClick={timerCompleted ? () => onNavigate('quiz') : handleTimerToggle}>
               {timerCompleted ? 'AI 퀴즈 풀기' : running ? '일시정지' : '공부 시작'}
             </button>
+            {!focusMode && (
+              <button type="button" className="timer-reset-button" onClick={() => setResetConfirmOpen(true)}>
+                타이머 초기화
+              </button>
+            )}
           </div>
 
         
@@ -410,6 +507,19 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {resetConfirmOpen && (
+        <div className="timer-reset-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setResetConfirmOpen(false)}>
+          <section className="timer-reset-modal" role="dialog" aria-modal="true" aria-labelledby="timer-reset-modal-title">
+            <h2 id="timer-reset-modal-title">타이머를 초기화할까요?</h2>
+            <p>남은 시간과 누적 공부시간이 초기화됩니다.</p>
+            <div className="timer-reset-modal-actions">
+              <button type="button" onClick={() => setResetConfirmOpen(false)}>취소</button>
+              <button type="button" className="timer-reset-confirm-button" onClick={handleTimerReset}>초기화</button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -479,7 +589,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName }) {
         </div>
       )}
 
-      <BottomNav active={null} onNavigate={onNavigate} />
+      {!focusMode && <BottomNav active={null} onNavigate={onNavigate} />}
     </div>
   )
 }

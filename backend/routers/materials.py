@@ -128,7 +128,12 @@ async def delete_material(
     """자료와 그로부터 생성된 요약/청크/퀴즈를 함께 삭제한다.
     (자격증 삭제 시 연결된 학습 자료를 정리하는 용도로도 쓰인다.)
     quizzes.study_material_id는 ON DELETE SET NULL이라 study_materials만 지우면
-    퀴즈가 고아로 남는다 — 퀴즈부터 명시적으로 지운다."""
+    퀴즈가 고아로 남는다 — 퀴즈부터 명시적으로 지운다.
+
+    weak_point_reports/study_reports/tutor_chat_sessions/user_learning_profiles는 study_materials에
+    대한 외래키가 없거나 ON DELETE SET NULL이라 그냥 두면 자료 연결만 끊긴 채 고아로 남는다 —
+    weak_point_reports는 quizzes를 지우기 전에(quiz_attempts를 거쳐 조회해야 하므로) 먼저 지운다.
+    tutor_chat_messages는 tutor_chat_sessions에 대한 ON DELETE CASCADE라 세션만 지우면 같이 지워진다."""
     pool = await get_pool()
     row = await pool.fetchrow("SELECT file_url FROM study_materials WHERE id = $1", material_id)
     if row is None:
@@ -136,6 +141,20 @@ async def delete_material(
 
     async with pool.acquire() as conn:
         async with conn.transaction():
+            await conn.execute(
+                """
+                DELETE FROM weak_point_reports
+                WHERE source_quiz_attempt_id IN (
+                    SELECT a.id FROM quiz_attempts a
+                    JOIN quizzes q ON q.id = a.quiz_id
+                    WHERE q.study_material_id = $1
+                )
+                """,
+                material_id,
+            )
+            await conn.execute("DELETE FROM study_reports WHERE study_material_id = $1", material_id)
+            await conn.execute("DELETE FROM tutor_chat_sessions WHERE study_material_id = $1", material_id)
+            await conn.execute("DELETE FROM user_learning_profiles WHERE study_material_id = $1", material_id)
             await conn.execute("DELETE FROM quizzes WHERE study_material_id = $1", material_id)
             await conn.execute("DELETE FROM study_materials WHERE id = $1", material_id)
 

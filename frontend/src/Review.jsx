@@ -204,7 +204,7 @@ function Review({ onNavigate }) {
                         className="history-item"
                         onClick={() => selectAttempt(attempt.attempt_id)}
                       >
-                        <span className="history-item-time">{formatTime(attempt.submitted_at)}</span>
+                        <span className="history-item-time">{attempt.focus_topic || formatTime(attempt.submitted_at)}</span>
                         <span>
                           {attempt.wrong_count > 0 ? (
                             <span className="history-item-wrong">숙지가 덜 된 부분 {attempt.wrong_count}개</span>

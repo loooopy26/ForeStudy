@@ -72,6 +72,7 @@ function App() {
   const [selectedCert, setSelectedCert] = useState('')
   const [placementQuiz, setPlacementQuiz] = useState(null)
   const [planData, setPlanData] = useState(null)
+  const [libraryTimer, setLibraryTimer] = useState(null)
   const Screen = SCREENS[route.page] || Profile
 
   const navigate = (page, payload) => {
@@ -99,6 +100,8 @@ function App() {
           certName={selectedCert}
           placementQuiz={placementQuiz}
           planData={planData}
+          timerState={libraryTimer}
+          onTimerStateChange={setLibraryTimer}
         />
       </div>
     </div>

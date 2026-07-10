@@ -66,6 +66,24 @@ async def get_goal(certification_name: str, user_id: str | None = None):
     )
 
 
+@router.delete("", status_code=204)
+async def delete_goal(certification_name: str, user_id: str | None = None):
+    """자격증 삭제 시 함께 정리한다 — curricula/curriculum_weeks/curriculum_days는
+    user_cert_goals에 대한 ON DELETE CASCADE로 같이 삭제된다."""
+    pool = await get_pool()
+    resolved_user_id = await _resolve_user_id(pool, user_id)
+    await pool.execute(
+        """
+        DELETE FROM user_cert_goals
+        WHERE user_id = $1
+          AND certification_id = (SELECT id FROM certifications WHERE name = $2)
+        """,
+        resolved_user_id,
+        certification_name,
+    )
+    return None
+
+
 @router.put("")
 async def save_goal(req: GoalSaveRequest):
     pool = await get_pool()
@@ -382,7 +400,7 @@ async def _persist_curriculum(pool, *, goal_id: str, version: int, source_quiz_a
                         date.fromisoformat(day["date"]),
                         day["focus_topic"],
                         day["planned_minutes"],
-                        json.dumps(day["tasks"], ensure_ascii=False),
+                        json.dumps(day.get("tasks") or [], ensure_ascii=False),
                         day["checkpoint"],
                         day.get("summary", ""),
                         day.get("study_tip", ""),

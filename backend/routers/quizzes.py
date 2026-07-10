@@ -770,19 +770,21 @@ async def list_material_attempts(material_id: str, user_id: str | None = None):
         """
         SELECT
             a.id AS attempt_id, a.submitted_at, a.correct_count, a.total_count, a.score_pct,
-            q.quiz_type, q.difficulty,
+            q.quiz_type, q.difficulty, cd.focus_topic,
             COUNT(n.id) AS wrong_count
         FROM quiz_attempts a
         JOIN quizzes q ON q.id = a.quiz_id
+        LEFT JOIN curriculum_days cd ON cd.id = q.curriculum_day_id
         LEFT JOIN wrong_answer_notes n ON n.quiz_attempt_id = a.id AND n.status <> 'mastered'
         WHERE q.study_material_id = $1
           AND a.user_id = $2
+          AND q.quiz_type <> 'placement'
           AND NOT EXISTS (
               SELECT 1
               FROM similar_quiz_note_links l
               WHERE l.similar_quiz_id = q.id
           )
-        GROUP BY a.id, a.submitted_at, a.correct_count, a.total_count, a.score_pct, q.quiz_type, q.difficulty
+        GROUP BY a.id, a.submitted_at, a.correct_count, a.total_count, a.score_pct, q.quiz_type, q.difficulty, cd.focus_topic
         ORDER BY a.submitted_at DESC
         """,
         material_id,
@@ -798,6 +800,7 @@ async def list_material_attempts(material_id: str, user_id: str | None = None):
             "score_pct": float(row["score_pct"]) if row["score_pct"] is not None else None,
             "quiz_type": row["quiz_type"],
             "difficulty": row["difficulty"],
+            "focus_topic": row["focus_topic"],
             "wrong_count": row["wrong_count"],
         }
         for row in rows
