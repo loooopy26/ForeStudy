@@ -13,11 +13,8 @@ export function GoodsHeader({ title, wallet, onBack, rightSlot }) {
       <span className="goods-title">{title}</span>
       {rightSlot ?? (
         <div className="goods-coin-badge">
-          <span className="goods-lvl">Lv.12</span>
-          <div className="goods-acorn">
-            <CoinIcon size={17} />
-            <span>{wallet.toLocaleString()}</span>
-          </div>
+          <CoinIcon size={17} />
+          <span>{wallet.toLocaleString()}</span>
         </div>
       )}
     </div>
@@ -45,21 +42,32 @@ export function GoodsTabs({ tabs, active, onChange }) {
 
 // owned: 보유 여부, active: 착용/배치 중.
 // ownedLabel: 보유 시 가격 대신 보여줄 문구, showOwnedBadge: 우측 상단 '보유' 배지 여부(상점은 끔)
-export function ItemCard({ item, owned, active, onClick, artSize = 52, ownedLabel, showOwnedBadge = true }) {
+export function ItemCard({
+  item,
+  owned,
+  active,
+  onClick,
+  artSize = 52,
+  ownedLabel,
+}) {
+  const footerLabel = active ? '사용 중' : owned ? (ownedLabel ?? '보유 중') : null
+
   return (
     <button type="button" className={`goods-card${active ? ' selected' : ''}`} onClick={() => onClick(item)}>
-      {active && <span className="goods-badge on">사용중</span>}
-      {!active && owned && showOwnedBadge && <span className="goods-badge">보유</span>}
-      <ItemArt item={item} size={artSize} />
+      <span className="goods-card-visual">
+        <ItemArt item={item} size={artSize} />
+      </span>
       <span className="goods-card-name">{item.name}</span>
-      {owned ? (
-        <span className="goods-card-owned">{ownedLabel ?? (active ? '탭해서 해제' : '탭해서 사용')}</span>
-      ) : (
-        <span className="goods-card-price">
-          <CoinIcon size={13} />
-          {item.price.toLocaleString()}
-        </span>
-      )}
+      <span className="goods-card-footer">
+        {footerLabel ? (
+          <span className={`goods-card-owned${active ? ' on' : ''}`}>{footerLabel}</span>
+        ) : (
+          <span className="goods-card-price">
+            <CoinIcon size={13} />
+            {item.price.toLocaleString()}
+          </span>
+        )}
+      </span>
     </button>
   )
 }
@@ -70,9 +78,12 @@ export function GoodsToast({ message }) {
 
   useEffect(() => {
     if (!message) return undefined
-    setVisible(true)
-    const timer = setTimeout(() => setVisible(false), 2000)
-    return () => clearTimeout(timer)
+    const showTimer = setTimeout(() => setVisible(true), 0)
+    const hideTimer = setTimeout(() => setVisible(false), 2000)
+    return () => {
+      clearTimeout(showTimer)
+      clearTimeout(hideTimer)
+    }
   }, [message])
 
   if (!visible || !message) return null
