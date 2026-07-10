@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ConfirmModal from './ConfirmModal'
 import Header from './Header'
 import MarkdownText from './MarkdownText'
@@ -33,7 +33,17 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   const [curriculum, setCurriculum] = useState(null)
   const [curriculumError, setCurriculumError] = useState('')
   const [pendingLeave, setPendingLeave] = useState(null)
+  const [generatingElapsed, setGeneratingElapsed] = useState(0)
   const abandonedRef = useRef(false)
+  const lastGoalIdRef = useRef(null)
+
+  // 주차 수가 많은 목표일수록 순차 생성이라 시간이 꽤 걸린다 — "멈춘 것 같다"는
+  // 오해를 막기 위해 경과 시간을 보여준다.
+  useEffect(() => {
+    if (phase !== 'generating') return
+    const timer = setInterval(() => setGeneratingElapsed((value) => value + 1), 1000)
+    return () => clearInterval(timer)
+  }, [phase])
 
   const discardAndLeave = (page, payload) => {
     setPendingLeave({ page, payload })
@@ -107,6 +117,7 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
     try {
       const goal = await saveCertGoal(resolvedCertName, manualDate)
       setExamGoal(goal)
+      setGeneratingElapsed(0)
       setPhase('generating')
 
       const created = await regenerateCurriculum(goal.goal_id, attemptId, manualDate)
@@ -120,7 +131,9 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
 
   const generateCurriculum = async (goalId) => {
     if (!goalId || !attemptId) return
+    lastGoalIdRef.current = goalId
     abandonedRef.current = false
+    setGeneratingElapsed(0)
     setPhase('generating')
     setCurriculumError('')
     try {
@@ -242,10 +255,24 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
                 <div className="goal-spinner-dot" />
                 <div className="goal-spinner-dot" />
               </div>
-              <span>AI가 일별 학습 계획을 만들고 있어요...</span>
+              <span>
+                AI가 일별 학습 계획을 만들고 있어요... ({generatingElapsed}초 경과)
+                {generatingElapsed > 30 ? ' 목표일이 많이 남아있으면 몇 분 정도 걸릴 수 있어요.' : ''}
+              </span>
             </div>
           )}
-          {curriculumError && <p className="plan-error">{curriculumError}</p>}
+          {curriculumError && (
+            <div className="goal-confirm-actions">
+              <p className="plan-error">{curriculumError}</p>
+              <button
+                type="button"
+                className="tag-button goal-relink"
+                onClick={() => generateCurriculum(lastGoalIdRef.current)}
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
 
           {curriculum && (
             <div className="curriculum-weeks">

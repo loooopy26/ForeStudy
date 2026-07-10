@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import ConfirmModal from './ConfirmModal'
 import { addCurrentCertificate, createPlacementQuiz, deleteMaterial, getMaterial, setMaterialId, uploadMaterial } from './api'
-import { BackIcon, MedalIcon, UploadIcon, DocIcon, CheckIcon } from './icons'
+import { BackIcon, MedalIcon, UploadIcon, DocIcon } from './icons'
 import './CertUpload.css'
 
-const STAGES = [
-  { key: 'uploaded', label: '자료 업로드 확인' },
-  { key: 'parsing', label: '자료 분석 중' },
-  { key: 'summarizing', label: 'AI 요약 자료 생성 중' },
-  { key: 'quiz', label: '배치고사 문제 생성 중' },
-]
-
-// processing_stage(백엔드가 보고하는 실제 파이프라인 단계)를 화면에 보여줄 단계로 매핑.
-// parsing/embedding은 화면상 하나의 "자료 분석" 단계로 합쳐서 보여준다.
-const BACKEND_STAGE_TO_UI_STAGE = {
-  parsing: 'parsing',
-  embedding: 'parsing',
-  summarizing: 'summarizing',
+const PROCESSING_MESSAGES = {
+  requesting_document_parse: '문서에서 텍스트를 추출하고 있어요',
+  chunking_document: '학습하기 좋은 단위로 내용을 나누고 있어요',
+  creating_embeddings: '내용을 AI가 검색할 수 있도록 정리하고 있어요',
+  saving_search_index: '학습 자료 검색 정보를 저장하고 있어요',
+  generating_summary: 'AI가 핵심 내용과 개념을 요약하고 있어요',
+  saving_summary: '요약 결과를 저장하고 있어요',
+  quiz: '현재 수준을 확인할 배치고사 문제를 만들고 있어요',
 }
 
 // 2초 간격 * 900회 = 최대 30분. 대용량 문서는 백엔드 파싱만 최대 20분(services/upstage.py의
@@ -26,7 +21,7 @@ const MAX_POLL_ATTEMPTS = 900
 function CertUpload({ certName, onNavigate }) {
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
-  const [stage, setStage] = useState('')
+  const [progressMessage, setProgressMessage] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
   // 폴링이 시간 초과로 포기했지만 백엔드는 계속 처리 중인 material.
@@ -71,8 +66,9 @@ function CertUpload({ certName, onNavigate }) {
       if (material.processed_status === 'failed') {
         throw new Error(material.processing_error || '자료 처리에 실패했습니다.')
       }
-      const uiStage = BACKEND_STAGE_TO_UI_STAGE[material.processing_stage] || 'parsing'
-      setStage(uiStage)
+      setProgressMessage(
+        PROCESSING_MESSAGES[material.processing_stage] || '학습 자료를 준비하고 있어요',
+      )
       await new Promise((resolve) => setTimeout(resolve, 2000))
     }
     // 서버에서는 계속 처리 중이므로 material은 살려두고, 재시도 시 이어서 확인하게 한다.
@@ -91,17 +87,17 @@ function CertUpload({ certName, onNavigate }) {
       let materialId = pendingMaterialId
       if (materialId) {
         setActiveMaterialId(materialId)
-        setStage('parsing')
+        setProgressMessage('기존에 업로드한 자료의 처리를 확인하고 있어요')
       } else {
-        setStage('uploaded')
+        setProgressMessage('파일을 업로드하고 있어요')
         const uploaded = await uploadMaterial(files[0], `${certName} 학습 자료`)
         materialId = uploaded.material_id
         setActiveMaterialId(materialId)
-        setStage('parsing')
+        setProgressMessage('문서에서 텍스트를 추출하고 있어요')
       }
       await waitForMaterialReady(materialId)
       setPendingMaterialId(null)
-      setStage('quiz')
+      setProgressMessage(PROCESSING_MESSAGES.quiz)
       const placementQuiz = await createPlacementQuiz(materialId)
       setMaterialId(materialId)
       addCurrentCertificate(certName, { materialId, subtitle: '학습 준비 중' })
@@ -111,11 +107,10 @@ function CertUpload({ certName, onNavigate }) {
       setError(err.message || '자료 업로드에 실패했습니다.')
     } finally {
       setUploading(false)
-      setStage('')
+      setProgressMessage('')
     }
   }
 
-  const stageIndex = STAGES.findIndex((s) => s.key === stage)
   const hasInFlightWork = uploading || !!activeMaterialId || !!pendingMaterialId
 
   const handleBack = () => {
@@ -193,19 +188,7 @@ function CertUpload({ certName, onNavigate }) {
 
         {uploading && (
           <div className="upload-progress">
-            <ol className="upload-progress-steps">
-              {STAGES.map((s, index) => {
-                const state = index < stageIndex ? 'done' : index === stageIndex ? 'active' : 'pending'
-                return (
-                  <li key={s.key} className={`upload-progress-step upload-progress-step-${state}`}>
-                    <span className="upload-progress-marker">
-                      {state === 'done' ? <CheckIcon size={12} /> : <span className="upload-progress-dot" />}
-                    </span>
-                    {s.label}
-                  </li>
-                )
-              })}
-            </ol>
+            <p className="upload-progress-current">{progressMessage || '학습 자료를 준비하고 있어요'}</p>
             <p className="upload-progress-timer">
               {elapsed}초 경과
               {elapsed > 60 ? ' · 분량이 많은 자료는 몇 분 정도 걸릴 수 있어요.' : ''}
@@ -223,7 +206,7 @@ function CertUpload({ certName, onNavigate }) {
           onClick={completeUpload}
         >
           {uploading
-            ? STAGES[stageIndex]?.label || '처리 중...'
+            ? '분석 중...'
             : pendingMaterialId
               ? '이어서 확인'
               : '등록 완료'}

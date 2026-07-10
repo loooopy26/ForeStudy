@@ -25,7 +25,7 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
         await pool.execute(
             """
             UPDATE study_materials
-            SET processed_status = 'processing', processing_error = NULL, processing_stage = 'parsing'
+            SET processed_status = 'processing', processing_error = NULL, processing_stage = 'requesting_document_parse'
             WHERE id = $1
             """,
             study_material_id,
@@ -35,15 +35,17 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
         parse_result = await upstage.parse_document(file_path)
 
         # 2) 청킹
+        await _set_stage(pool, study_material_id, "chunking_document")
         chunks = build_chunks(parse_result)
         if not chunks:
             raise ValueError("파싱 결과에서 텍스트를 추출하지 못했습니다")
 
-        await _set_stage(pool, study_material_id, "embedding")
         # 3) 임베딩 (배치)
+        await _set_stage(pool, study_material_id, "creating_embeddings")
         embeddings = await upstage.embed([c.content for c in chunks], kind="passage")
 
         # 4) 저장 (재처리 대비 기존 청크 삭제 후 삽입)
+        await _set_stage(pool, study_material_id, "saving_search_index")
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -71,8 +73,8 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
                     ],
                 )
 
-        await _set_stage(pool, study_material_id, "summarizing")
         # 5) 요약 + 핵심 개념
+        await _set_stage(pool, study_material_id, "generating_summary")
         sample = ""
         for c in chunks:
             if len(sample) + len(c.content) > _SUMMARY_INPUT_CHARS:
@@ -80,6 +82,7 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
             sample += c.content + "\n"
         summary_result = await _summarize_with_retry(title, sample)
 
+        await _set_stage(pool, study_material_id, "saving_summary")
         await pool.execute(
             """
             UPDATE study_materials

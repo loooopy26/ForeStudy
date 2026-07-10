@@ -115,6 +115,14 @@
   border: 1px solid var(--card-border);
 }
 
+.upload-progress-current {
+  margin: 0;
+  color: var(--green-text-strong);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .upload-progress-steps {
   display: flex;
   flex-direction: column;
