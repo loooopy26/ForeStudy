@@ -1,12 +1,23 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import ConfirmModal from './ConfirmModal'
 import Header from './Header'
-import { createCurriculum, getCertGoal, saveCertGoal, sendCertGoalChat } from './api'
+import {
+  createCurriculum,
+  deleteCurriculum,
+  deleteMaterial,
+  getCertGoal,
+  getCurrentCertificates,
+  regenerateCurriculum,
+  removeCurrentCertificate,
+  saveCertGoal,
+  sendCertGoalChat,
+} from './api'
 import { SummaryIcon } from './icons'
 import './Shell.css'
 
 // idle -> searching -> confirming -> (yes) confirmed -> generating -> done
 //                                  -> (no) entering_date -> confirmed -> generating -> done
-function LearningPlanView({ onNavigate, certName, planData }) {
+function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   const plan = planData?.plan
   const attemptId = planData?.attemptId
   const resolvedCertName = certName || plan?.certification_name || '선택한 자격증'
@@ -20,6 +31,29 @@ function LearningPlanView({ onNavigate, certName, planData }) {
 
   const [curriculum, setCurriculum] = useState(null)
   const [curriculumError, setCurriculumError] = useState('')
+  const [pendingLeave, setPendingLeave] = useState(null)
+  const abandonedRef = useRef(false)
+
+  const discardAndLeave = (page, payload) => {
+    setPendingLeave({ page, payload })
+  }
+
+  const confirmLeave = () => {
+    const { page, payload } = pendingLeave
+    setPendingLeave(null)
+    abandonedRef.current = true
+    if (curriculum?.curriculum_id) {
+      deleteCurriculum(curriculum.curriculum_id).catch(() => {})
+    }
+    if (materialId) {
+      deleteMaterial(materialId).catch(() => {})
+      const match = getCurrentCertificates().find((c) => c.materialId === materialId)
+      if (match) removeCurrentCertificate(match.id)
+    }
+    onNavigate(page, payload)
+  }
+
+  const cancelLeave = () => setPendingLeave(null)
 
   const startGoalFlow = async () => {
     setGoalError('')
@@ -28,7 +62,7 @@ function LearningPlanView({ onNavigate, certName, planData }) {
       const existing = await getCertGoal(resolvedCertName)
       if (existing?.found && existing.target_exam_date) {
         setExamGoal(existing)
-        setPhase('confirmed')
+        setManualDate(existing.target_exam_date)
         generateCurriculum(existing.goal_id)
         return
       }
@@ -78,8 +112,11 @@ function LearningPlanView({ onNavigate, certName, planData }) {
     try {
       const goal = await saveCertGoal(resolvedCertName, manualDate)
       setExamGoal(goal)
-      setPhase('confirmed')
-      generateCurriculum(goal.goal_id)
+      setPhase('generating')
+
+      const created = await regenerateCurriculum(goal.goal_id, attemptId, manualDate)
+      setCurriculum(created)
+      setPhase('done')
     } catch (err) {
       setGoalError(err.message || '목표 시험일을 저장하지 못했습니다.')
       setPhase('entering_date')
@@ -88,15 +125,23 @@ function LearningPlanView({ onNavigate, certName, planData }) {
 
   const generateCurriculum = async (goalId) => {
     if (!goalId || !attemptId) return
+    abandonedRef.current = false
     setPhase('generating')
     setCurriculumError('')
     try {
       const created = await createCurriculum(goalId, attemptId)
+      if (abandonedRef.current) {
+        // 생성이 끝나기 전에 사용자가 이미 화면을 떠났다 — 방금 만들어진 커리큘럼을 바로 정리한다.
+        deleteCurriculum(created.curriculum_id).catch(() => {})
+        return
+      }
       setCurriculum(created)
       setPhase('done')
     } catch (err) {
-      setCurriculumError(err.message || '일별 학습 플랜 생성에 실패했습니다.')
-      setPhase('confirmed')
+      if (!abandonedRef.current) {
+        setCurriculumError(err.message || '일별 학습 플랜 생성에 실패했습니다.')
+        setPhase('confirmed')
+      }
     }
   }
 
@@ -119,24 +164,12 @@ function LearningPlanView({ onNavigate, certName, planData }) {
 
   return (
     <>
-      <Header title="학습 플랜" icon={<SummaryIcon />} onBack={() => onNavigate('profile')} />
+      <Header title="학습 플랜" icon={<SummaryIcon />} onBack={() => discardAndLeave('profile')} />
       <div className="body-scroll">
         <section className="learning-plan-card">
           <h2>{plan.certification_name} 맞춤 학습 플랜</h2>
           <p>{plan.learner_level_summary}</p>
           <div className="result-explain">{plan.exam_schedule_note}</div>
-
-          {plan.weekly_plan?.map((week) => (
-            <article className="plan-week" key={week.week}>
-              <h3>{week.week}주차 · {week.theme}</h3>
-              <ul>
-                {[...(week.goals || []), ...(week.study_tasks || []), ...(week.review_tasks || [])].slice(0, 5).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-              {week.checkpoint && <p>{week.checkpoint}</p>}
-            </article>
-          ))}
 
           <div className="goal-section">
             <h3>목표 시험일</h3>
@@ -197,7 +230,8 @@ function LearningPlanView({ onNavigate, certName, planData }) {
                   className="tag-button goal-relink"
                   onClick={() => {
                     setCurriculum(null)
-                    setPhase('idle')
+                    setManualDate(examGoal.target_exam_date || '')
+                    setPhase('entering_date')
                   }}
                 >
                   다시 정하기
@@ -248,6 +282,12 @@ function LearningPlanView({ onNavigate, certName, planData }) {
           확인
         </button>
       </div>
+      <ConfirmModal
+        open={!!pendingLeave}
+        message="작성 중인 학습 플랜이 사라집니다. 나가시겠습니까?"
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
+      />
     </>
   )
 }

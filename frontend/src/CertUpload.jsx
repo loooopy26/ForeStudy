@@ -5,7 +5,7 @@ import './CertUpload.css'
 
 const STAGES = [
   { key: 'uploaded', label: '자료 업로드 확인' },
-  { key: 'parsing', label: '자료 분석 중 (문서 파싱 · 임베딩)' },
+  { key: 'parsing', label: '자료 분석 중' },
   { key: 'summarizing', label: 'AI 요약 자료 생성 중' },
   { key: 'quiz', label: '배치고사 문제 생성 중' },
 ]

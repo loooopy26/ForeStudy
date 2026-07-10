@@ -109,12 +109,13 @@ async def _set_stage(pool, study_material_id: str, stage: str) -> None:
 
 
 async def _summarize_with_retry(title: str, sample: str) -> dict:
-    """매우 길고 촘촘한 자료는 요약 생성 자체가 느려 타임아웃이 날 수 있다.
-    한 번 타임아웃이 나면 입력을 절반으로 줄여 한 번 더 시도한다."""
+    """매우 길고 촘촘한 자료는 요약 생성 자체가 느려 타임아웃이 날 수 있고, 요약이 너무 길어져
+    응답이 max_tokens 중간에 잘려 JSON 파싱이 깨질 수도 있다(JSONDecodeError). 둘 다 입력을
+    절반으로 줄이면 완화되므로(생성 시간 단축, 자연히 더 짧은 요약 유도) 같은 방식으로 재시도한다."""
     try:
         return await agent_graph.run_summarize(title, sample)
-    except (httpx.ReadTimeout, httpx.PoolTimeout):
-        logger.warning("summarize 타임아웃, 입력을 절반으로 줄여 재시도: title=%s", title)
+    except (httpx.ReadTimeout, httpx.PoolTimeout, json.JSONDecodeError) as exc:
+        logger.warning("summarize 실패(%s), 입력을 절반으로 줄여 재시도: title=%s", type(exc).__name__, title)
         return await agent_graph.run_summarize(title, sample[: len(sample) // 2])
 
 

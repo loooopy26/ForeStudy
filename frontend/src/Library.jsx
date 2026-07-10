@@ -173,18 +173,6 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
         title="도서관"
         icon={<LibraryIcon />}
         onBack={handleBack}
-        action={
-          <button
-            type="button"
-            className="header-action"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="문서 업로드"
-            title="문서 업로드"
-          >
-            <UploadIcon />
-          </button>
-        }
       />
 
       <div className="body-scroll library-body">
@@ -243,14 +231,6 @@ function Library({ onNavigate, materialId, onSelectMaterial }) {
         <div className="material-section">
           <div className="material-section-head">
             <p className="goal-label">내 자료</p>
-            <button
-              type="button"
-              className="material-upload-button"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploading ? '업로드 중...' : '자료 업로드'}
-            </button>
             <input
               ref={fileInputRef}
               type="file"

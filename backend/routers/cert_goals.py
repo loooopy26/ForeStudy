@@ -94,6 +94,10 @@ async def agent_chat(req: GoalAgentChatRequest):
 
 @router.post("/{goal_id}/curricula", status_code=201)
 async def create_curriculum(goal_id: str, req: CurriculumCreateRequest):
+    """이미 이 목표에 대해 활성(active) 커리큘럼이 있으면 새로 만들기 전에 superseded로
+    내리고 다음 버전 번호를 매긴다 — 그렇지 않으면 같은 목표에 여러 개의 active 커리큘럼이
+    동시에 남는다 (실제로 이렇게 중복이 쌓인 사례가 확인됨). regenerate_curriculum과
+    동일한 규칙."""
     pool = await get_pool()
     goal = await _load_goal(pool, goal_id)
     remaining_days = _remaining_days(goal["target_exam_date"])
@@ -113,10 +117,21 @@ async def create_curriculum(goal_id: str, req: CurriculumCreateRequest):
         context=attempt_context["context"],
     )
 
+    active = await pool.fetchrow(
+        "SELECT id, version FROM curricula WHERE user_cert_goal_id = $1 AND status = 'active'",
+        goal_id,
+    )
+    if active is not None:
+        await pool.execute(
+            "UPDATE curricula SET status = 'superseded' WHERE user_cert_goal_id = $1 AND status = 'active'",
+            goal_id,
+        )
+    next_version = (active["version"] + 1) if active else 1
+
     curriculum_id = await _persist_curriculum(
         pool,
         goal_id=goal_id,
-        version=1,
+        version=next_version,
         source_quiz_attempt_id=req.quiz_attempt_id,
         plan=plan,
     )
@@ -190,6 +205,15 @@ async def get_active_curriculum(goal_id: str):
     if curriculum is None:
         raise HTTPException(404, "이 목표에 대해 생성된 학습 플랜이 없습니다")
     return await _load_curriculum(pool, str(curriculum["id"]))
+
+
+@router.delete("/curricula/{curriculum_id}", status_code=204)
+async def delete_curriculum(curriculum_id: str):
+    """생성 도중 사용자가 이탈해 더 이상 필요 없어진 커리큘럼을 정리한다
+    (curriculum_weeks/curriculum_days는 curricula에서 CASCADE로 함께 삭제됨)."""
+    pool = await get_pool()
+    await pool.execute("DELETE FROM curricula WHERE id = $1", curriculum_id)
+    return None
 
 
 @router.patch("/curriculum-days/{day_id}")

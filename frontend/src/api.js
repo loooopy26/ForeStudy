@@ -215,6 +215,11 @@ export function submitQuiz(quizId, answers) {
   })
 }
 
+export async function deleteQuiz(quizId) {
+  const res = await fetch(`${API_BASE}/api/quizzes/${quizId}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404 && res.status !== 409) throw new Error('퀴즈 삭제에 실패했습니다')
+}
+
 export function createLearningPlan(attemptId, certificationName) {
   return apiRequest('/api/learning-plans', {
     method: 'POST',
@@ -245,6 +250,21 @@ export function createCurriculum(goalId, attemptId) {
     method: 'POST',
     body: JSON.stringify({ quiz_attempt_id: attemptId }),
   })
+}
+
+export function regenerateCurriculum(goalId, attemptId, targetExamDate) {
+  return apiRequest(`/api/cert-goals/${goalId}/curricula/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      quiz_attempt_id: attemptId,
+      target_exam_date: targetExamDate,
+    }),
+  })
+}
+
+export async function deleteCurriculum(curriculumId) {
+  const res = await fetch(`${API_BASE}/api/cert-goals/curricula/${curriculumId}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) throw new Error('학습 플랜 삭제에 실패했습니다')
 }
 
 export async function createTutorSession(materialId) {

@@ -70,9 +70,11 @@ Return JSON only:
 Extract 5~10 key concepts."""
     # max_tokens 없이(무제한) 매우 길고 촘촘한 자료에 대해 응답 생성이 240초 타임아웃을
     # 넘겨 ingest가 실패하는 사례가 있었다 — 위 프롬프트의 분량 상한과 함께 하드 캡을 둔다.
+    # 4000으로는 한국어 1500~2500단어 요약 + key_concepts가 다 안 들어가 JSON이 중간에
+    # 잘리는 경우가 실제로 발생해(생성 도중 Unterminated string 파싱 오류) 8000으로 올렸다.
     return await upstage.chat_json(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
-        max_tokens=4000,
+        max_tokens=8000,
     )
 
 async def generate_quiz(

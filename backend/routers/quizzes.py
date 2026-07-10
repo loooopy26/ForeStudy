@@ -312,6 +312,25 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
     }
 
 
+@router.delete("/quizzes/{quiz_id}", status_code=204)
+async def delete_quiz(quiz_id: str):
+    """생성만 되고 응시 중 이탈해 더 이상 필요 없어진 퀴즈를 정리한다
+    (quiz_questions/quiz_attempts 등은 quizzes에서 CASCADE로 함께 삭제됨).
+    이미 제출된 응시 기록이 있으면 실수로 실제 기록을 지우지 않도록 거부한다."""
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT id FROM quizzes WHERE id = $1", quiz_id)
+    if row is None:
+        return None
+    submitted = await pool.fetchrow(
+        "SELECT id FROM quiz_attempts WHERE quiz_id = $1 AND submitted_at IS NOT NULL LIMIT 1",
+        quiz_id,
+    )
+    if submitted is not None:
+        raise HTTPException(409, "이미 제출된 응시 기록이 있는 퀴즈는 삭제할 수 없습니다")
+    await pool.execute("DELETE FROM quizzes WHERE id = $1", quiz_id)
+    return None
+
+
 @router.post("/quizzes/{quiz_id}/submit")
 async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     pool = await get_pool()

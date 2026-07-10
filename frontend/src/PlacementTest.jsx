@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
+import ConfirmModal from './ConfirmModal'
 import Header from './Header'
-import { createLearningPlan, createPlacementQuiz, normalizeOptions, submitQuiz } from './api'
+import {
+  createLearningPlan,
+  createPlacementQuiz,
+  deleteMaterial,
+  deleteQuiz,
+  getCurrentCertificates,
+  normalizeOptions,
+  removeCurrentCertificate,
+  submitQuiz,
+} from './api'
 import { QuizIcon, CheckIcon } from './icons'
 import './Shell.css'
 
@@ -32,7 +42,12 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
       }
       try {
         const created = await createPlacementQuiz(materialId)
-        if (alive) setQuiz(created)
+        if (alive) {
+          setQuiz(created)
+        } else {
+          // 생성이 끝나기 전에 사용자가 이미 화면을 떠났다 — 방금 만들어진 퀴즈를 바로 정리한다.
+          deleteQuiz(created.quiz_id).catch(() => {})
+        }
       } catch (err) {
         if (alive) setError(err.message || '배치고사를 생성하지 못했습니다.')
       } finally {
@@ -46,6 +61,24 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
   }, [materialId, placementQuiz])
 
   const questions = quiz?.questions || []
+  const [pendingLeave, setPendingLeave] = useState(null)
+
+  const discardAndLeave = (page, payload) => {
+    setPendingLeave({ page, payload })
+  }
+
+  const confirmLeave = () => {
+    const { page, payload } = pendingLeave
+    setPendingLeave(null)
+    if (materialId) {
+      deleteMaterial(materialId).catch(() => {})
+      const match = getCurrentCertificates().find((c) => c.materialId === materialId)
+      if (match) removeCurrentCertificate(match.id)
+    }
+    onNavigate(page, payload)
+  }
+
+  const cancelLeave = () => setPendingLeave(null)
 
   const selectOption = (optionIndex) => {
     if (!questions[idx]) return
@@ -88,16 +121,22 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
   if (loading || error || !quiz) {
     return (
       <>
-        <Header title="배치고사" icon={<QuizIcon />} onBack={() => onNavigate('placementIntro', { cert: certName, materialId })} />
+        <Header title="배치고사" icon={<QuizIcon />} onBack={() => discardAndLeave('placementIntro', { cert: certName, materialId })} />
         <div className="done-screen">
           <div className="done-title">{loading ? '배치고사 생성 중' : '배치고사를 불러올 수 없어요'}</div>
           <div className="done-desc">{loading ? 'AI가 업로드한 학습 자료에서 객관식 10문제를 만들고 있습니다.' : error}</div>
         </div>
         <div className="cta-area">
-          <button type="button" className="cta-button" onClick={() => onNavigate('certUpload', { cert: certName })}>
+          <button type="button" className="cta-button" onClick={() => discardAndLeave('certUpload', { cert: certName })}>
             자료 업로드로 돌아가기
           </button>
         </div>
+        <ConfirmModal
+          open={!!pendingLeave}
+          message="작성 중인 배치고사가 사라집니다. 나가시겠습니까?"
+          onConfirm={confirmLeave}
+          onCancel={cancelLeave}
+        />
       </>
     )
   }
@@ -105,7 +144,7 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
   if (result) {
     return (
       <>
-        <Header title="배치고사 결과" icon={<QuizIcon />} onBack={() => onNavigate('profile')} />
+        <Header title="배치고사 결과" icon={<QuizIcon />} onBack={() => discardAndLeave('profile')} />
         <div className="body-scroll">
           <div className="done-screen inline">
             <div className="done-badge done-score">
@@ -133,6 +172,12 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
             {plan ? '학습 플랜 계획 확인' : '학습 플랜 생성 중...'}
           </button>
         </div>
+        <ConfirmModal
+          open={!!pendingLeave}
+          message="작성 중인 배치고사가 사라집니다. 나가시겠습니까?"
+          onConfirm={confirmLeave}
+          onCancel={cancelLeave}
+        />
       </>
     )
   }
@@ -146,7 +191,7 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
 
   return (
     <>
-      <Header title="배치고사" icon={<QuizIcon />} onBack={() => onNavigate('placementIntro', { cert: certName, materialId })} />
+      <Header title="배치고사" icon={<QuizIcon />} onBack={() => discardAndLeave('placementIntro', { cert: certName, materialId })} />
 
       <div className="body-scroll">
         <div className="progress-row">
@@ -191,6 +236,12 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
           {submitting ? '분석 중...' : isLast ? '결과 보기' : '다음 문제'}
         </button>
       </div>
+      <ConfirmModal
+        open={!!pendingLeave}
+        message="작성 중인 배치고사가 사라집니다. 나가시겠습니까?"
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
+      />
     </>
   )
 }
