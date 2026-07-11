@@ -282,12 +282,21 @@
   box-shadow: 0 12px 26px rgba(139, 176, 105, 0.4);
 }
 
-.ai-fab:active { transform: translateY(0); }
+.ai-fab:active {
+  transform: translateY(0);
+}
 
 /* 아래에서 위로 슬라이드되어 올라오는 등장 애니메이션 */
 @keyframes ai-fab-rise {
-  from { opacity: 0; transform: translateY(120%); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(120%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ai-fab-icon {
@@ -313,9 +322,20 @@
 }
 
 @keyframes ai-fab-star-dance {
-  0% { transform: rotate(0deg) scale(1) translateY(0); opacity: 0.88; }
-  42% { transform: rotate(170deg) scale(1.18) translateY(-2px); opacity: 1; }
-  100% { transform: rotate(360deg) scale(1) translateY(0); opacity: 0.88; }
+  0% {
+    transform: rotate(0deg) scale(1) translateY(0);
+    opacity: 0.88;
+  }
+
+  42% {
+    transform: rotate(170deg) scale(1.18) translateY(-2px);
+    opacity: 1;
+  }
+
+  100% {
+    transform: rotate(360deg) scale(1) translateY(0);
+    opacity: 0.88;
+  }
 }
 
 .ai-sparkle-mark {
@@ -350,7 +370,11 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
-.ai-fab-text strong { font-size: 14px; font-weight: 800; color: #fdfbf4; }
+.ai-fab-text strong {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fdfbf4;
+}
 
 .ai-fab-arrow {
   flex-shrink: 0;
@@ -376,8 +400,17 @@
   margin-bottom: 13px;
 }
 
-.ai-hero-title { font-size: 15px; font-weight: 800; }
-.ai-hero-sub { font-size: 12px; opacity: 0.9; margin-top: 5px; line-height: 1.5; }
+.ai-hero-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.ai-hero-sub {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-top: 5px;
+  line-height: 1.5;
+}
 
 .ai-textarea {
   background: var(--color-bg-card-light);
@@ -392,8 +425,13 @@
   outline: none;
 }
 
-.ai-textarea:focus { border-color: var(--color-primary); }
-.ai-textarea::placeholder { color: var(--color-text-muted); }
+.ai-textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.ai-textarea::placeholder {
+  color: var(--color-text-muted);
+}
 
 .ai-chips {
   display: flex;
@@ -414,7 +452,9 @@
   cursor: pointer;
 }
 
-.ai-chip:hover { background: #e2efdc; }
+.ai-chip:hover {
+  background: #e2efdc;
+}
 
 .ai-generate {
   background: #8bb069;
@@ -437,7 +477,9 @@
   margin-right: 0;
 }
 
-.ai-generate:hover { background: #7ea55d; }
+.ai-generate:hover {
+  background: #7ea55d;
+}
 
 .ai-cost {
   display: flex;
@@ -478,10 +520,22 @@
   animation: ai-spin 1s linear infinite;
 }
 
-@keyframes ai-spin { to { transform: rotate(360deg); } }
+@keyframes ai-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-.ai-gen-title { font-size: 14px; font-weight: 800; color: var(--color-text-dark); }
-.ai-gen-sub { font-size: 11.5px; color: var(--color-text-muted); }
+.ai-gen-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-dark);
+}
+
+.ai-gen-sub {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
 
 /* 결과 */
 .ai-stage {
@@ -521,9 +575,18 @@
   border-radius: 10px;
 }
 
-.ai-result-name { font-size: 15.5px; font-weight: 800; color: var(--color-text-dark); }
+.ai-result-name {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: var(--color-text-dark);
+}
 
-.ai-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.ai-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
 
 .ai-tag {
   font-size: 10.5px;
@@ -541,7 +604,10 @@
   line-height: 1.5;
 }
 
-.ai-actions { display: flex; gap: 9px; }
+.ai-actions {
+  display: flex;
+  gap: 9px;
+}
 
 .ai-btn {
   flex: 1;
@@ -596,116 +662,131 @@
 }
 
 @keyframes goods-toast-in {
-  from { opacity: 0; transform: translate(-50%, -8px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
-/* ── 내 방 미리보기 ── */
-.room-preview {
+/* ── 내 방 3D 미리보기 컨테이너 ── */
+.room-preview-3d {
   position: relative;
   border-radius: 20px;
   border: 2px solid #d9c39a;
   height: 264px;
   overflow: hidden;
   margin-bottom: 10px;
-  background:
-    radial-gradient(circle at 28% 82%, rgba(106, 163, 149, 0.26) 0 38px, transparent 39px),
-    linear-gradient(135deg, rgba(233, 212, 174, 0.28) 0 49.8%, rgba(191, 151, 93, 0.22) 50% 50.4%, transparent 50.5%),
-    linear-gradient(180deg, #fff8e9 0%, #f8edd8 64%, #dcbf8b 64%, #d2aa72 100%);
+  background: #ecdcc9;
+  /* 방의 기본 뒷벽 및 테두리 베이스 톤 */
   touch-action: none;
   flex-shrink: 0;
-  box-shadow: inset 0 -24px 34px rgba(121, 82, 44, 0.12), 0 8px 18px rgba(82, 67, 42, 0.1);
+  box-shadow: inset 0 -24px 34px rgba(121, 82, 44, 0.08), 0 8px 18px rgba(82, 67, 42, 0.1);
 }
 
-.room-wall {
-  position: absolute;
-  inset: 0 0 35% 0;
+/* 정면 뷰 구도: 뒷벽(위 57%) + 바닥(아래 43%) 수평 분할. 가구는 기울임 없이 정면으로 놓인다. */
+.room-wall-left-3d {
+  display: none; /* 정면 뷰에서는 좌측 벽 없음 */
 }
 
-.room-corner {
+/* 뒷벽 (Back Wall) */
+.room-wall-right-3d {
   position: absolute;
-  top: 0;
-  bottom: 35%;
-  left: 50%;
-  width: 2px;
-  background: linear-gradient(180deg, rgba(201, 174, 132, 0.28), rgba(201, 174, 132, 0.08));
+  inset: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 57%, 0 57%);
+  transition: background 0.2s ease;
   pointer-events: none;
 }
 
-.room-window {
+.room-corner-3d {
+  display: none; /* 정면 뷰에서는 코너 없음 */
+}
+
+/* 바닥 (Floor) */
+.room-floor-3d {
   position: absolute;
-  right: 18px;
-  top: 22px;
-  width: 104px;
-  height: 92px;
-  border-radius: 22px 22px 10px 10px;
+  inset: 0;
+  clip-path: polygon(0 57%, 100% 57%, 100% 100%, 0 100%);
+  transition: background 0.2s ease;
   pointer-events: none;
 }
 
-.room-window-view {
-  position: absolute;
-  left: 21px;
-  right: 21px;
-  top: 10px;
-  bottom: 13px;
-  border: 4px solid #d6a66b;
-  border-radius: 14px 14px 7px 7px;
-  background:
-    linear-gradient(90deg, transparent 48%, rgba(214, 166, 107, 0.75) 49% 52%, transparent 53%),
-    linear-gradient(180deg, transparent 48%, rgba(214, 166, 107, 0.75) 49% 52%, transparent 53%),
-    radial-gradient(circle at 74% 72%, #8dbb77 0 19px, transparent 20px),
-    linear-gradient(180deg, #bfe5f4 0%, #e8f6dc 100%);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.38);
-}
-
-.room-curtain {
+/* 바닥면 입체감 그림자 */
+.room-floor-3d::after {
   content: "";
   position: absolute;
-  top: 0;
-  width: 32px;
-  height: 92px;
-  background: linear-gradient(180deg, #fff1d6, #f0c997);
-  border: 2px solid rgba(203, 159, 104, 0.42);
-  box-shadow: inset 6px 0 12px rgba(255, 255, 255, 0.42);
-}
-
-.room-curtain.left {
-  left: 0;
-  border-radius: 18px 8px 18px 10px;
-  transform: skewY(5deg);
-}
-
-.room-curtain.right {
-  right: 0;
-  border-radius: 8px 18px 10px 18px;
-  transform: skewY(-5deg);
-}
-
-.room-back-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 61%;
-  height: 14px;
-  background: linear-gradient(180deg, rgba(124, 86, 52, 0.24), rgba(255, 255, 255, 0));
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0) 40%);
   pointer-events: none;
 }
 
-.room-floor {
+.room-baseboard-left-3d {
+  display: none; /* 정면 뷰에서는 걸레받이 하나만 사용 */
+}
+
+/* 걸레받이 (Baseboard) — 벽/바닥 경계의 수평 몰딩 */
+.room-baseboard-right-3d {
   position: absolute;
-  inset: 62% -7% -12% -7%;
-  transform: perspective(220px) rotateX(9deg);
-  transform-origin: top;
-  border-top: 4px solid rgba(130, 94, 58, 0.28);
-  background-image:
-    linear-gradient(30deg, rgba(130, 94, 58, 0.2) 1px, transparent 1px),
-    linear-gradient(150deg, rgba(130, 94, 58, 0.2) 1px, transparent 1px);
-  background-size: 42px 26px;
+  inset: 0;
+  clip-path: polygon(0 54.5%, 100% 54.5%, 100% 57%, 0 57%);
+  background: linear-gradient(180deg, #cbb08e, #b19676);
+  pointer-events: none;
+}
+
+/* 창문 — 뒷벽 우측에 정면으로 */
+.room-window-3d {
+  position: absolute;
+  right: 36px;
+  top: 22px;
+  width: 90px;
+  height: 80px;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.room-window-view-3d {
+  position: absolute;
+  inset: 4px;
+  border: 3px solid #d6a66b;
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, transparent 47%, #d6a66b 47% 53%, transparent 53%),
+    linear-gradient(180deg, transparent 47%, #d6a66b 47% 53%, transparent 53%),
+    radial-gradient(circle at 74% 72%, #8dbb77 0 19px, transparent 20px),
+    linear-gradient(180deg, #bfe5f4 0%, #e8f6dc 100%);
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.15);
+}
+
+.room-curtain-3d {
+  position: absolute;
+  top: -2px;
+  width: 24px;
+  height: 84px;
+  background: linear-gradient(180deg, #fff1d6, #f0c997);
+  border: 1px solid rgba(203, 159, 104, 0.42);
+  box-shadow: inset 3px 0 6px rgba(255, 255, 255, 0.42);
+}
+
+.room-curtain-3d.left {
+  left: -6px;
+  border-radius: 8px 4px 8px 4px;
+}
+
+.room-curtain-3d.right {
+  right: -6px;
+  border-radius: 4px 8px 4px 8px;
 }
 
 .room-placed {
   position: absolute;
-  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: grab;
   user-select: none;
   filter: drop-shadow(0 4px 6px rgba(102, 83, 42, 0.25));
@@ -717,22 +798,20 @@
   cursor: grabbing;
 }
 
-.room-placed.selected {
-  filter: drop-shadow(0 7px 10px rgba(71, 95, 59, 0.34));
+/* 선택 표시: 2px 바짝 밀착된 연두색 점선 테두리 복원 */
+.room-placed {
+  position: absolute;
+  cursor: grab;
+  box-sizing: border-box;
 }
 
-.room-placed.selected::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
-  border: 2px dashed rgba(45, 108, 77, 0.62);
-  border-radius: 18px;
-  pointer-events: none;
+.room-placed.selected {
+  /* 테두리 제거 */
 }
 
 .room-placed.dragging {
-  filter: drop-shadow(0 8px 10px rgba(102, 83, 42, 0.35));
-  z-index: 3;
+  cursor: grabbing;
+  opacity: 0.8;
 }
 
 .room-hint {
@@ -746,87 +825,99 @@
   pointer-events: none;
 }
 
-.room-toolstrip {
-  min-height: 46px;
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  border: 1.5px solid var(--color-border);
-  border-radius: 16px;
-  background: #fffaf0;
+/* 상단 고정식 가구 편집 캡슐 독 스타일 */
+.room-selection-dock {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10010;
+  background: #fbf5e6;
+  border: 2px solid #8c6b4f;
+  border-radius: 12px;
+  padding: 6px 14px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.room-toolhint {
-  width: 100%;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-text-muted);
-}
-
-.room-selected-meta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.room-selected-meta strong {
-  color: var(--color-text-dark);
-  font-size: 13px;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(82, 67, 42, 0.22);
   white-space: nowrap;
+  pointer-events: auto;
+  animation: dockSlideIn 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.room-selected-label {
-  color: var(--color-primary);
-  font-size: 10.5px;
-  font-weight: 800;
-}
-
-.room-zoom-hint {
-  flex-shrink: 0;
-  color: #8a7045;
-  font-size: 11.5px;
-  font-weight: 800;
-  background: #f6ecd8;
-  border: 1px solid #e5d3b0;
-  border-radius: 999px;
-  padding: 7px 10px;
-}
-
-.room-size-controls {
-  display: grid;
-  grid-template-columns: 34px 46px 34px;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.room-size-controls button {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1.5px solid #d7c5a4;
-  background: var(--color-bg-card-light);
-  color: var(--color-primary-light);
-  font-size: 19px;
-  font-weight: 900;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.room-size-controls span {
-  text-align: center;
+.dock-title {
   font-size: 12px;
   font-weight: 800;
-  color: #8a7045;
+  color: #4a3728;
+}
+
+.dock-divider {
+  width: 1.5px;
+  height: 14px;
+  background: rgba(140, 107, 79, 0.35);
+  margin: 0 2px;
+}
+
+.dock-action-btn {
+  background: #ecdcc9;
+  border: 1.5px solid #bbaea0;
+  border-radius: 8px;
+  color: #5c4e3c;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, filter 0.2s ease;
+  line-height: 1.2;
+}
+
+.dock-action-btn:active {
+  transform: scale(0.94);
+}
+
+.dock-action-btn.rotate {
+  background: #e8f5e9;
+  border-color: #81c784;
+  color: #2e7d32;
+}
+
+.dock-action-btn.rotate:hover {
+  background: #c8e6c9;
+}
+
+.dock-action-btn.delete {
+  background: #ffebee;
+  border-color: #e57373;
+  color: #c62828;
+}
+
+.dock-action-btn.delete:hover {
+  background: #ffcdd2;
+}
+
+.dock-action-btn.close {
+  background: #f5eedf;
+  border-color: #d7ccc8;
+  color: #795548;
+}
+
+.dock-action-btn.close:hover {
+  background: #efebe9;
+}
+
+@keyframes dockSlideIn {
+  from {
+    transform: translate(-50%, -15px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
 }
 
 /* 내 방: 저장하기 버튼이 스크롤에 밀리지 않도록 아이템 그리드만 내부 스크롤 */
@@ -839,6 +930,24 @@
   min-height: 0;
   overflow-y: auto;
   padding-bottom: 4px;
+}
+
+/* 보관함 그리드 스크롤바 커스텀 적용 (얇고 세련된 반투명 그린 테마) */
+.room-page .goods-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.room-page .goods-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.room-page .goods-grid::-webkit-scrollbar-thumb {
+  background: rgba(139, 176, 105, 0.4);
+  border-radius: 4px;
+}
+
+.room-page .goods-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 176, 105, 0.65);
 }
 
 .room-page .goods-card {

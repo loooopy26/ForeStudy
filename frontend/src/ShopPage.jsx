@@ -191,7 +191,7 @@ function AiCreatePanel({ goods, activeTab, onKept, onToast }) {
     <div className="ai-panel">
       <div className="ai-hero">
         <div className="ai-hero-title">
-          <SparkleMark />무엇을 만들어 드릴까요?
+          무엇을 만들어 드릴까요?
         </div>
         <div className="ai-hero-sub">모양·색·분위기를 자세히 적을수록 좋아요.</div>
       </div>
@@ -210,19 +210,11 @@ function AiCreatePanel({ goods, activeTab, onKept, onToast }) {
         ))}
       </div>
       <button type="button" className="ai-generate" onClick={runGenerate}>
-        <span><SparkleMark />아이템 생성하기</span>
+        <span>아이템 생성하기</span>
         <span className="ai-cost"><CoinIcon size={13} />{AI_GEN_COST}</span>
       </button>
       <p className="ai-note">생성에 도토리 {AI_GEN_COST}개 · 만들어진 아이템은 무료로 보관돼요</p>
     </div>
-  )
-}
-
-function SparkleMark() {
-  return (
-    <span className="ai-sparkle-mark" aria-hidden="true">
-      <span className="ai-fab-star">✦</span>
-    </span>
   )
 }
 
