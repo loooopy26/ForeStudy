@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { BackIcon, LeafIcon } from './icons'
+import { BackIcon } from './icons'
+import { BrandWordmark, LogoMark } from './BrandLogo'
 import { login, register, setCurrentUser } from './api'
 import './Auth.css'
 
@@ -176,26 +177,24 @@ function Auth({ onNavigate, initialSub }) {
       )}
 
       <div className={getScreenClass('start')}>
-        <div className="brand-logo-container">
-          <span className="brand-f">f</span>
-          <span className="brand-icon">
-            <LeafIcon size={20} />
-          </span>
-          <span className="brand-text">restudy</span>
+        <div className="brand-logo-container auth-animate" style={{ animationDelay: '0ms' }}>
+          <BrandWordmark size={30} />
         </div>
 
-        <div className="avatar-circle">
-          <LeafIcon size={64} />
+        <div className="avatar-circle auth-animate" style={{ animationDelay: '70ms' }}>
+          <LogoMark size={64} ringColor="#2F6B4F" leafColor="#7FB79A" />
         </div>
 
-        <h1 className="landing-title">
+        <h1 className="landing-title auth-animate" style={{ animationDelay: '140ms' }}>
           매일 조금씩,
           <br />
           함께 자라는 학습
         </h1>
-        <p className="landing-desc">레벨을 올리고 도토리를 모으며, 목표를 향해 꾸준히 달려봐요.</p>
+        <p className="landing-desc auth-animate" style={{ animationDelay: '210ms' }}>
+          레벨을 올리고 도토리를 모으며, 목표를 향해 꾸준히 달려봐요.
+        </p>
 
-        <div className="btn-group">
+        <div className="btn-group auth-animate" style={{ animationDelay: '280ms' }}>
           <button type="button" className="btn btn-primary" onClick={handleGoLogin}>
             로그인
           </button>

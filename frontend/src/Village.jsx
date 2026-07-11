@@ -3,6 +3,7 @@ import MainNav from './MainNav'
 import villageMap from './assets/village-map.png'
 import certMascot from './assets/cert-mascot.png'
 import { AcornIcon } from './icons'
+import { useGoods } from './goods'
 import './Village.css'
 
 const PLACES = [
@@ -49,6 +50,7 @@ const PLACES = [
 ]
 
 function Village({ onNavigate }) {
+  const { wallet } = useGoods()
   const [showOngoing, setShowOngoing] = useState(true)
 
   return (
@@ -62,7 +64,7 @@ function Village({ onNavigate }) {
             <span className="currency-pill-lvl">Lv.12</span>
             <div className="currency-pill-acorn">
               <AcornIcon size={16} />
-              <span>2,450</span>
+              <span>{wallet.toLocaleString()}</span>
             </div>
           </div>
         </div>

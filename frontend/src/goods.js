@@ -111,8 +111,7 @@ export function readEquipped() {
 // Global states stored at the module level to synchronize state across components in real-time
 let globalWallet = (() => {
   const saved = localStorage.getItem(WALLET_KEY)
-  const val = saved ? parseInt(saved) : 99999
-  return val < 50000 ? 99999 : val
+  return saved ? parseInt(saved) : 2450
 })()
 let globalOwned = readJson(OWNED_KEY, [])
 let globalCustomItems = readJson(CUSTOM_ITEMS_KEY, [])

@@ -80,32 +80,7 @@
 }
 
 .brand-wordmark {
-  display: inline-flex;
-  align-items: flex-end;
-  color: #263129;
-  font-size: 25px;
-  line-height: 0.92;
-  font-weight: 700;
-  letter-spacing: -0.07em;
   text-shadow: 0 1px 0 rgba(255, 252, 245, 0.55);
-}
-
-.brand-o-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: flex-end;
-}
-
-.brand-o {
-  color: #3d8666;
-}
-
-.brand-leaf {
-  position: absolute;
-  top: -7px;
-  right: -6px;
-  color: #8fcd9c;
-  transform: rotate(20deg);
 }
 
 .forest-bell,

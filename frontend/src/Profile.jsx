@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import MainNav from './MainNav'
+import { BrandWordmark } from './BrandLogo'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
@@ -120,21 +121,7 @@ function Profile({ onNavigate }) {
 
       <header className="profile-topbar">
         <div className="brand">
-          <span className="brand-wordmark" aria-label="Forestudy">
-            <span className="brand-f">F</span>
-            <span className="brand-o-wrap">
-              <span className="brand-o">o</span>
-              <span className="brand-leaf" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M20 4C20 4 19.5 13 13 17C8.5 19.7 4 18.5 4 18.5C4 18.5 4.3 13.5 8 10C12.5 5.7 20 4 20 4Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </span>
-            </span>
-            <span className="brand-rest">restudy</span>
-          </span>
+          <BrandWordmark size={25} />
         </div>
 
         <div className="profile-topbar-actions">
