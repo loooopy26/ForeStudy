@@ -72,6 +72,14 @@ app.mount(
     name="generated-items",
 )
 
+# AI 질문(튜터 챗)에 첨부한 사진을 프론트에서 <img src="{API_BASE}/tutor-chat-images/...">로
+# 바로 쓸 수 있도록 정적 파일로 서빙합니다.
+app.mount(
+    "/tutor-chat-images",
+    StaticFiles(directory=settings.tutor_chat_images_dir),
+    name="tutor-chat-images",
+)
+
 
 # 서버가 정상 실행 중인지 확인하는 가장 단순한 체크 API입니다.
 @app.get("/health")

@@ -15,6 +15,9 @@ from services import rag
 
 router = APIRouter(prefix="/api", tags=["AI quiz"])
 
+# 배치고사 난이도별 고정 문항 수 — AI가 알아서 배분하지 않고 항상 이 개수를 강제한다.
+PLACEMENT_DIFFICULTY_MIX = {"easy": 4, "normal": 4, "hard": 2}
+
 
 class QuizCreateRequest(BaseModel):
     num_questions: int = Field(10, ge=1, le=25)
@@ -46,13 +49,16 @@ class ReviewSubmitRequest(BaseModel):
 
 @router.post("/materials/{material_id}/quiz", status_code=201)
 async def create_quiz(material_id: str, req: QuizCreateRequest):
-    """Create the initial placement quiz: 10 multiple-choice questions."""
+    """Create the initial placement quiz: 10 multiple-choice questions, difficulty
+    fixed at 4 easy + 4 normal + 2 hard so the level calculation has a known,
+    consistent question count per tier to work from."""
     return await _create_material_quiz(
         material_id,
         req,
         quiz_kind="placement",
         forced_num_questions=10,
         question_mix={"multiple_choice": 10},
+        difficulty_mix=PLACEMENT_DIFFICULTY_MIX,
         title_suffix="placement quiz",
     )
 
@@ -78,6 +84,7 @@ async def _create_material_quiz(
     forced_num_questions: int,
     question_mix: dict[str, int],
     title_suffix: str,
+    difficulty_mix: dict[str, int] | None = None,
 ):
     pool = await get_pool()
     await _ensure_learning_profile_tables(pool)
@@ -133,6 +140,7 @@ async def _create_material_quiz(
             difficulty=requested_difficulty,
             weak_topics=weak_topics or None,
             question_mix=question_mix,
+            difficulty_mix=difficulty_mix,
             quiz_kind=quiz_kind,
             learner_profile=learner_profile,
             plan_scope=today_plan,

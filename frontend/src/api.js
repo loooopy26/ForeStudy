@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+export const API_BASE = import.meta.env.VITE_API_BASE_URL
   || `${window.location.protocol}//${window.location.hostname}:8000`
 
 export function getMaterialId() {
@@ -447,15 +447,23 @@ export async function createTutorSession(materialId) {
   return res.json()
 }
 
+export async function getTutorMessages(sessionId) {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/messages`)
+  if (!res.ok) throw new Error('대화 내용을 불러오지 못했습니다')
+  return res.json()
+}
+
+// 자료 하나에 대해 실제로 대화를 나눈 세션만 일별 학습 주제 단위로 묶어서 반환한다.
+export async function getTutorHistory(materialId) {
+  const res = await fetch(`${API_BASE}/api/tutor/materials/${materialId}/history`)
+  if (!res.ok) throw new Error('이전 질문 기록을 불러오지 못했습니다')
+  return res.json()
+}
+
 // 서버가 SSE(text/event-stream)로 답변을 조각(delta) 단위로 흘려보낸다. onDelta가 있으면
 // 조각이 도착할 때마다 (delta, 지금까지 합친 전체 텍스트)로 호출해준다. 최종적으로는
 // 기존 호출부와 호환되게 { reply: 전체 텍스트 }를 반환한다.
-export async function sendTutorMessage(sessionId, content, onDelta) {
-  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  })
+async function readTutorReplyStream(res, onDelta) {
   if (!res.ok || !res.body) throw new Error('답변을 받지 못했습니다')
 
   const reader = res.body.getReader()
@@ -482,6 +490,27 @@ export async function sendTutorMessage(sessionId, content, onDelta) {
     }
   }
   return { reply: fullReply }
+}
+
+export async function sendTutorMessage(sessionId, content, onDelta) {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  return readTutorReplyStream(res, onDelta)
+}
+
+// 사진을 첨부해 질문한다. 백엔드가 OCR로 사진 속 텍스트를 읽어 답변에 활용한다.
+export async function sendTutorImageMessage(sessionId, file, content, onDelta) {
+  const form = new FormData()
+  form.append('file', file)
+  if (content) form.append('content', content)
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/messages/image`, {
+    method: 'POST',
+    body: form,
+  })
+  return readTutorReplyStream(res, onDelta)
 }
 
 // ── 위치(TMAP) 기능 ────────────────────────────────────────────────

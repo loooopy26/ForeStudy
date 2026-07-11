@@ -66,6 +66,17 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
             NOT NULL DEFAULT 'study_review' CHECK (quiz_type IN ('placement', 'study_review'))
         """
     )
+    # 튜터 세션을 "그 날의 학습 주제"로 묶어서 다시 볼 수 있게 하기 위한 컬럼.
+    await pool.execute(
+        """
+        ALTER TABLE tutor_chat_sessions ADD COLUMN IF NOT EXISTS curriculum_day_id UUID
+            REFERENCES curriculum_days(id) ON DELETE SET NULL
+        """
+    )
+    # AI 질문에 사진을 첨부해 물어볼 수 있게 하기 위한 컬럼 (사용자 메시지에만 값이 있음).
+    await pool.execute(
+        "ALTER TABLE tutor_chat_messages ADD COLUMN IF NOT EXISTS image_url TEXT"
+    )
 
 
 async def close_pool() -> None:

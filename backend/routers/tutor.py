@@ -1,18 +1,23 @@
 """튜터 챗봇 (선생-학생) - 자료 발췌에 근거해 소크라테스식으로 지도."""
 
 import json
+import uuid
 from datetime import date
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from config import settings
 from db import get_or_create_demo_user, get_pool
-from services import rag, study_agent
+from services import rag, study_agent, upstage
+from services.chunking import _element_text
 
 router = APIRouter(prefix="/api/tutor", tags=["튜터 챗봇"])
 
 _HISTORY_LIMIT = 20  # LLM에 넣을 최근 대화 수
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class SessionCreateRequest(BaseModel):
@@ -27,31 +32,180 @@ class MessageRequest(BaseModel):
 
 @router.post("/sessions", status_code=201)
 async def create_session(req: SessionCreateRequest):
+    """오늘의 학습 주제(curriculum_day) 단위로 세션을 재사용한다 — 화면을 나갔다
+    다시 들어와도 오늘 나눈 대화가 사라지지 않도록. weak_point_report_id로 여는
+    세션은 오답 1건에 대한 1회성 질문이라 재사용하지 않고 항상 새로 만든다."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         user_id = req.user_id or await get_or_create_demo_user(conn)
-        row = await conn.fetchrow(
+    plan_scope = await _load_today_plan_scope(pool, user_id, req.study_material_id)
+    day_id = plan_scope["day_id"] if plan_scope else None
+
+    existing = None
+    if not req.weak_point_report_id:
+        existing = await pool.fetchrow(
             """
-            INSERT INTO tutor_chat_sessions (user_id, study_material_id, weak_point_report_id)
-            VALUES ($1, $2, $3) RETURNING id
+            SELECT id FROM tutor_chat_sessions
+            WHERE user_id = $1
+              AND study_material_id IS NOT DISTINCT FROM $2
+              AND curriculum_day_id IS NOT DISTINCT FROM $3
+              AND weak_point_report_id IS NULL
+            ORDER BY started_at DESC LIMIT 1
+            """,
+            user_id,
+            req.study_material_id,
+            day_id,
+        )
+
+    if existing:
+        session_id = str(existing["id"])
+    else:
+        row = await pool.fetchrow(
+            """
+            INSERT INTO tutor_chat_sessions
+                (user_id, study_material_id, weak_point_report_id, curriculum_day_id)
+            VALUES ($1, $2, $3, $4) RETURNING id
             """,
             user_id,
             req.study_material_id,
             req.weak_point_report_id,
+            day_id,
         )
-    plan_scope = await _load_today_plan_scope(pool, user_id, req.study_material_id)
-    return {"session_id": str(row["id"]), "plan_scope": plan_scope}
+        session_id = str(row["id"])
+    return {"session_id": session_id, "plan_scope": plan_scope}
+
+
+@router.get("/materials/{material_id}/history")
+async def get_material_chat_history(material_id: str, user_id: str | None = None):
+    """일별 학습 주제마다 나눴던 질문들을 다시 볼 수 있도록, 자료 하나에 대해
+    실제로 메시지가 오간 세션만 날짜별로 묶어서 반환한다."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        resolved_user_id = user_id or await get_or_create_demo_user(conn)
+    rows = await pool.fetch(
+        """
+        SELECT
+            s.id AS session_id,
+            s.curriculum_day_id,
+            cd.day_date,
+            cd.focus_topic,
+            s.started_at,
+            COUNT(m.id) AS message_count,
+            MAX(m.created_at) AS last_message_at
+        FROM tutor_chat_sessions s
+        JOIN tutor_chat_messages m ON m.tutor_chat_session_id = s.id
+        LEFT JOIN curriculum_days cd ON cd.id = s.curriculum_day_id
+        WHERE s.user_id = $1 AND s.study_material_id = $2
+        GROUP BY s.id, s.curriculum_day_id, cd.day_date, cd.focus_topic, s.started_at
+        ORDER BY COALESCE(cd.day_date, s.started_at::date) DESC, s.started_at DESC
+        """,
+        resolved_user_id,
+        material_id,
+    )
+    return {
+        "sessions": [
+            {
+                "session_id": str(r["session_id"]),
+                "day_id": str(r["curriculum_day_id"]) if r["curriculum_day_id"] else None,
+                "date": (r["day_date"] or r["started_at"].date()).isoformat(),
+                "focus_topic": r["focus_topic"],
+                "message_count": r["message_count"],
+                "last_message_at": r["last_message_at"].isoformat(),
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.post("/sessions/{session_id}/messages")
 async def send_message(session_id: str, req: MessageRequest):
     pool = await get_pool()
+    session = await _get_session_or_404(pool, session_id)
+
+    plan_scope = await _load_today_plan_scope(
+        pool, str(session["user_id"]), str(session["study_material_id"]) if session["study_material_id"] else None
+    )
+    context = await _rag_context(session, req.content, plan_scope)
+    return await _stream_reply_and_persist(
+        pool, session_id, user_content=req.content, context=context, plan_scope=plan_scope
+    )
+
+
+@router.post("/sessions/{session_id}/messages/image")
+async def send_image_message(
+    session_id: str,
+    file: UploadFile = File(..., description="첨부할 사진 (png/jpg/webp)"),
+    content: str = Form(""),
+):
+    """사진을 첨부해 질문한다. Upstage Solar는 채팅에서 이미지 입력을 지원하지 않아
+    (실제 API 호출로 확인: "Image input is not allowed for this model"), 대신 Document
+    Parse(OCR)로 사진 속 텍스트를 먼저 추출해 컨텍스트로 넣어주는 방식으로 구현한다."""
+    pool = await get_pool()
+    session = await _get_session_or_404(pool, session_id)
+
+    ext = _uploaded_image_ext(file.filename)
+    saved_name = f"{uuid.uuid4().hex}{ext}"
+    saved_path = settings.tutor_chat_images_dir / saved_name
+    saved_path.write_bytes(await file.read())
+    image_url = f"/tutor-chat-images/{saved_name}"
+
+    try:
+        ocr_result = await upstage.parse_document(saved_path)
+        ocr_text = "\n".join(
+            text for element in ocr_result.get("elements", []) if (text := _element_text(element).strip())
+        )
+    except Exception:  # noqa: BLE001 — OCR 실패해도 사진 자체에 대한 질문은 계속 진행한다
+        ocr_text = ""
+
+    user_text = content.strip() or "이 사진에 대해 설명해줘"
+
+    plan_scope = await _load_today_plan_scope(
+        pool, str(session["user_id"]), str(session["study_material_id"]) if session["study_material_id"] else None
+    )
+    context = await _rag_context(session, user_text, plan_scope)
+    if ocr_text:
+        ocr_section = f"[사용자가 첨부한 사진에서 인식된 내용]\n{ocr_text}"
+        context = f"{context}\n\n{ocr_section}" if context else ocr_section
+
+    return await _stream_reply_and_persist(
+        pool, session_id, user_content=user_text, context=context, plan_scope=plan_scope, image_url=image_url
+    )
+
+
+async def _get_session_or_404(pool, session_id: str):
     session = await pool.fetchrow(
         "SELECT id, user_id, study_material_id FROM tutor_chat_sessions WHERE id = $1", session_id
     )
     if session is None:
         raise HTTPException(404, "세션을 찾을 수 없습니다")
+    return session
 
+
+def _uploaded_image_ext(filename: str | None) -> str:
+    ext = Path(filename or "").suffix.lower()
+    if ext not in _IMAGE_EXTENSIONS:
+        raise HTTPException(400, "이미지 파일만 첨부할 수 있습니다 (png/jpg/webp)")
+    return ext
+
+
+async def _rag_context(session, query_text: str, plan_scope: dict | None) -> str | None:
+    """자료가 연결된 세션이면 사용자 발화 기준으로 관련 발췌를 검색한다."""
+    if not session["study_material_id"]:
+        return None
+    query = " ".join(value for value in [_plan_query(plan_scope), query_text] if value)
+    chunks = await rag.retrieve_chunks(str(session["study_material_id"]), query, top_k=4)
+    return rag.format_context(chunks) if chunks else None
+
+
+async def _stream_reply_and_persist(
+    pool,
+    session_id: str,
+    *,
+    user_content: str,
+    context: str | None,
+    plan_scope: dict | None,
+    image_url: str | None = None,
+) -> StreamingResponse:
     history_rows = await pool.fetch(
         """
         SELECT role, content FROM tutor_chat_messages
@@ -61,18 +215,7 @@ async def send_message(session_id: str, req: MessageRequest):
         _HISTORY_LIMIT,
     )
     history = [{"role": r["role"], "content": r["content"]} for r in reversed(history_rows)]
-    history.append({"role": "user", "content": req.content})
-
-    # 자료가 연결된 세션이면 사용자 발화 기준으로 관련 발췌 검색
-    plan_scope = await _load_today_plan_scope(
-        pool, str(session["user_id"]), str(session["study_material_id"]) if session["study_material_id"] else None
-    )
-    context = None
-    if session["study_material_id"]:
-        query = " ".join(value for value in [_plan_query(plan_scope), req.content] if value)
-        chunks = await rag.retrieve_chunks(str(session["study_material_id"]), query, top_k=4)
-        if chunks:
-            context = rag.format_context(chunks)
+    history.append({"role": "user", "content": user_content})
 
     async def event_stream():
         full_reply = ""
@@ -88,10 +231,10 @@ async def send_message(session_id: str, req: MessageRequest):
         # 잘린 답변이 남지 않는다.
         await pool.executemany(
             """
-            INSERT INTO tutor_chat_messages (tutor_chat_session_id, role, content)
-            VALUES ($1, $2, $3)
+            INSERT INTO tutor_chat_messages (tutor_chat_session_id, role, content, image_url)
+            VALUES ($1, $2, $3, $4)
             """,
-            [(session_id, "user", req.content), (session_id, "assistant", full_reply)],
+            [(session_id, "user", user_content, image_url), (session_id, "assistant", full_reply, None)],
         )
         yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
 
@@ -154,7 +297,7 @@ async def get_messages(session_id: str):
     pool = await get_pool()
     rows = await pool.fetch(
         """
-        SELECT role, content, created_at FROM tutor_chat_messages
+        SELECT role, content, image_url, created_at FROM tutor_chat_messages
         WHERE tutor_chat_session_id = $1 ORDER BY created_at
         """,
         session_id,

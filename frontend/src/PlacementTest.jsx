@@ -15,6 +15,7 @@ import { QuizIcon, CheckIcon } from './icons'
 import './Shell.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
+const IDK_LABEL = '이 문제는 잘 모르겠어요'
 
 function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
   const [quiz, setQuiz] = useState(placementQuiz || null)
@@ -226,6 +227,27 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
               </button>
             )
           })}
+          {(() => {
+            const idkIndex = options.length
+            const isSelected = selectedIndex === idkIndex
+            return (
+              <button
+                key={`${current.question_id}-idk`}
+                type="button"
+                className="option-button option-idk"
+                style={{
+                  borderColor: isSelected ? 'oklch(0.75 0.06 148)' : undefined,
+                  background: isSelected ? 'oklch(0.93 0.03 148)' : undefined,
+                }}
+                onClick={() => selectOption(idkIndex)}
+              >
+                <span className={`option-mark ${isSelected ? 'check' : 'idle'}`}>
+                  {isSelected && <CheckIcon />}
+                </span>
+                <span className="option-label">{IDK_LABEL}</span>
+              </button>
+            )
+          })()}
         </div>
 
         {error && <div className="done-desc" style={{ color: 'oklch(0.55 0.15 25)' }}>{error}</div>}

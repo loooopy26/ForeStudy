@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # AI 생성 아이템 이미지(배경 투명화된 PNG) 저장 위치. main.py에서 /generated-items로 정적 서빙한다.
     generated_items_dir: Path = BASE_DIR / "uploads" / "generated_items"
 
+    # AI 질문(튜터 챗)에 첨부한 사진 저장 위치. main.py에서 /tutor-chat-images로 정적 서빙해
+    # 채팅창에 썸네일로 보여준다.
+    tutor_chat_images_dir: Path = BASE_DIR / "uploads" / "tutor_chat_images"
+
     # 청킹: 한국어 기준 대략 2~3자 = 1토큰, 임베딩 8k 컨텍스트 내에서 여유 있게
     chunk_max_chars: int = 1600
     chunk_overlap_chars: int = 200
@@ -47,3 +51,4 @@ class Settings(BaseSettings):
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
 settings.generated_items_dir.mkdir(parents=True, exist_ok=True)
+settings.tutor_chat_images_dir.mkdir(parents=True, exist_ok=True)

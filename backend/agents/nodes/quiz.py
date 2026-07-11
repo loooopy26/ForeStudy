@@ -16,6 +16,7 @@ async def generate_quiz_node(state: AgentState) -> AgentState:
         difficulty=payload["difficulty"],
         weak_topics=payload.get("weak_topics"),
         question_mix=payload.get("question_mix"),
+        difficulty_mix=payload.get("difficulty_mix"),
         quiz_kind=payload.get("quiz_kind", "study_review"),
         learner_profile=payload.get("learner_profile"),
         plan_scope=payload.get("plan_scope"),

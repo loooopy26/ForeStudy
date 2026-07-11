@@ -433,6 +433,7 @@ CREATE TABLE tutor_chat_sessions (
     user_id                UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     study_material_id      UUID REFERENCES study_materials(id) ON DELETE SET NULL,
     weak_point_report_id   UUID REFERENCES weak_point_reports(id) ON DELETE SET NULL,
+    curriculum_day_id      UUID REFERENCES curriculum_days(id) ON DELETE SET NULL,
     started_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at               TIMESTAMPTZ
 );
@@ -442,6 +443,7 @@ CREATE TABLE tutor_chat_messages (
     tutor_chat_session_id     UUID NOT NULL REFERENCES tutor_chat_sessions(id) ON DELETE CASCADE,
     role                      TEXT NOT NULL CHECK (role IN ('user','assistant')),
     content                   TEXT NOT NULL,
+    image_url                 TEXT,  -- 사용자가 사진을 첨부해 물어본 경우에만 값이 있음
     created_at                TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

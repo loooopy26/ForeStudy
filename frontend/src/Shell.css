@@ -89,12 +89,20 @@
   width: 34px;
   height: 34px;
   border-radius: 11px;
+  border: none;
+  padding: 0;
   background: var(--green-tint);
   color: var(--green-text);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  font-family: inherit;
+}
+
+button.header-badge {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .bottom-nav {
@@ -265,6 +273,12 @@
 .option-button:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
+}
+
+.option-idk {
+  margin-top: 4px;
+  border-style: dashed;
+  color: var(--ink-softer);
 }
 
 .short-answer-input {

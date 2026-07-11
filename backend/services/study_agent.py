@@ -84,6 +84,7 @@ async def generate_quiz(
     difficulty: str,
     weak_topics: list[str] | None = None,
     question_mix: dict[str, int] | None = None,
+    difficulty_mix: dict[str, int] | None = None,
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
     plan_scope: dict | None = None,
@@ -94,7 +95,15 @@ async def generate_quiz(
     call. A single shared JSON example biases the model toward whatever shape
     that example shows (multiple_choice options), so mixed-type requests were
     silently coming back as all multiple_choice regardless of the requested
-    mix. Splitting by type removes that ambiguity."""
+    mix. Splitting by type removes that ambiguity.
+
+    difficulty_mix (e.g. {"easy": 4, "normal": 4, "hard": 2}) fixes exactly how
+    many questions of each difficulty tier come back — used by the placement
+    test so the level calculation can rely on a known question count per tier
+    instead of the model's self-reported difficulty. Assumes question_mix has
+    a single question type when combined with difficulty_mix (true for the
+    placement test today); combining multiple types with a difficulty_mix would
+    request the full tier count per type."""
     mix = question_mix or {"multiple_choice": num_questions}
     # Large single prompts often come back capped around 10 items, so split each
     # requested type into smaller model calls and merge the generated questions.
@@ -102,12 +111,20 @@ async def generate_quiz(
     # (see _generate_quiz_batch): fewer questions per call means fewer chances
     # for one of them to come back with duplicate/empty options.
     batch_size = 5
-    batch_requests = []
-    for question_type, count in mix.items():
-        remaining = count
-        while remaining > 0:
-            batch_requests.append((question_type, min(batch_size, remaining)))
-            remaining -= batch_size
+    batch_requests: list[tuple[str, int, str | None]] = []
+    if difficulty_mix:
+        for question_type in mix:
+            for tier, tier_count in difficulty_mix.items():
+                remaining = tier_count
+                while remaining > 0:
+                    batch_requests.append((question_type, min(batch_size, remaining), tier))
+                    remaining -= batch_size
+    else:
+        for question_type, count in mix.items():
+            remaining = count
+            while remaining > 0:
+                batch_requests.append((question_type, min(batch_size, remaining), None))
+                remaining -= batch_size
 
     batches = await asyncio.gather(
         *[
@@ -116,12 +133,13 @@ async def generate_quiz(
                 question_type=question_type,
                 count=batch_count,
                 difficulty=difficulty,
+                target_difficulty=target_difficulty,
                 weak_topics=weak_topics,
                 quiz_kind=quiz_kind,
                 learner_profile=learner_profile,
                 plan_scope=plan_scope,
             )
-            for question_type, batch_count in batch_requests
+            for question_type, batch_count, target_difficulty in batch_requests
         ]
     )
     return [question for batch in batches for question in batch]
@@ -137,6 +155,7 @@ async def _generate_quiz_batch(
     quiz_kind: str,
     learner_profile: dict | None,
     plan_scope: dict | None,
+    target_difficulty: str | None = None,
 ) -> list[dict]:
     weak_hint = (
         f"\nPrioritize these weak topics when relevant: {', '.join(weak_topics)}."
@@ -167,10 +186,10 @@ async def _generate_quiz_batch(
         )
         example_fields = f'"question_type": "{question_type}",\n      "options": ["O", "X"],\n      "correct_answer": "O",'
 
-    if quiz_kind == "placement":
+    if target_difficulty:
         level_instruction = (
-            "This is a placement test. Create a balanced set across easy, normal, and hard levels "
-            "so the learner's starting mastery can be diagnosed."
+            f"Every question must be exactly \"{target_difficulty}\" difficulty — generate all "
+            f"{count} questions at this difficulty level only, never mix in other levels."
         )
     else:
         level_instruction = (
@@ -240,6 +259,10 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
                 question["options"] = (question.get("options") or [])[:4]
             else:
                 question["question_type"] = question.get("question_type") or question_type
+            if target_difficulty:
+                # 난이도 티어별 개수를 정확히 보장해야 하므로, 모델이 스스로 매긴 난이도
+                # 태그를 신뢰하지 않고 요청한 티어로 강제 확정한다.
+                question["question_difficulty"] = target_difficulty
         last_normalized = normalized
         broken = [q for q in normalized if not _is_question_well_formed(q)]
         if not broken and len(normalized) == count:
@@ -404,6 +427,53 @@ Return JSON only:
     return result.get("mistake_analysis") or ""
 
 
+# 배치고사 난이도별 배점 — routers/quizzes.py의 PLACEMENT_DIFFICULTY_MIX(쉬움 4·보통 4·어려움 2)
+# 기준 만점 20점(4*1 + 4*2 + 2*4). AI 판단이 아니라 이 점수 합계로 수준을 결정한다.
+_PLACEMENT_POINTS = {"easy": 1, "normal": 2, "hard": 4}
+
+
+def _evaluate_placement_level(results: list[dict]) -> dict:
+    """배치고사는 AI가 수준을 판단하지 않고, 난이도별 배점 합계를 만점 대비 비율로
+    환산해 결정론적으로 초보/숙련/전문가를 나눈다."""
+    breakdown = {tier: {"correct": 0, "total": 0} for tier in _PLACEMENT_POINTS}
+    score = 0
+    max_score = 0
+    for item in results:
+        tier = item.get("question_difficulty") or "normal"
+        if tier not in breakdown:
+            tier = "normal"
+        breakdown[tier]["total"] += 1
+        max_score += _PLACEMENT_POINTS[tier]
+        if item["is_correct"]:
+            breakdown[tier]["correct"] += 1
+            score += _PLACEMENT_POINTS[tier]
+
+    ratio = score / max_score if max_score else 0.0
+    if ratio <= 0.5:
+        mastery_level, recommended_difficulty = "beginner", "easy"
+    elif ratio <= 0.8:
+        mastery_level, recommended_difficulty = "intermediate", "normal"
+    else:
+        mastery_level, recommended_difficulty = "advanced", "hard"
+
+    return _normalize_level_evaluation(
+        {
+            "mastery_score": round(ratio * 100),
+            "mastery_level": mastery_level,
+            "recommended_difficulty": recommended_difficulty,
+            "confidence_score": 100,
+            "difficulty_breakdown": breakdown,
+            "strengths": [],
+            "weaknesses": [],
+            "analysis": (
+                f"배치고사 점수 {score}/{max_score}점 "
+                f"(쉬움 {_PLACEMENT_POINTS['easy']}점·보통 {_PLACEMENT_POINTS['normal']}점·"
+                f"어려움 {_PLACEMENT_POINTS['hard']}점 배점 기준)."
+            ),
+        }
+    )
+
+
 async def evaluate_learning_level(
     *,
     quiz_type: str,
@@ -411,6 +481,9 @@ async def evaluate_learning_level(
     results: list[dict],
     previous_profile: dict | None = None,
 ) -> dict:
+    if quiz_type == "placement":
+        return _evaluate_placement_level(results)
+
     result_text = "\n".join(
         (
             f"- order={item['question_order']}, type={item['question_type']}, "
