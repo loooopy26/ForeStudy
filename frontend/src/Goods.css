@@ -1036,3 +1036,41 @@
   color: var(--color-text-muted);
   font-weight: 600;
 }
+
+/* 내 방 페이지 AI 아이템 공방 플로팅 버튼 */
+.room-ai-workshop-btn {
+  position: absolute;
+  right: 20px;
+  bottom: 80px; /* 저장하기 버튼(높이 + 마진) 위에 뜨도록 배치 */
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #8bb069;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(139, 176, 105, 0.4);
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+.room-ai-workshop-btn:hover {
+  transform: scale(1.1);
+  background: #7a9c5c;
+  box-shadow: 0 6px 16px rgba(139, 176, 105, 0.5);
+}
+
+.room-ai-workshop-btn:active {
+  transform: scale(0.95);
+}
+
+.room-ai-workshop-btn-star {
+  display: block;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.55);
+  animation: ai-fab-star-dance 2.4s ease-in-out infinite;
+}

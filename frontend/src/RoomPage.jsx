@@ -1,16 +1,21 @@
 // 내 방 화면: 보유한 가구/장식을 방 미리보기에 배치하고 드래그로 자유롭게 옮긴다.
 // 벽지/바닥은 방 표면을 통째로 바꾼다. 저장하기를 눌러야 배치가 유지된다.
 import { useEffect, useRef, useState } from 'react'
-import { CATALOG, DEFAULT_POS, getItem, useGoods } from './goods'
+import { CATALOG, useGoods } from './goods'
 import { ItemArt } from './GoodsArt'
 import { GoodsHeader, GoodsTabs, GoodsToast, ItemCard } from './GoodsUI'
 import './Goods.css'
+
+const CUSTOM_TAB = 'custom'
+// 방에 배치·적용할 수 있는 분류 (AI로 만든 의상 등은 방에 놓을 수 없어 제외)
+const ROOM_KINDS = ['furniture', 'decor', 'wallpaper', 'floor']
 
 const TABS = [
   { key: 'furniture', label: '가구' },
   { key: 'wallpaper', label: '벽지' },
   { key: 'floor', label: '바닥' },
   { key: 'decor', label: '장식' },
+  { key: CUSTOM_TAB, label: '커스텀' },
 ]
 
 // 배치했을 때 방 안에서의 아이템 크기(px) — 기본 크기. 원근 스케일로 자동 조절됨.
@@ -49,6 +54,14 @@ function surfaceStyle(id, kind, customItems = []) {
   if (presets[id]) return presets[id]
   const item = CATALOG.find((it) => it.id === id) || customItems.find((it) => it.id === id)
   if (!item) return presets.default
+  if (item.imageUrl) {
+    return {
+      backgroundImage: `url(${item.imageUrl})`,
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: '140% 140%',
+      backgroundPosition: 'center',
+    }
+  }
   const primary = item.visual?.primary || item.color || '#e6e0cf'
   const secondary = item.visual?.secondary || item.trim || '#c9bfa4'
   const accent = item.visual?.accent || '#f5df8d'
@@ -174,8 +187,10 @@ function RoomPage({ onNavigate }) {
     return CATALOG.find((item) => item.id === id) || customItems.find((item) => item.id === id)
   }
 
-  // AI 공방에서 만든 커스텀 가구/장식도 함께 배치할 수 있게 카탈로그에 합친다
-  const items = [...CATALOG, ...customItems].filter((item) => item.kind === tab)
+  // '커스텀' 탭은 AI로 만든 방 아이템만, 나머지 탭은 기본 카탈로그만 보여준다.
+  const items = tab === CUSTOM_TAB
+    ? customItems.filter((item) => ROOM_KINDS.includes(item.kind))
+    : CATALOG.filter((item) => item.kind === tab)
   const isActive = (item) =>
     item.kind === 'wallpaper' || item.kind === 'floor'
       ? room[item.kind] === item.id
@@ -429,13 +444,25 @@ function RoomPage({ onNavigate }) {
 
       <GoodsTabs tabs={TABS} active={tab} onChange={setTab} />
       <div className="goods-grid cols-4">
-        {items.length === 0 && <p className="goods-empty">이 분류의 아이템이 아직 없어요</p>}
+        {items.length === 0 && (
+          <p className="goods-empty">
+            {tab === CUSTOM_TAB ? '아직 만든 방 아이템이 없어요 · 아래 버튼으로 만들어 보세요' : '이 분류의 아이템이 아직 없어요'}
+          </p>
+        )}
         {items.map((item) => (
           <ItemCard key={item.id} item={item} owned={isOwned(item.id)} active={isActive(item)} onClick={handleCardClick} artSize={44} />
         ))}
       </div>
 
       <button type="button" className="room-save-btn" onClick={handleSave}>저장하기</button>
+      <button
+        type="button"
+        className="room-ai-workshop-btn"
+        onClick={() => onNavigate('shop', { sub: 'ai-from-room' })}
+        title="AI 아이템 공방으로 이동"
+      >
+        <span className="room-ai-workshop-btn-star">✦</span>
+      </button>
       <GoodsToast message={toast} />
     </div>
   )
