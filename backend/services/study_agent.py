@@ -84,7 +84,7 @@ async def generate_quiz(
     difficulty: str,
     weak_topics: list[str] | None = None,
     question_mix: dict[str, int] | None = None,
-    difficulty_mix: dict[str, int] | None = None,
+    difficulty_mix: dict[str, dict[str, int]] | None = None,
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
     plan_scope: dict | None = None,
@@ -97,13 +97,12 @@ async def generate_quiz(
     silently coming back as all multiple_choice regardless of the requested
     mix. Splitting by type removes that ambiguity.
 
-    difficulty_mix (e.g. {"easy": 4, "normal": 4, "hard": 2}) fixes exactly how
-    many questions of each difficulty tier come back — used by the placement
-    test so the level calculation can rely on a known question count per tier
-    instead of the model's self-reported difficulty. Assumes question_mix has
-    a single question type when combined with difficulty_mix (true for the
-    placement test today); combining multiple types with a difficulty_mix would
-    request the full tier count per type."""
+    difficulty_mix (e.g. {"easy": {"multiple_choice": 9, "short_answer": 1}, ...})
+    fixes exactly how many questions of each (difficulty tier, question type)
+    pair come back — used by the placement test and review quiz so downstream
+    logic (level calculation, a fixed quiz shape) can rely on a known count
+    instead of the model's self-reported difficulty. When set, it fully
+    replaces question_mix as the source of what to generate."""
     mix = question_mix or {"multiple_choice": num_questions}
     # Large single prompts often come back capped around 10 items, so split each
     # requested type into smaller model calls and merge the generated questions.
@@ -113,8 +112,8 @@ async def generate_quiz(
     batch_size = 5
     batch_requests: list[tuple[str, int, str | None]] = []
     if difficulty_mix:
-        for question_type in mix:
-            for tier, tier_count in difficulty_mix.items():
+        for tier, type_counts in difficulty_mix.items():
+            for question_type, tier_count in type_counts.items():
                 remaining = tier_count
                 while remaining > 0:
                     batch_requests.append((question_type, min(batch_size, remaining), tier))

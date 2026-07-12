@@ -51,6 +51,37 @@ export function clearQuizProgress() {
   localStorage.removeItem(QUIZ_PROGRESS_KEY)
 }
 
+// 채점까지 끝난 오늘의 AI 퀴즈 결과. 화면을 나갔다 들어와도 다시 생성하지 않고
+// 그대로 보여주기 위해 저장해둔다. dismissed가 true면(복습하기로 이동 버튼을
+// 눌렀으면) 결과 화면 대신 "오늘의 AI 퀴즈를 풀었습니다" 안내만 보여준다.
+const QUIZ_RESULT_KEY = 'forestudy_quiz_result'
+
+export function saveQuizResult(materialId, quiz, result) {
+  localStorage.setItem(
+    QUIZ_RESULT_KEY,
+    JSON.stringify({ materialId, date: localTodayKey(), quiz, result, dismissed: false })
+  )
+}
+
+export function getQuizResult(materialId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUIZ_RESULT_KEY) || 'null')
+    if (!saved || saved.materialId !== materialId || saved.date !== localTodayKey()) return null
+    return saved
+  } catch {
+    return null
+  }
+}
+
+export function dismissQuizResult(materialId) {
+  const saved = getQuizResult(materialId)
+  if (saved) localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify({ ...saved, dismissed: true }))
+}
+
+export function clearQuizResult() {
+  localStorage.removeItem(QUIZ_RESULT_KEY)
+}
+
 export function requireDailyQuizCompletion(materialId, planDate = localTodayKey()) {
   if (materialId) localStorage.setItem(DAILY_QUIZ_REQUIREMENT_KEY, JSON.stringify({ materialId, planDate }))
 }

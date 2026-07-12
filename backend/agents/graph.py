@@ -57,7 +57,7 @@ async def run_generate_quiz(
     difficulty: str,
     weak_topics: list[str] | None = None,
     question_mix: dict[str, int] | None = None,
-    difficulty_mix: dict[str, int] | None = None,
+    difficulty_mix: dict[str, dict[str, int]] | None = None,
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
     plan_scope: dict | None = None,

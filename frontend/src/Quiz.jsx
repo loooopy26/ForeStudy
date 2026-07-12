@@ -6,13 +6,17 @@ import {
   apiRequest,
   clearQuizGenerating,
   clearQuizProgress,
+  clearQuizResult,
+  dismissQuizResult,
   getMaterialId,
   getQuizProgress,
+  getQuizResult,
   isDailyQuizCompletionRequired,
   isDailyQuizUnlocked,
   isQuizGenerating,
   markQuizGenerating,
   normalizeOptions,
+  saveQuizResult,
   setLastAttemptId,
   setQuizProgress,
 } from './api'
@@ -22,11 +26,13 @@ const LETTERS = ['A', 'B', 'C', 'D']
 
 function Quiz({ onNavigate }) {
   const materialId = useMemo(() => getMaterialId(), [])
+  const storedResult = useMemo(() => getQuizResult(materialId), [materialId])
   const initial = useMemo(() => getQuizProgress(materialId), [materialId])
-  const [quiz, setQuiz] = useState(initial?.quiz || null)
+  const [quiz, setQuiz] = useState(storedResult?.quiz || initial?.quiz || null)
   const [idx, setIdx] = useState(initial?.idx || 0)
   const [answers, setAnswers] = useState(initial?.answers || {})
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState(storedResult?.result || null)
+  const [resultDismissed, setResultDismissed] = useState(storedResult?.dismissed || false)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -44,7 +50,9 @@ function Quiz({ onNavigate }) {
 
   const startNewQuiz = async () => {
     clearQuizProgress()
+    clearQuizResult()
     setResult(null)
+    setResultDismissed(false)
     setIdx(0)
     setAnswers({})
     setQuiz(null)
@@ -61,10 +69,17 @@ function Quiz({ onNavigate }) {
     }
   }
 
-  // 이미 진행 중인 퀴즈가 있으면(다른 화면 갔다 돌아온 경우) 그대로 이어서 보여주고,
-  // 없을 때만 새로 생성한다. StrictMode의 mount→unmount→mount 이중 호출 시 두 번째
-  // 생성 요청이 첫 번째 응답을 덮어써 "문제가 갑자기 바뀌는" 현상을 막기 위해, 취소된
-  // (ignore) 쪽은 loading/error/quiz 어느 것도 건드리지 않고 조용히 결과를 버린다.
+  const goToReview = () => {
+    dismissQuizResult(materialId)
+    setResultDismissed(true)
+    onNavigate('review')
+  }
+
+  // 이미 진행 중이거나(다른 화면 갔다 돌아온 경우) 오늘 이미 채점까지 끝난 퀴즈가
+  // 있으면 그대로 이어서 보여주고, 아무것도 없을 때만 새로 생성한다. StrictMode의
+  // mount→unmount→mount 이중 호출 시 두 번째 생성 요청이 첫 번째 응답을 덮어써
+  // "문제가 갑자기 바뀌는" 현상을 막기 위해, 취소된(ignore) 쪽은 loading/error/quiz
+  // 어느 것도 건드리지 않고 조용히 결과를 버린다.
   useEffect(() => {
     if (quiz || quizLocked) return
     let ignore = false
@@ -152,6 +167,8 @@ function Quiz({ onNavigate }) {
       })
       setLastAttemptId(data.attempt_id)
       setResult(data)
+      setResultDismissed(false)
+      saveQuizResult(materialId, quiz, data)
       clearQuizProgress()
     } catch (err) {
       setError(err.message)
@@ -176,6 +193,29 @@ function Quiz({ onNavigate }) {
         </div>
         <div className="cta-area">
           <button type="button" className="cta-button" onClick={() => onNavigate('library')}>도서관으로 돌아가기</button>
+        </div>
+        <BottomNav active="quiz" onNavigate={onNavigate} />
+      </>
+    )
+  }
+
+  // 오늘 이미 채점까지 마친 퀴즈를 "복습하기로 이동하기"로 확인하고 온 경우 —
+  // 매번 새로 생성하지 않고 간단한 안내만 보여준다. 더 풀고 싶으면 새로 만든다.
+  if (result && resultDismissed) {
+    return (
+      <>
+        <Header title="AI 퀴즈" icon={<QuizIcon />} onBack={() => onNavigate('library')} />
+        <div className="done-screen">
+          <div className="done-title">오늘의 AI 퀴즈를 풀었습니다</div>
+          <div className="done-desc">
+            점수 {result.score_pct}점 · {result.correct_count}/{result.total_count}개 정답
+            <br />더 풀어보고 싶으면 새 문제를 만들어드릴게요.
+          </div>
+        </div>
+        <div className="cta-area">
+          <button type="button" className="cta-button" onClick={startNewQuiz}>
+            새 문제 더 풀기
+          </button>
         </div>
         <BottomNav active="quiz" onNavigate={onNavigate} />
       </>
@@ -217,7 +257,6 @@ function Quiz({ onNavigate }) {
                 {result.learning_evaluation && (
                   <>
                     <br />현재 수준: {result.learning_evaluation.mastery_level}
-                    <br />다음 권장 난이도: {result.learning_evaluation.recommended_difficulty}
                   </>
                 )}
               </div>
@@ -241,6 +280,11 @@ function Quiz({ onNavigate }) {
               </div>
             ))}
           </div>
+        </div>
+        <div className="cta-area">
+          <button type="button" className="cta-button" onClick={goToReview}>
+            복습하기로 이동하기
+          </button>
         </div>
         <BottomNav active="quiz" onNavigate={onNavigate} />
       </>

@@ -15,8 +15,27 @@ from services import rag
 
 router = APIRouter(prefix="/api", tags=["AI quiz"])
 
-# 배치고사 난이도별 고정 문항 수 — AI가 알아서 배분하지 않고 항상 이 개수를 강제한다.
-PLACEMENT_DIFFICULTY_MIX = {"easy": 4, "normal": 4, "hard": 2}
+# 배치고사/AI 퀴즈 난이도별 고정 문항 수 — AI가 알아서 배분하지 않고 항상 이 개수를 강제한다.
+# {난이도: {문제유형: 개수}} 형태.
+PLACEMENT_DIFFICULTY_MIX = {
+    "easy": {"multiple_choice": 4},
+    "normal": {"multiple_choice": 4},
+    "hard": {"multiple_choice": 2},
+}
+REVIEW_DIFFICULTY_MIX = {
+    "easy": {"multiple_choice": 9, "short_answer": 1},
+    "normal": {"multiple_choice": 9, "short_answer": 1},
+    "hard": {"multiple_choice": 4, "short_answer": 1},
+}
+
+
+def _flatten_difficulty_mix(difficulty_mix: dict[str, dict[str, int]]) -> dict[str, int]:
+    """응답에 참고용으로 보여줄 유형별 합계 ({"multiple_choice": 22, "short_answer": 3})."""
+    totals: dict[str, int] = {}
+    for type_counts in difficulty_mix.values():
+        for question_type, count in type_counts.items():
+            totals[question_type] = totals.get(question_type, 0) + count
+    return totals
 
 
 class QuizCreateRequest(BaseModel):
@@ -57,7 +76,7 @@ async def create_quiz(material_id: str, req: QuizCreateRequest):
         req,
         quiz_kind="placement",
         forced_num_questions=10,
-        question_mix={"multiple_choice": 10},
+        question_mix=_flatten_difficulty_mix(PLACEMENT_DIFFICULTY_MIX),
         difficulty_mix=PLACEMENT_DIFFICULTY_MIX,
         title_suffix="placement quiz",
     )
@@ -65,13 +84,16 @@ async def create_quiz(material_id: str, req: QuizCreateRequest):
 
 @router.post("/materials/{material_id}/review-quiz", status_code=201)
 async def create_review_quiz(material_id: str, req: QuizCreateRequest):
-    """Create the post-study review quiz: 20 MCQ + 5 short-answer questions."""
+    """Create the post-study review quiz: 25 questions, difficulty fixed at
+    9 MCQ + 1 short-answer per easy/normal tier and 4 MCQ + 1 short-answer for
+    hard (22 MCQ + 3 short-answer total)."""
     return await _create_material_quiz(
         material_id,
         req,
         quiz_kind="study_review",
         forced_num_questions=25,
-        question_mix={"multiple_choice": 20, "short_answer": 5},
+        question_mix=_flatten_difficulty_mix(REVIEW_DIFFICULTY_MIX),
+        difficulty_mix=REVIEW_DIFFICULTY_MIX,
         title_suffix="review quiz",
     )
 
@@ -84,7 +106,7 @@ async def _create_material_quiz(
     forced_num_questions: int,
     question_mix: dict[str, int],
     title_suffix: str,
-    difficulty_mix: dict[str, int] | None = None,
+    difficulty_mix: dict[str, dict[str, int]] | None = None,
 ):
     pool = await get_pool()
     await _ensure_learning_profile_tables(pool)
@@ -134,6 +156,12 @@ async def _create_material_quiz(
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
     try:
+        # learner_profile은 여기 넘기지 않는다 — placement/review 둘 다 difficulty_mix를
+        # 항상 넘기므로 매 배치가 target_difficulty를 갖고, study_agent._generate_quiz_batch는
+        # target_difficulty가 있으면 learner_profile을 아예 읽지 않는다(적응형 난이도 안내문은
+        # target_difficulty가 없을 때만 쓰는 문구). requested_difficulty 선택(위)에는 여전히
+        # learner_profile을 쓴다 — 그건 quizzes.difficulty로 저장되어 채점 후 수준 평가
+        # 프롬프트에 계속 쓰인다.
         questions = await agent_graph.run_generate_quiz(
             rag.format_context(chunks),
             num_questions=forced_num_questions,
@@ -142,7 +170,6 @@ async def _create_material_quiz(
             question_mix=question_mix,
             difficulty_mix=difficulty_mix,
             quiz_kind=quiz_kind,
-            learner_profile=learner_profile,
             plan_scope=today_plan,
         )
     except RuntimeError as exc:
