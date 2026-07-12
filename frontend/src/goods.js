@@ -14,7 +14,7 @@ const EQUIPPED_KEY = 'forestudy_equipped_v1'
 const ROOM_KEY = 'forestudy_room_v1'
 const CUSTOM_ITEMS_KEY = 'forestudy_custom_items_v1'
 
-export const WEARABLE_KINDS = ['outfit', 'hat', 'bag', 'accessory']
+export const WEARABLE_KINDS = ['outfit', 'hat', 'pants', 'bag', 'accessory']
 
 // art: GoodsArt.jsx의 ItemArt가 그림을 고를 때 쓰는 키.
 // 아이템별 자연스러운 기본 배치 위치 — 정면 뷰 구도(벽/바닥 경계 y: 57%).
@@ -50,6 +50,10 @@ export const CATALOG = [
   { id: 'navy-hoodie', name: '네이비 후드', price: 700, kind: 'outfit', art: 'hoodie', color: '#4f6178', trim: '#3c4b5e' },
   { id: 'pink-hoodie', name: '분홍 후드', price: 900, kind: 'outfit', art: 'hoodie', color: '#e8b4bc', trim: '#d391a0' },
   { id: 'yellow-raincoat', name: '노란 우비', price: 1000, kind: 'outfit', art: 'jacket', color: '#e9c46a', trim: '#d4a83f' },
+  // 바지 (pants)
+  { id: 'blue-jeans', name: '청바지', price: 600, kind: 'pants', art: 'pants', color: '#4a6b8c', trim: '#3b5670' },
+  { id: 'brown-slacks', name: '갈색 바지', price: 500, kind: 'pants', art: 'pants', color: '#8c6c53', trim: '#705642' },
+  { id: 'green-shorts', name: '초록 반바지', price: 400, kind: 'pants', art: 'pants', color: '#6b8c5e', trim: '#56704b' },
   // 모자 (hat)
   { id: 'leaf-hat', name: '나뭇잎 모자', price: 500, kind: 'hat', art: 'leaf-hat', color: '#8bb069', trim: '#5f7a43' },
   { id: 'straw-hat', name: '밀짚모자', price: 600, kind: 'hat', art: 'straw-hat', color: '#e3c983', trim: '#c9a75a' },
@@ -106,7 +110,7 @@ function readJson(key, fallback) {
   }
 }
 
-const DEFAULT_EQUIPPED = { outfit: null, hat: null, bag: null, accessory: null }
+const DEFAULT_EQUIPPED = { outfit: null, hat: null, pants: null, bag: null, accessory: null }
 const DEFAULT_ROOM = { wallpaper: null, floor: null, placed: [] }
 
 export function readEquipped() {

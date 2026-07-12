@@ -4,6 +4,8 @@ import { BrandWordmark } from './BrandLogo'
 import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
+import CharacterAvatar from './CharacterAvatar'
+import { useGoods, getItem } from './goods'
 import {
   clearCurrentUser,
   deleteCertGoal,
@@ -34,6 +36,7 @@ const DEV_FALLBACK_STATS = { focus: 72, comprehension: 65, persistence: 80, pass
 const DEV_FALLBACK_DOTORI = 320
 
 function Profile({ onNavigate }) {
+  const { equipped } = useGoods()
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
   const [certGoalInfo, setCertGoalInfo] = useState(null)
@@ -58,27 +61,27 @@ function Profile({ onNavigate }) {
   }
 
   const openCertificateInfo = async (certificate) => {
-  setSelectedCertificate(certificate)
-  setDeleteConfirmOpen(false)
-  setCertGoalInfo(null)
-
-  try {
-    const goal = await getCertGoal(certificate.title)
-    setCertGoalInfo(goal)
-  } catch {
+    setSelectedCertificate(certificate)
+    setDeleteConfirmOpen(false)
     setCertGoalInfo(null)
+
+    try {
+      const goal = await getCertGoal(certificate.title)
+      setCertGoalInfo(goal)
+    } catch {
+      setCertGoalInfo(null)
+    }
   }
-}
   const getRemainingDays = (targetDate) => {
-  if (!targetDate) return null
+    if (!targetDate) return null
 
-  const today = new Date()
-  const target = new Date(targetDate)
-  today.setHours(0, 0, 0, 0)
-  target.setHours(0, 0, 0, 0)
+    const today = new Date()
+    const target = new Date(targetDate)
+    today.setHours(0, 0, 0, 0)
+    target.setHours(0, 0, 0, 0)
 
-  return Math.ceil((target - today) / (1000 * 60 * 60 * 24))
-}
+    return Math.ceil((target - today) / (1000 * 60 * 60 * 24))
+  }
 
   const closeCertificateInfo = () => {
     setSelectedCertificate(null)
@@ -94,7 +97,7 @@ function Profile({ onNavigate }) {
         await deleteMaterial(selectedCertificate.materialId)
       }
       // 목표 시험일 + 일별 학습 플랜(curricula)도 함께 정리 — 없으면 그냥 조용히 넘어간다.
-      await deleteCertGoal(selectedCertificate.title).catch(() => {})
+      await deleteCertGoal(selectedCertificate.title).catch(() => { })
       setCertificates(removeCurrentCertificate(selectedCertificate.id))
       closeCertificateInfo()
     } catch (err) {
@@ -136,7 +139,17 @@ function Profile({ onNavigate }) {
 
       <div className="body-scroll profile-body forest-home-body">
         <section className="profile-card profile-hero-card forest-panel">
-          <img className="forest-character forest-character-floating" src={homeCharacter} alt="Forestudy 캐릭터" />
+          <button
+            type="button"
+            className="forest-character-button forest-character-floating"
+            onClick={() => onNavigate('character')}
+            aria-label="내 캐릭터 꾸미기"
+          >
+            <div className="forest-character-avatar-wrapper">
+              <CharacterAvatar equipped={equipped} getItem={getItem} className="profile-character-avatar" />
+            </div>
+            <span className="forest-character-hint" aria-hidden="true">꾸미기</span>
+          </button>
 
           <div className="profile-info hero-copy">
             <div className="profile-level hero-level">

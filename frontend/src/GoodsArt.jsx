@@ -55,6 +55,7 @@ const VISUAL_BY_ART = {
   'wallpaper-stripe': { kind: 'wallpaper', variant: 'stripe', primary: '#fbf2d7', secondary: '#e7ce92', accent: '#d69b7e', pattern: 'stripe' },
   'floor-wood': { kind: 'floor', variant: 'wood', primary: '#d1a76c', secondary: '#93623f', accent: '#e7c68c', pattern: 'plank' },
   'floor-grass': { kind: 'floor', variant: 'grass', primary: '#9fbe82', secondary: '#668c55', accent: '#d8e7b6', pattern: 'blade' },
+  pants: { kind: 'pants', variant: 'slacks', primary: '#4a6b8c', secondary: '#3b5670', accent: '#e7c68c' },
 }
 
 const KIND_VARIANTS = {
@@ -66,6 +67,7 @@ const KIND_VARIANTS = {
   decor: ['plant', 'books', 'basket', 'frame', 'window', 'rug', 'crystal'],
   wallpaper: ['forest', 'stripe', 'cloud', 'night'],
   floor: ['wood', 'grass', 'tile', 'plank'],
+  pants: ['jeans', 'slacks', 'shorts'],
 }
 
 const ASSET = '/assets/'
@@ -346,6 +348,25 @@ function Outfit({ visual }) {
       {visual.pattern === 'stripe' && !isAnimalSweater && (
         <path d="M18 35 H46 M19 42 H45" stroke={visual.secondary} strokeWidth="1.8" strokeDasharray="4 3" />
       )}
+    </>
+  )
+}
+
+function Pants({ visual }) {
+  return (
+    <>
+      {/* Main pants body */}
+      <path
+        d="M20 28 Q32 26 44 28 L46 48 Q39 52 32 44 Q25 52 18 48 Z"
+        fill={visual.primary}
+        stroke={visual.secondary}
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {/* Belt/waist detail */}
+      <rect x="22" y="29" width="20" height="4" fill={visual.secondary} rx="1" opacity="0.8" />
+      {/* Pocket detail */}
+      <path d="M22 36 h4 M38 36 h4" stroke={visual.secondary} strokeWidth="1.6" strokeLinecap="round" />
     </>
   )
 }
@@ -1020,6 +1041,7 @@ function Surface({ visual }) {
 
 function ItemDrawing({ visual, rotate = 0 }) {
   if (visual.kind === 'hat') return <Hat visual={visual} />
+  if (visual.kind === 'pants') return <Pants visual={visual} />
   if (visual.kind === 'bag') return <Bag visual={visual} />
   if (visual.kind === 'accessory') return <Accessory visual={visual} />
   if (visual.kind === 'furniture') return <Furniture visual={visual} rotate={rotate} />
