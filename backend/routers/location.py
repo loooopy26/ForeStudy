@@ -30,6 +30,7 @@ from schemas import (
     DEFAULT_TRANSPORT_MODES,
     ExamDayAssistantRequest,
     NearbyStudyPlacesRequest,
+    PlaceSearchRequest,
 )
 from services import naver, tmap, upstage
 
@@ -295,6 +296,43 @@ def location_health():
     }
 
 
+@router.post("/search-places")
+async def search_places(request: PlaceSearchRequest):
+    """장소명/주소 검색 (시험 당일 어시스턴트의 출발지 선택용).
+
+    TMAP POI 검색을 우선 사용하고(장소명·건물명·역 이름 등), 결과가 없으면 입력을
+    도로명/지번 주소로 보고 지오코딩을 시도해 단일 결과로 반환한다."""
+    _require_tmap()
+    query = request.query.strip()
+    try:
+        pois = await tmap.search_pois(
+            query, request.latitude, request.longitude, count=request.count
+        )
+    except tmap.TmapTimeoutError as exc:
+        raise HTTPException(status_code=504, detail=f"장소 검색 시간 초과: {exc}") from exc
+    except tmap.TmapRequestError:
+        # POI 검색이 실패해도 주소 지오코딩은 성공할 수 있으므로 빈 결과로 이어간다.
+        pois = []
+
+    if not pois:
+        try:
+            coord = await tmap.geocode_address(query)
+            pois = [
+                {
+                    "id": f"geocode-{coord['latitude']:.6f}-{coord['longitude']:.6f}",
+                    "name": query,
+                    "category": "주소",
+                    "address": query,
+                    "latitude": coord["latitude"],
+                    "longitude": coord["longitude"],
+                }
+            ]
+        except (tmap.TmapRequestError, tmap.TmapTimeoutError):
+            pois = []
+
+    return {"query": query, "places": pois}
+
+
 @router.post("/nearby-study-places")
 async def nearby_study_places(request: NearbyStudyPlacesRequest):
     _require_tmap()
@@ -381,17 +419,37 @@ async def exam_day_assistant(request: ExamDayAssistantRequest):
     _require_tmap()
     modes = request.transport_modes or DEFAULT_TRANSPORT_MODES
 
-    try:
-        exam_coord = await tmap.geocode_address(request.exam.exam_site_address)
-    except tmap.TmapTimeoutError as exc:
-        raise HTTPException(status_code=504, detail=f"시험장 주소 변환 시간 초과: {exc}") from exc
-    except tmap.TmapRequestError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"시험장 주소를 좌표로 변환하지 못했습니다: {request.exam.exam_site_address}",
-        ) from exc
+    # 검색 결과에서 고른 POI는 이미 입구 좌표가 확정돼 있다. 주소(특히 행정동만 남은
+    # 구형 응답)를 다시 지오코딩하면 동 중심점으로 달라질 수 있으므로 이 좌표를 우선한다.
+    if request.exam.coordinate is not None:
+        exam_coord = {
+            "latitude": request.exam.coordinate.latitude,
+            "longitude": request.exam.coordinate.longitude,
+        }
+    else:
+        try:
+            exam_coord = await tmap.geocode_address(request.exam.exam_site_address)
+        except tmap.TmapTimeoutError as exc:
+            raise HTTPException(status_code=504, detail=f"시험장 주소 변환 시간 초과: {exc}") from exc
+        except tmap.TmapRequestError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"시험장 주소를 좌표로 변환하지 못했습니다: {request.exam.exam_site_address}",
+            ) from exc
 
-    origin = {"latitude": request.origin.latitude, "longitude": request.origin.longitude}
+    # 출발지: 좌표가 있으면 그대로, 없으면 주소를 지오코딩한다 (둘 중 하나는 스키마가 보장).
+    if request.origin is not None:
+        origin = {"latitude": request.origin.latitude, "longitude": request.origin.longitude}
+    else:
+        try:
+            origin = await tmap.geocode_address(request.origin_address)
+        except tmap.TmapTimeoutError as exc:
+            raise HTTPException(status_code=504, detail=f"출발지 주소 변환 시간 초과: {exc}") from exc
+        except tmap.TmapRequestError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"출발지 주소를 좌표로 변환하지 못했습니다: {request.origin_address}",
+            ) from exc
     routes = await tmap.get_routes_for_modes(origin, exam_coord, modes)
 
     serialized_routes: dict[str, dict | None] = {}
@@ -432,6 +490,12 @@ async def exam_day_assistant(request: ExamDayAssistantRequest):
     )
 
     result = {
+        # 실제 계산에 사용한 출발지 좌표. 주소로 요청한 경우 프론트가 지도 마커 표시에 쓴다.
+        "origin": {
+            "latitude": origin["latitude"],
+            "longitude": origin["longitude"],
+            "address": request.origin_address if request.origin is None else None,
+        },
         "exam": {
             **exam_info,
             "exam_site_address": request.exam.exam_site_address,

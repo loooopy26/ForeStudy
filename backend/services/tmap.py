@@ -114,22 +114,28 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
 
 
 async def search_pois(
-    keyword: str, latitude: float, longitude: float, radius_meters: int, *, count: int = 20
+    keyword: str,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    radius_meters: int | None = None,
+    *,
+    count: int = 20,
 ) -> list[dict]:
     """키워드로 장소를 검색한다. 표준 형태 리스트를 반환한다:
-    [{id, name, category, address, latitude, longitude}]"""
-    radius_km = max(1, min(20, round(radius_meters / 1000)))
+    [{id, name, category, address, latitude, longitude}]
+    중심 좌표(latitude/longitude)가 없으면 전국 검색(TMAP 기본 정렬)으로 동작한다 —
+    출발지 주소 검색처럼 사용자가 어디를 찾을지 모르는 경우에 쓴다."""
     params = {
         "version": "1",
         "searchKeyword": keyword,
         "resCoordType": _WGS84,
         "reqCoordType": _WGS84,
         "count": count,
-        "centerLon": longitude,
-        "centerLat": latitude,
-        "radius": radius_km,
         "page": 1,
     }
+    if latitude is not None and longitude is not None:
+        radius_km = max(1, min(20, round((radius_meters or 3000) / 1000)))
+        params.update({"centerLon": longitude, "centerLat": latitude, "radius": radius_km})
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         data = await _request(
             client, "GET", f"{settings.tmap_base_url}/tmap/pois", headers=_headers(), params=params
@@ -145,7 +151,24 @@ async def search_pois(
         lon = _to_float(poi.get("frontLon") or poi.get("noorLon"))
         if lat is None or lon is None:
             continue
-        address = " ".join(
+        # POI 응답의 upper/middle/lowerAddrName은 보통 "서울 영등포구 당산동"처럼
+        # 행정동까지만 담긴다. 경로 계산 화면에서 이 값을 다시 지오코딩하면 같은 동의
+        # 중심점으로 바뀔 수 있다. newAddressList의 fullAddressRoad가 실제 도로명/건물번호를
+        # 포함하므로, 있으면 반드시 그것을 우선 표시한다.
+        new_addresses = ((poi.get("newAddressList") or {}).get("newAddress")) or []
+        if isinstance(new_addresses, dict):
+            new_addresses = [new_addresses]
+        road_address = next(
+            (
+                item.get("fullAddressRoad")
+                for item in new_addresses
+                if isinstance(item, dict) and item.get("fullAddressRoad")
+            ),
+            None,
+        )
+        if not road_address and poi.get("roadName") and poi.get("firstBuildNo"):
+            road_address = f"{poi['roadName']} {poi['firstBuildNo']}"
+        administrative_address = " ".join(
             part
             for part in (
                 poi.get("upperAddrName"),
@@ -155,6 +178,7 @@ async def search_pois(
             )
             if part
         ).strip()
+        address = road_address or administrative_address
         category = poi.get("lowerBizName") or poi.get("middleBizName") or poi.get("upperBizName") or keyword
         name = poi.get("name") or "이름 미상"
         results.append(

@@ -7,7 +7,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # Auth: 회원가입/로그인 화면에서 사용하는 요청과 응답입니다.
@@ -356,17 +356,43 @@ class NearbyStudyPlacesRequest(BaseModel):
     debug: bool = Field(False, description="true면 각 경로 응답에 TMAP 원본(raw)을 포함한다")
 
 
+class PlaceSearchRequest(BaseModel):
+    """장소/주소 검색 (출발지 선택용). 중심 좌표가 있으면 주변 우선, 없으면 전국 검색."""
+
+    query: str = Field(..., min_length=1, example="강남역")
+    latitude: float | None = Field(None, example=37.5665)
+    longitude: float | None = Field(None, example=126.9780)
+    count: int = Field(10, ge=1, le=20)
+
+
 class ExamInfoRequest(BaseModel):
     certification_name: str = Field(..., example="정보처리기사")
     exam_site_name: str = Field(..., example="서울국가자격시험장")
     exam_site_address: str = Field(..., example="서울특별시 중구 세종대로 110")
+    coordinate: Coordinate | None = Field(
+        None,
+        description="장소 검색에서 확정한 시험장 좌표. 있으면 주소 지오코딩보다 우선해 같은 장소로 경로를 계산한다.",
+    )
     exam_date: str = Field(..., example="2026-07-20", description="YYYY-MM-DD")
     exam_start_time: str = Field(..., example="09:00", description="HH:MM")
 
 
 class ExamDayAssistantRequest(BaseModel):
-    origin: Coordinate
+    # 출발지는 좌표(origin) 또는 주소(origin_address) 중 하나로 지정한다.
+    # 둘 다 있으면 좌표를 우선하고, 주소는 라우터에서 TMAP 지오코딩으로 좌표 변환한다.
+    origin: Coordinate | None = None
+    origin_address: str | None = Field(
+        None,
+        example="서울특별시 강남구 테헤란로 212",
+        description="출발지 주소. origin(좌표)이 없을 때 TMAP 지오코딩으로 좌표 변환해 사용한다.",
+    )
     exam: ExamInfoRequest
     buffer_minutes: int = Field(30, ge=0, le=180, example=30)
     transport_modes: list[TransportMode] = Field(default_factory=lambda: list(DEFAULT_TRANSPORT_MODES))
     debug: bool = Field(False, description="true면 각 경로 응답에 TMAP 원본(raw)을 포함한다")
+
+    @model_validator(mode="after")
+    def _require_origin_or_address(self):
+        if self.origin is None and not (self.origin_address and self.origin_address.strip()):
+            raise ValueError("origin(좌표) 또는 origin_address(출발지 주소) 중 하나는 필요합니다.")
+        return self

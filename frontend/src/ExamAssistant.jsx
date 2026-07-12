@@ -11,7 +11,7 @@ import iconTransportCar from './assets/icon-transport-car.png'
 import iconTransportBus from './assets/icon-transport-bus.png'
 import iconLightbulb from './assets/icon-lightbulb.png'
 import iconWarning from './assets/icon-warning.png'
-import { fetchExamDayAssistant, getCurrentPositionSafe } from './api'
+import { DEFAULT_ORIGIN, fetchExamDayAssistant, getCurrentPositionSafe, searchPlaces } from './api'
 import TmapView from './TmapView'
 import './ExamAssistant.css'
 
@@ -58,14 +58,110 @@ function ExamAssistant({ onNavigate }) {
   const [result, setResult] = useState(null)
   const [origin, setOrigin] = useState(null)
   const [usingFallback, setUsingFallback] = useState(false)
+  // 출발지 선택: 'current'는 브라우저 위치, 'search'는 장소/주소 검색, 'map'은 지도 클릭.
+  const [originMode, setOriginMode] = useState('current')
+  const [originQuery, setOriginQuery] = useState('')
+  const [originResults, setOriginResults] = useState([])
+  const [originSearching, setOriginSearching] = useState(false)
+  const [originPick, setOriginPick] = useState(null) // { latitude, longitude, label }
+  const [mapPickCenter, setMapPickCenter] = useState(null) // 지도 선택 모드의 초기 중심(한 번만 설정)
+
+  // 시험장 검색: 출발지 검색과 동일한 방식(장소명/주소 → 검색 API)으로 시험장을 찾아 선택하면
+  // 이름/주소가 자동으로 채워진다. 검색 없이 직접 입력도 계속 가능하도록 입력창은 남겨둔다.
+  const [examSiteQuery, setExamSiteQuery] = useState('')
+  const [examSiteResults, setExamSiteResults] = useState([])
+  const [examSiteSearching, setExamSiteSearching] = useState(false)
+  const [examSitePick, setExamSitePick] = useState(null)
 
   const setField = (key) => (event) => setForm((previous) => ({ ...previous, [key]: event.target.value }))
   const exam = result?.exam
+  // 결과 화면에 보여줄 출발지 설명 (current 모드는 null → 기존 현재 위치 문구 사용)
+  const originLabel =
+    originMode === 'map'
+      ? '지도에서 선택한 위치'
+      : originMode === 'search'
+        ? originPick?.label || originQuery.trim()
+        : null
+
+  const switchOriginMode = (mode) => {
+    setOriginMode(mode)
+    setError('')
+    if (mode === 'map' && !mapPickCenter) {
+      // 지도 선택 모드 첫 진입 시 현재 위치(실패하면 서울 시청)로 중심을 잡는다.
+      getCurrentPositionSafe().then((position) =>
+        setMapPickCenter({ latitude: position.latitude, longitude: position.longitude }),
+      )
+    }
+  }
+
+  const searchOrigin = async () => {
+    const query = originQuery.trim()
+    if (!query) return
+    setOriginSearching(true)
+    setError('')
+    try {
+      const data = await searchPlaces({ query })
+      setOriginResults(data.places || [])
+      if (!(data.places || []).length) setError('검색 결과가 없어요. 장소명이나 도로명 주소로 다시 시도해 보세요.')
+    } catch (caught) {
+      setError(caught.message || '장소 검색에 실패했습니다.')
+    } finally {
+      setOriginSearching(false)
+    }
+  }
+
+  const pickOriginPlace = (place) => {
+    setOriginPick({
+      latitude: place.latitude,
+      longitude: place.longitude,
+      label: place.address ? `${place.name} (${place.address})` : place.name,
+    })
+    setOriginResults([])
+    setError('')
+  }
+
+  const searchExamSite = async () => {
+    const query = examSiteQuery.trim()
+    if (!query) return
+    setExamSiteSearching(true)
+    setError('')
+    try {
+      const data = await searchPlaces({ query })
+      setExamSiteResults(data.places || [])
+      if (!(data.places || []).length) setError('검색 결과가 없어요. 시험장명이나 도로명 주소로 다시 시도해 보세요.')
+    } catch (caught) {
+      setError(caught.message || '시험장 검색에 실패했습니다.')
+    } finally {
+      setExamSiteSearching(false)
+    }
+  }
+
+  const pickExamSite = (place) => {
+    setForm((previous) => ({
+      ...previous,
+      exam_site_name: place.name,
+      exam_site_address: place.address || place.name,
+    }))
+    // 검색 결과의 POI 좌표를 함께 보관해 주소를 다시 지오코딩하면서 시험장 위치가
+    // 행정동 중심으로 바뀌지 않게 한다.
+    setExamSitePick({ latitude: place.latitude, longitude: place.longitude })
+    setExamSiteResults([])
+    setExamSiteQuery('')
+    setError('')
+  }
 
   const mapMarkers = useMemo(() => {
     const markers = []
     if (origin) {
-      markers.push({ id: 'origin', latitude: origin.latitude, longitude: origin.longitude, label: '현', color: '#4A7FE0', title: '현재 위치' })
+      markers.push({
+        id: 'origin',
+        latitude: origin.latitude,
+        longitude: origin.longitude,
+        label: originMode === 'current' ? '현' : '출',
+        color: '#4A7FE0',
+        title: originMode === 'current' ? '현재 위치' : '출발지',
+        subtitle: originLabel || undefined,
+      })
     }
     if (exam?.latitude != null && exam?.longitude != null) {
       markers.push({
@@ -94,20 +190,53 @@ function ExamAssistant({ onNavigate }) {
       })
     })
     return markers
-  }, [exam, origin, result])
+  }, [exam, origin, result, originMode, originLabel])
 
   const analyze = async () => {
+    if (originMode === 'map' && !originPick) {
+      setError('지도를 눌러 출발지를 먼저 선택해 주세요.')
+      return
+    }
+    if (originMode === 'search' && !originPick && !originQuery.trim()) {
+      setError('출발지를 검색해서 선택해 주세요.')
+      return
+    }
     setLoading(true)
     setError('')
+    const examRequest = {
+      ...form,
+      ...(examSitePick ? { coordinate: examSitePick } : {}),
+    }
     try {
-      const position = await getCurrentPositionSafe()
-      setOrigin({ latitude: position.latitude, longitude: position.longitude })
-      setUsingFallback(position.fallback)
-      const data = await fetchExamDayAssistant({
-        origin: { latitude: position.latitude, longitude: position.longitude },
-        exam: form,
-        bufferMinutes: buffer,
-      })
+      let data
+      if (originMode === 'current') {
+        const position = await getCurrentPositionSafe()
+        setOrigin({ latitude: position.latitude, longitude: position.longitude })
+        setUsingFallback(position.fallback)
+        data = await fetchExamDayAssistant({
+          origin: { latitude: position.latitude, longitude: position.longitude },
+          exam: examRequest,
+          bufferMinutes: buffer,
+        })
+      } else if (originPick) {
+        // 검색 결과/지도 클릭으로 이미 좌표가 확정된 경우.
+        setOrigin({ latitude: originPick.latitude, longitude: originPick.longitude })
+        setUsingFallback(false)
+        data = await fetchExamDayAssistant({
+          origin: { latitude: originPick.latitude, longitude: originPick.longitude },
+          exam: examRequest,
+          bufferMinutes: buffer,
+        })
+      } else {
+        // 검색어만 입력하고 결과를 고르지 않은 경우: 주소로 보고 백엔드 지오코딩에 맡긴다.
+        data = await fetchExamDayAssistant({
+          originAddress: originQuery.trim(),
+          exam: examRequest,
+          bufferMinutes: buffer,
+        })
+        setOrigin({ latitude: data.origin.latitude, longitude: data.origin.longitude })
+        setUsingFallback(false)
+      }
       setResult(data)
       setStep(2)
     } catch (caught) {
@@ -137,14 +266,37 @@ function ExamAssistant({ onNavigate }) {
               <input id="exam-certification" className="ea-input-field" value={form.certification_name} onChange={setField('certification_name')} />
             </div>
 
-            <label className="ea-field-label" htmlFor="exam-site-name">시험장 이름</label>
-            <div className="ea-input-row" style={{ marginBottom: 16 }}>
-              <input id="exam-site-name" className="ea-input-field" value={form.exam_site_name} onChange={setField('exam_site_name')} />
-            </div>
-
-            <label className="ea-field-label" htmlFor="exam-site-address">시험장 주소</label>
-            <div className="ea-input-row" style={{ marginBottom: 16 }}>
-              <input id="exam-site-address" className="ea-input-field" value={form.exam_site_address} onChange={setField('exam_site_address')} placeholder="도로명 주소" />
+            <label className="ea-field-label" htmlFor="exam-site-search">시험장 주소 검색</label>
+            <div style={{ marginBottom: 16 }}>
+              <div className="ea-input-row" style={{ gap: 8 }}>
+                <input
+                  id="exam-site-search"
+                  className="ea-input-field"
+                  value={examSiteQuery}
+                  onChange={(event) => setExamSiteQuery(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && searchExamSite()}
+                  placeholder="시험장명 또는 주소 (예: 서울국가자격시험장, 세종대로 110)"
+                  aria-label="시험장 주소 검색"
+                />
+                <button type="button" className="ea-origin-search-btn" onClick={searchExamSite} disabled={examSiteSearching}>
+                  {examSiteSearching ? '검색 중…' : '검색'}
+                </button>
+              </div>
+              {examSiteResults.length > 0 && (
+                <div className="ea-origin-results" role="listbox" aria-label="시험장 검색 결과">
+                  {examSiteResults.map((place) => (
+                    <button key={place.id} type="button" className="ea-origin-result" onClick={() => pickExamSite(place)}>
+                      <span className="ea-origin-result-name">{place.name}</span>
+                      <span className="ea-origin-result-addr">{place.address || place.category}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {form.exam_site_address && (
+                <div className="ea-origin-picked">
+                  <span>📍 {form.exam_site_address}</span>
+                </div>
+              )}
             </div>
 
             <div className="ea-field-pair">
@@ -161,6 +313,80 @@ function ExamAssistant({ onNavigate }) {
                 </div>
               </div>
             </div>
+
+            <div className="ea-field-label">출발지</div>
+            <div className="ea-origin-toggle" role="radiogroup" aria-label="출발지 선택">
+              {[
+                { key: 'current', label: '📍 현재 위치' },
+                { key: 'search', label: '🔍 주소 검색' },
+                { key: 'map', label: '🗺️ 지도에서 선택' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={originMode === key}
+                  className={`ea-origin-option${originMode === key ? ' active' : ''}`}
+                  onClick={() => switchOriginMode(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {originMode === 'search' && (
+              <div style={{ marginBottom: 16 }}>
+                <div className="ea-input-row" style={{ gap: 8 }}>
+                  <input
+                    id="origin-search"
+                    className="ea-input-field"
+                    value={originQuery}
+                    onChange={(event) => {
+                      setOriginQuery(event.target.value)
+                      setOriginPick(null)
+                    }}
+                    onKeyDown={(event) => event.key === 'Enter' && searchOrigin()}
+                    placeholder="장소명 또는 주소 (예: 강남역, 테헤란로 212)"
+                    aria-label="출발지 검색"
+                  />
+                  <button type="button" className="ea-origin-search-btn" onClick={searchOrigin} disabled={originSearching}>
+                    {originSearching ? '검색 중…' : '검색'}
+                  </button>
+                </div>
+                {originPick && (
+                  <div className="ea-origin-picked">
+                    <span>📍 {originPick.label}</span>
+                    <button type="button" onClick={() => setOriginPick(null)} aria-label="출발지 선택 해제">×</button>
+                  </div>
+                )}
+                {originResults.length > 0 && (
+                  <div className="ea-origin-results" role="listbox" aria-label="출발지 검색 결과">
+                    {originResults.map((place) => (
+                      <button key={place.id} type="button" className="ea-origin-result" onClick={() => pickOriginPlace(place)}>
+                        <span className="ea-origin-result-name">{place.name}</span>
+                        <span className="ea-origin-result-addr">{place.address || place.category}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {originMode === 'map' && (
+              <div style={{ marginBottom: 16 }}>
+                <TmapView
+                  center={mapPickCenter || DEFAULT_ORIGIN}
+                  markers={originPick ? [{ id: 'origin-pick', latitude: originPick.latitude, longitude: originPick.longitude, label: '출', color: '#4A7FE0', title: '출발지' }] : []}
+                  height={200}
+                  zoom={15}
+                  onMapClick={(latitude, longitude) => {
+                    setOriginPick({ latitude, longitude, label: '지도에서 선택한 위치' })
+                    setError('')
+                  }}
+                />
+                <div className="ea-buffer-hint" style={{ marginTop: 6 }}>
+                  {originPick ? '출발지를 선택했어요. 다른 곳을 누르면 위치가 바뀌어요.' : '지도를 눌러 출발지를 선택하세요.'}
+                </div>
+              </div>
+            )}
 
             <div className="ea-field-pair" style={{ alignItems: 'flex-start' }}>
               <div style={{ flex: 1 }}>
@@ -226,7 +452,13 @@ function ExamAssistant({ onNavigate }) {
           <div className="ea-departure-label">추천 출발 시간</div>
           <div className="ea-departure-time">{departureRoute?.recommended_departure_time || '정보 없음'}</div>
           <div className="ea-departure-sub">{recommendedMode ? `${MODE_META[recommendedMode].label} 기준 · 버퍼 ${buffer}분 포함` : `버퍼 ${buffer}분 포함`}</div>
-          <div className="ea-departure-hint">{usingFallback ? '기본 위치(서울 시청)를 기준으로 계산했어요.' : '현재 위치를 기준으로 계산했어요.'}</div>
+          <div className="ea-departure-hint">
+            {originLabel
+              ? `출발지(${originLabel}) 기준으로 계산했어요.`
+              : usingFallback
+                ? '기본 위치(서울 시청)를 기준으로 계산했어요.'
+                : '현재 위치를 기준으로 계산했어요.'}
+          </div>
           <img src={iconSquirrelPoint} alt="" className="ea-departure-mascot" />
           <img src={iconLeaf2} alt="" className="ea-departure-leaf ea-departure-leaf-2" />
           <img src={iconLeaf3} alt="" className="ea-departure-leaf ea-departure-leaf-3" />

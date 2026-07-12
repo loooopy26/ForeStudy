@@ -17,12 +17,18 @@ function markerIcon(color, label) {
 /**
  * TMap JS SDK 지도 표시 컴포넌트.
  * markers: [{ id, latitude, longitude, label, title, subtitle, color }]
+ * onMapClick: (latitude, longitude) => void — 있으면 지도 클릭 지점 좌표를 넘겨준다 (출발지 선택 등).
  */
-function TmapView({ center, markers = [], height = 220, zoom = 16 }) {
+function TmapView({ center, markers = [], height = 220, zoom = 16, onMapClick }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markerObjsRef = useRef([])
   const infoWindowRef = useRef(null)
+  // 클릭 리스너는 지도 생성 시 한 번만 등록하고, 핸들러는 ref로 항상 최신 것을 부른다.
+  const onMapClickRef = useRef(onMapClick)
+  useEffect(() => {
+    onMapClickRef.current = onMapClick
+  }, [onMapClick])
   // 마커 전체가 보이도록 지도 범위를 맞추는 건 최초 로드 때 한 번만 하고, 이후 마커가
   // 갱신돼도(재검색 등) 사용자가 움직여둔 지도 상태를 건드리지 않는다.
   const didFitRef = useRef(false)
@@ -41,6 +47,16 @@ function TmapView({ center, markers = [], height = 220, zoom = 16 }) {
           height: '100%',
           zoom,
           zoomControl: false,
+        })
+        // 지도 클릭으로 좌표를 고르는 화면(출발지 선택)용. SDK 버전에 따라 latLng이
+        // 메서드(lat())일 수도, 내부 필드(_lat)일 수도 있어 둘 다 대응한다.
+        mapRef.current.addListener('click', (event) => {
+          const handler = onMapClickRef.current
+          const latLng = event?.latLng
+          if (!handler || !latLng) return
+          const lat = typeof latLng.lat === 'function' ? latLng.lat() : latLng._lat
+          const lng = typeof latLng.lng === 'function' ? latLng.lng() : latLng._lng
+          if (typeof lat === 'number' && typeof lng === 'number') handler(lat, lng)
         })
         setStatus('ready')
       })

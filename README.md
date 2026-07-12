@@ -1,54 +1,49 @@
 # Forestudy
 
-Forestudy는 AI와 게임형 성장 요소를 결합한 학습 지원 웹 애플리케이션입니다. 학습 자료를 바탕으로 퀴즈를 풀고, 오답·학습 기록을 분석하며, 목표와 퀘스트를 통해 꾸준한 학습을 돕습니다.
+Forestudy는 PDF 학습 자료와 AI 학습 도구, 게임형 성장 요소를 결합한 학습 지원 웹 애플리케이션입니다. 학습 자료를 바탕으로 문제를 만들고 채점·오답 분석·학습 계획을 지원하며, 시험 당일에는 출발지와 시험장을 기준으로 이동 계획을 안내합니다.
 
 ## 주요 기능
 
 - PDF 학습 자료 업로드, 요약, 핵심 개념 추출 및 RAG 기반 AI 튜터
-- AI 퀴즈 생성·채점, 오답 노트 및 복습 세션
-- 학습 타이머, 일별 학습 계획, 퀘스트·보상·성장 현황
-- 상점·인벤토리, 방 꾸미기, 고양이 아바타 의상 착용과 레벨업 성장 연출
-- TMAP 기반 주변 학습 장소 추천과 시험 당일 이동 어시스턴트
-- 자연어 요청으로 아이템 이미지를 생성하는 AI 아이템 공방 (로그인 시 실제 계정 도토리 차감)
+- AI 문제 생성·채점, 오답 노트 및 복습 추천
+- 학습 통계, 일별 학습 계획, 시험 준비 현황 관리
+- 상점·인벤토리·꾸미기 등 학습 보상 기반 성장 요소
+- TMAP 기반 주변 학습 장소 추천과 시험 당일 이동 시간 안내
+- 장소명 또는 도로명 주소로 출발지와 시험장을 검색하거나, 지도에서 출발지 선택
 
 ## 기술 구성
 
-- Frontend: React, Vite
-- Backend: FastAPI, SQLAlchemy, asyncpg
-- AI: Upstage Solar, LangGraph, pgvector RAG
-- Location: TMAP API, Naver Search API(선택)
-- Database: PostgreSQL + pgvector
+| 영역 | 사용 기술 |
+| --- | --- |
+| Frontend | React, Vite |
+| Backend | FastAPI, SQLAlchemy, asyncpg |
+| AI | Upstage Solar, LangGraph, pgvector RAG |
+| 위치·경로 | TMAP API, Google Routes API, Naver Search API(선택) |
+| Database | PostgreSQL + pgvector |
 
 ## 실행 방법
 
-### 1. 백엔드 설정
+### 1. 백엔드
 
-Python 3.11 이상과 PostgreSQL을 준비한 뒤 환경 파일을 만듭니다.
+Python 3.11 이상과 PostgreSQL을 준비한 뒤 환경 변수를 설정합니다.
 
 ```powershell
 cd backend
 Copy-Item .env.example .env
 ```
 
-`.env`에서 필요한 값을 설정합니다.
+`.env`에 사용하는 서비스의 키와 데이터베이스 연결 정보를 입력합니다.
 
 ```env
-# AI 자료 분석 및 튜터 기능에 필요
 UPSTAGE_API_KEY=up_xxxxxxxxxxxxxxxxxxxxxxxx
-
-# 주변 학습 장소 추천과 시험 당일 어시스턴트에 필요
 TMAP_APP_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_MAPS_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# PostgreSQL + pgvector
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/forestudy
 
-# 선택: 장소 후기 기반 시설 조건 확인에 사용
+# 선택: 장소 상세 조건 검색에 사용
 NAVER_CLIENT_ID=your_naver_client_id
 NAVER_CLIENT_SECRET=your_naver_client_secret
 ```
-
-`UPSTAGE_API_KEY`, `TMAP_APP_KEY`, `GOOGLE_MAPS_API_KEY`, Naver 키는 해당 기능을 사용할 때만 필요합니다. 키가 없어도 서버는 실행되며, 관련 API 호출에서 설정 안내를 반환합니다. `GOOGLE_MAPS_API_KEY`를 설정하면 대중교통 경로를 Google Routes API로 조회하고, 없으면 TMAP 대중교통 길안내로 대체합니다.
 
 ```powershell
 python -m venv .venv
@@ -57,11 +52,11 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-백엔드 API 문서는 `http://localhost:8000/docs`에서 확인할 수 있습니다.
+API 문서는 `http://localhost:8000/docs`에서 확인할 수 있습니다.
 
-### 2. 프론트엔드 실행
+### 2. 프론트엔드
 
-새 터미널에서 실행합니다.
+새 PowerShell 창에서 실행합니다.
 
 ```powershell
 cd frontend
@@ -69,36 +64,40 @@ npm install
 npm run dev
 ```
 
-Vite가 출력하는 주소(기본 `http://localhost:5173`)로 접속합니다. API 서버 주소를 바꿔야 할 때는 `frontend/.env`에 아래처럼 설정합니다.
+기본 주소는 `http://localhost:5173`입니다. 백엔드 주소가 다르면 `frontend/.env`에 다음 값을 설정합니다.
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-## 위치 기반 기능
+## 시험 당일 도우미
 
-`TMAP_APP_KEY`를 설정하면 다음 API와 화면이 활성화됩니다.
+시험 당일 도우미는 시험장과 출발지를 입력받아 교통수단별 이동 시간, 권장 출발 시각, 경로 안내를 제공합니다.
 
-- `POST /api/location/nearby-study-places`: 현재 위치와 자연어 요청을 기반으로 학습 장소를 추천합니다.
-- `POST /api/location/exam-day-assistant`: 시험장 주소를 좌표로 변환하고, 도보·자동차·대중교통별 이동 시간과 권장 출발 시각을 계산합니다. `GOOGLE_MAPS_API_KEY`가 있으면 대중교통 구간은 Google Routes API로 조회합니다.
-- `GET /api/location/health`: TMAP·Google Routes 키 설정 여부와 대중교통 제공자를 확인합니다.
+1. 시험장명 또는 주소를 검색해 정확한 시험장을 선택합니다. 검색 결과의 좌표를 그대로 사용해 주소 재변환에 따른 위치 오차를 줄입니다.
+2. 출발지는 현재 위치, 장소·주소 검색, 지도 클릭 중 하나로 지정할 수 있습니다.
+3. TMAP으로 경로 시간과 거리를 계산하고, 설정한 버퍼 시간을 포함해 권장 출발 시각을 안내합니다.
 
-시험 계획을 저장해 두고 시험 당일 계획 ID만으로 어시스턴트를 실행할 수도 있습니다(`GOOGLE_MAPS_API_KEY`/`TMAP_APP_KEY` 동일하게 사용).
+주요 엔드포인트:
 
-- `POST /api/exam-day/plans`: 자격증·시험장·일시·출발지를 담은 시험 계획을 저장합니다.
-- `GET /api/exam-day/plans`, `GET /api/exam-day/plans/{plan_id}`: 저장된 계획 목록/상세와 마지막 실행 결과를 조회합니다.
-- `POST /api/exam-day/plans/{plan_id}/assistant`: 저장된 계획으로 이동 안내를 실행합니다.
-- `DELETE /api/exam-day/plans/{plan_id}`: 저장된 계획을 삭제합니다.
+- `POST /api/location/search-places`: 장소명·주소 검색
+- `POST /api/location/nearby-study-places`: 주변 학습 장소 추천
+- `POST /api/location/exam-day-assistant`: 시험 당일 이동 계획 생성
+- `GET /api/location/health`: 위치 API 설정 상태 확인
+- `POST /api/exam-day/plans`: 시험 당일 계획 저장
+- `GET /api/exam-day/plans`, `GET /api/exam-day/plans/{plan_id}`: 저장한 계획 조회
+- `POST /api/exam-day/plans/{plan_id}/assistant`: 저장한 계획 기반 안내 실행
+- `DELETE /api/exam-day/plans/{plan_id}`: 저장한 계획 삭제
 
-Naver Search API 키는 “조용한”, “24시간”, “넓은 좌석” 같은 시설 조건을 장소 후기에서 추가 확인할 때만 사용합니다.
+`TMAP_APP_KEY`가 필요하며, `GOOGLE_MAPS_API_KEY`를 설정하면 대중교통 구간은 Google Routes API를 우선 사용합니다. 키가 없거나 외부 API를 사용할 수 없으면 관련 API는 설정 안내 또는 대체 결과를 반환합니다.
 
 ## 디렉터리 구조
 
 ```text
 Forestudy/
-├── backend/       # FastAPI API, AI/RAG, TMAP 및 아이템 생성 서비스
+├── backend/       # FastAPI API, AI/RAG, TMAP 등 서비스
 ├── frontend/      # React/Vite 사용자 인터페이스
 └── db/schema.sql  # PostgreSQL + pgvector 스키마
 ```
 
-상세 백엔드 API 설명은 [backend/README.md](backend/README.md)에서 확인할 수 있습니다.
+백엔드 API 상세는 [backend/README.md](backend/README.md)에서 확인할 수 있습니다.

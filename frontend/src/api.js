@@ -691,11 +691,25 @@ export function fetchNearbyStudyPlaces({ latitude, longitude, radiusMeters = 300
   })
 }
 
-export function fetchExamDayAssistant({ origin, exam, bufferMinutes = 30, transportModes }) {
+// 장소명/주소 검색 (출발지 선택용). 좌표가 있으면 주변 우선 검색.
+export function searchPlaces({ query, latitude, longitude, count = 10 }) {
+  return apiRequest('/api/location/search-places', {
+    method: 'POST',
+    body: JSON.stringify({
+      query,
+      ...(latitude != null && longitude != null ? { latitude, longitude } : {}),
+      count,
+    }),
+  })
+}
+
+// 출발지는 origin(좌표) 또는 originAddress(주소 — 백엔드가 TMAP 지오코딩) 중 하나로 지정한다.
+export function fetchExamDayAssistant({ origin, originAddress, exam, bufferMinutes = 30, transportModes }) {
   return apiRequest('/api/location/exam-day-assistant', {
     method: 'POST',
     body: JSON.stringify({
-      origin,
+      ...(origin ? { origin } : {}),
+      ...(originAddress ? { origin_address: originAddress } : {}),
       exam,
       buffer_minutes: bufferMinutes,
       ...(transportModes ? { transport_modes: transportModes } : {}),
