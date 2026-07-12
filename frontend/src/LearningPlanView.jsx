@@ -23,6 +23,7 @@ import './Shell.css'
 function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   const plan = planData?.plan
   const attemptId = planData?.attemptId
+  const score = planData?.score
   const resolvedCertName = certName || plan?.certification_name || '선택한 자격증'
   // 이미 "확인"까지 눌러서 정식 등록된 자격증을 다시 보러 온 것인지 — 그렇다면 이번엔
   // 나가도 아무것도 지우면 안 된다(이미 확정된 데이터이므로). 아직 등록 전이면(처음 설정
@@ -194,6 +195,15 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
       />
       <div className="body-scroll">
         <section className="learning-plan-card">
+          {score && (
+            <div className="done-screen inline">
+              <div className="done-badge done-score">
+                <span>{score.correctCount}</span>
+                <span>/ {score.totalCount}</span>
+              </div>
+              <div className="done-title">배치고사 결과</div>
+            </div>
+          )}
           <h2>{plan.certification_name} 맞춤 학습 플랜</h2>
           <p>{plan.learner_level_summary}</p>
           <div className="result-explain">{plan.exam_schedule_note}</div>

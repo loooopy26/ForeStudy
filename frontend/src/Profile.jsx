@@ -19,7 +19,6 @@ import {
 import {
   AcornIcon,
   BellIcon,
-  ChevronRightIcon,
   FocusIcon,
   MedalIcon,
   PlusIcon,
@@ -32,10 +31,10 @@ const TIMER_DEMO_USER_ID = 1
 
 // TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패) 화면 확인용으로 보여줄 값.
 // 백엔드 세팅 후 이 상수와 아래 catch의 fallback 처리는 제거할 것.
-const DEV_FALLBACK_STATS = { focus: 72, comprehension: 65, persistence: 80, pass_rate: 68, current_streak_days: 5 }
+const DEV_FALLBACK_STATS = { focus: 0, comprehension: 0, persistence: 0, pass_rate: 0, current_streak_days: 0 }
 const DEV_FALLBACK_DOTORI = 320
 
-function Profile({ onNavigate }) {
+function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
   const { equipped } = useGoods()
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
@@ -47,13 +46,13 @@ function Profile({ onNavigate }) {
   const [certDeleteError, setCertDeleteError] = useState('')
 
   useEffect(() => {
-    getStats(TIMER_DEMO_USER_ID).then(setStats).catch((err) => {
+    getStats(TIMER_DEMO_USER_ID, materialId).then(setStats).catch((err) => {
       if (err instanceof TypeError) setStats(DEV_FALLBACK_STATS)
     })
     getMyUser().then((user) => setDotori(user.dotori)).catch((err) => {
       if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
     })
-  }, [])
+  }, [materialId])
 
   const handleLogout = () => {
     clearCurrentUser()
@@ -170,10 +169,24 @@ function Profile({ onNavigate }) {
         <section className="status-card forest-panel">
           <div className="status-head">
             <h2>상태창</h2>
-            <button type="button" className="status-more">
-              자세히 보기 <ChevronRightIcon />
-            </button>
           </div>
+
+          {certificates.length > 1 && (
+            <label className="profile-status-cert-selector">
+              <span>자격증별 상태</span>
+              <select
+                value={certName}
+                onChange={(event) => {
+                  const certificate = certificates.find((item) => item.title === event.target.value)
+                  if (certificate) onSelectCertificate(certificate)
+                }}
+              >
+                {certificates.map((certificate) => (
+                  <option key={certificate.id} value={certificate.title}>{certificate.title}</option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="status-rows">
             {statRows.map(({ key, label, value, Icon, suffix = '' }) => (

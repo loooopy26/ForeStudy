@@ -134,12 +134,20 @@ async def _create_material_quiz(
     ):
         requested_difficulty = learner_profile["recommended_difficulty"]
 
+    # source_quiz_attempt_id -> quizzes.study_material_id로 조인해 "이 자료"에서 나온
+    # 취약점만 골라야 한다. 그냥 user_id로만 걸러 최근 3개를 가져오면 전혀 다른
+    # 자격증/자료에서 나온 취약점(예: 다른 자료의 "SOLID 원칙")이 이번 퀴즈에 섞여
+    # 들어가는 문제가 실제로 있었다.
     weak_rows = await pool.fetch(
         """
-        SELECT topic_tag FROM weak_point_reports
-        WHERE user_id = $1 ORDER BY generated_at DESC LIMIT 3
+        SELECT wpr.topic_tag FROM weak_point_reports wpr
+        JOIN quiz_attempts qa ON qa.id = wpr.source_quiz_attempt_id
+        JOIN quizzes q ON q.id = qa.quiz_id
+        WHERE wpr.user_id = $1 AND q.study_material_id = $2
+        ORDER BY wpr.generated_at DESC LIMIT 3
         """,
         user_id,
+        material_id,
     )
     weak_topics = [row["topic_tag"] for row in weak_rows]
 
@@ -151,7 +159,12 @@ async def _create_material_quiz(
     )
     if not req.focus_query:
         query = _plan_query(today_plan) or query
-    chunks = await rag.retrieve_chunks(material_id, query, top_k=8)
+    # top_k=8이면 분량이 큰 자료에서 가장 눈에 띄는 주제(예: SQLD 자료의 "관계대수") 근처
+    # 청크로만 채워져서 문제 주제가 그쪽으로 쏠리는 경향이 있었다 — 더 넓은 페이지 범위를
+    # 끌어와 소재를 다양화한다. 더 키울수록(14~20) 다양성은 좋아지지만 컨텍스트가 커질수록
+    # 배치 검증 재시도가 소진되는 실패율도 같이 올라가는 게 실측 확인됨 — 12가 다양성과
+    # 안정성 사이 균형점.
+    chunks = await rag.retrieve_chunks(material_id, query, top_k=12)
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 

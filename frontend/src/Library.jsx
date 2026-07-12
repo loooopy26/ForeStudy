@@ -47,7 +47,10 @@ function restoreTimerState(timerState) {
     ? defaultDuration
     : DEFAULT_DURATION_MIN
 
-  if (!timerState) {
+  // 새로고침 없이 앱을 켜둔 채로 자정을 넘긴 경우, 어제 남은 시간/누적 공부시간을 그대로
+  // 이어가지 않고 오늘 기준으로 다시 시작한다 — 그래야 오늘 계획된 시간(planned_minutes)도
+  // 정상적으로 기본값에 반영된다.
+  if (!timerState || timerState.date !== toDateKey(new Date())) {
     return { durationMin, remaining: durationMin * 60, studySec: 0, running: false }
   }
 
@@ -79,7 +82,7 @@ function getMonthCells(monthDate) {
   return cells
 }
 
-function Library({ onNavigate, materialId, onSelectMaterial, certName, timerState, onTimerStateChange }) {
+function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate, certName, timerState, onTimerStateChange }) {
   const [restoredTimer] = useState(() => restoreTimerState(timerState))
   const [durationMin, setDurationMin] = useState(restoredTimer.durationMin)
   const totalSec = durationMin * 60
@@ -114,6 +117,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName, timerStat
       segmentStartAt: segmentStartRef.current,
       maxUninterruptedMin: maxUninterruptedMinRef.current,
       updatedAt: Date.now(),
+      date: toDateKey(new Date()),
     })
   }, [durationMin, remaining, studySec, running, onTimerStateChange])
 
@@ -249,6 +253,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName, timerStat
       segmentStartAt: null,
       maxUninterruptedMin: maxUninterruptedMinRef.current,
       updatedAt: Date.now(),
+      date: toDateKey(new Date()),
     })
 
     if (sessionIdRef.current) {
@@ -284,7 +289,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName, timerStat
     if (!running) {
       if (!sessionIdRef.current) {
         try {
-          const { session_id } = await startTimer(TIMER_DEMO_USER_ID)
+          const { session_id } = await startTimer(TIMER_DEMO_USER_ID, materialId)
           sessionIdRef.current = session_id
         } catch {
           // 세션 생성에 실패해도 로컬 타이머는 그대로 진행한다.
@@ -301,6 +306,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName, timerStat
         segmentStartAt: segmentStartRef.current,
         maxUninterruptedMin: maxUninterruptedMinRef.current,
         updatedAt: Date.now(),
+        date: toDateKey(new Date()),
       })
       setRunning(true)
     } else {
@@ -395,6 +401,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName, timerStat
 
   const timerStarted = running || studySec > 0
   const offset = RING_LENGTH * ((totalSec - remaining) / totalSec)
+  const certificates = getCurrentCertificates()
   const handleBack = () => {
     pauseRunningTimer('leave_library')
     onNavigate('village')
@@ -417,6 +424,22 @@ function Library({ onNavigate, materialId, onSelectMaterial, certName, timerStat
       />}
 
       <div className="body-scroll library-body">
+        {!focusMode && certificates.length > 1 && (
+          <label className="library-cert-selector">
+            <span>학습 자격증</span>
+            <select
+              value={certName}
+              onChange={(event) => {
+                const certificate = certificates.find((item) => item.title === event.target.value)
+                if (certificate) onSelectCertificate(certificate)
+              }}
+            >
+              {certificates.map((certificate) => (
+                <option key={certificate.id} value={certificate.title}>{certificate.title}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <button type="button" className="focus-pill" onClick={() => setFocusMode((value) => !value)}>
           <FocusIcon />
           <span>{focusMode ? '기본 모드로 전환' : '집중 모드'}</span>

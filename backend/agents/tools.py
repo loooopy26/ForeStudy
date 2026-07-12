@@ -1,5 +1,6 @@
 """시험 목표 에이전트가 사용할 tool schema와 실행기."""
 
+import asyncio
 import json
 from datetime import date
 
@@ -30,12 +31,16 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "search_exam_schedule",
-            "description": "웹 검색 결과 스니펫으로 자격증 시험일정 후보를 찾는다.",
+            "description": (
+                "웹 검색 결과 스니펫으로 자격증 시험일정 후보를 찾는다. "
+                "기준 연도와 그다음 연도 결과를 한 번에 함께 반환한다 "
+                "(올해 시험이 이미 끝났거나 검색되지 않을 경우를 대비)."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "certification_name": {"type": "string", "description": "검색할 자격증명"},
-                    "year": {"type": "integer", "description": "검색할 연도. 없으면 현재 연도"},
+                    "year": {"type": "integer", "description": "검색 기준 연도. 없으면 현재 연도"},
                 },
                 "required": ["certification_name"],
             },
@@ -82,12 +87,25 @@ def build_tool_dispatch(pool: asyncpg.Pool, user_id: str, certification_name: st
                 certification_name=locked_certification_name,
             )
         if name == "search_exam_schedule":
-            year = args.get("year") or date.today().year
-            results = await web_search.search(
-                f"{year}년 {locked_certification_name} 시험일정",
-                max_results=5,
+            base_year = args.get("year") or date.today().year
+            next_year = base_year + 1
+            current_query = f"{base_year}년 {locked_certification_name} 시험일정"
+            next_query = f"{next_year}년 {locked_certification_name} 시험일정"
+            # 한 대화당 이 툴은 한 번만 호출 가능하므로, 올해 일정이 이미 지났거나
+            # 검색이 안 되는 경우에 대비해 다음 연도 결과까지 한 번에 같이 가져온다.
+            current_results, next_results = await asyncio.gather(
+                web_search.search(current_query, max_results=5),
+                web_search.search(next_query, max_results=5),
             )
-            return {"query": f"{year}년 {locked_certification_name} 시험일정", "results": results}
+            return {
+                "today": date.today().isoformat(),
+                "current_year": base_year,
+                "current_year_query": current_query,
+                "current_year_results": current_results,
+                "next_year": next_year,
+                "next_year_query": next_query,
+                "next_year_results": next_results,
+            }
         if name == "save_exam_goal":
             return await exam_goal_service.save_exam_goal(
                 pool,

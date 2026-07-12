@@ -1,6 +1,7 @@
 """시험 목표 대화 전용 tool-calling 그래프."""
 
 import json
+from datetime import date
 from typing import Annotated, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -32,10 +33,16 @@ Tool flow (hard budget: you get at most one get_exam_goal call and at most ONE s
 call before you must reply in plain text — there is no third tool call available):
 1. First call get_exam_goal for the certification.
 2. If a goal exists, summarize it and ask whether the learner wants to keep or update it.
-3. If no goal exists, call search_exam_schedule exactly once.
+3. If no goal exists, call search_exam_schedule exactly once. It returns search snippets for BOTH
+   the current year and the next year in a single response (current_year_results / next_year_results)
+   so you never need to call it twice.
 4. On your very next turn after that search, you MUST produce a plain-text reply — do not call
    search_exam_schedule or any tool again, even if the snippets look incomplete or you are unsure.
-   Pick your best estimate from whatever snippets you got (or say you found no usable date), clearly
+   Pick your best estimate using this rule: a candidate date is only usable if it falls on or after
+   today's date (given above). Look at current_year_results first; if none of those snippets give a
+   usable (today-or-later) date — e.g. this year's exam rounds have already all passed, or nothing
+   relevant was found — fall back to next_year_results instead. Never pick a date before today.
+   If neither bucket has a usable date, say so plainly instead of guessing. Whatever you pick, clearly
    mark it as unconfirmed, and ask the learner to confirm or provide the exact date themselves
    (YYYY-MM-DD 형식으로 알려주세요).
 5. As soon as the learner confirms a date or gives their own specific date, call save_exam_goal
@@ -56,6 +63,10 @@ answer. If the learner replies with a vague confirmation like "네 맞아요" bu
 been stated by anyone yet in this conversation, do NOT call save_exam_goal — reply asking them to
 type the exact date (YYYY-MM-DD).
 
+CRITICAL — never propose or save a date before today (given below). Search results can contain
+stale pages from a past year; if a candidate date has already passed, it is not usable — treat it
+the same as "no usable date found" and follow the fallback rule in step 4.
+
 When asking for confirmation, keep it short and practical.
 """
 
@@ -65,6 +76,7 @@ async def _agent_node(state: GoalAgentState) -> GoalAgentState:
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "system", "content": f"Current certification_name: {state['certification_name']}"},
+        {"role": "system", "content": f"Today's date: {date.today().isoformat()}"},
         *history,
     ]
     response = await upstage.chat_with_tools(messages, tools=TOOL_SCHEMAS, temperature=0.2)

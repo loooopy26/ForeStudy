@@ -119,6 +119,22 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
     }
   }
 
+  // 채점 결과 화면을 따로 보여주고 확인을 누르게 하는 대신, 채점이 끝나고 학습
+  // 플랜까지 준비되면 바로 이어서 학습 플랜 화면으로 넘어간다 — 현재 수준/권장
+  // 난이도는 학습 플랜 화면에도 나오므로 여기서 따로 보여줄 필요가 없다. 몇 개
+  // 맞혔는지(점수)는 학습 플랜 화면 쪽에서 계속 보여줄 수 있도록 같이 넘긴다.
+  useEffect(() => {
+    if (result && plan) {
+      onNavigate('learningPlan', {
+        planData: {
+          plan,
+          attemptId,
+          score: { correctCount: result.correct_count, totalCount: result.total_count },
+        },
+      })
+    }
+  }, [result, plan, attemptId, onNavigate])
+
   if (loading || error || !quiz) {
     return (
       <>
@@ -143,6 +159,8 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
   }
 
   if (result) {
+    // plan이 준비되는 즉시 위의 useEffect가 학습 플랜 화면으로 넘겨준다 — 여기는
+    // 채점부터 학습 플랜이 나오기 직전까지의 짧은 전환 화면이다.
     return (
       <>
         <Header title="배치고사 결과" icon={<QuizIcon />} onBack={() => discardAndLeave('profile')} />
@@ -153,25 +171,10 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
               <span>/ {result.total_count}</span>
             </div>
             <div>
-              <div className="done-title">{plan ? '학습 플랜 준비 완료' : '학습 플랜 생성 중'}</div>
-              <div className="done-desc">
-                현재 수준: {result.learning_evaluation?.mastery_level || '-'}
-                <br />
-                권장 난이도: {result.learning_evaluation?.recommended_difficulty || '-'}
-              </div>
+              <div className="done-title">학습 플랜 생성 중</div>
+              <div className="done-desc">채점 결과를 바탕으로 맞춤 학습 플랜을 만들고 있어요.</div>
             </div>
           </div>
-
-        </div>
-        <div className="cta-area">
-          <button
-            type="button"
-            className="cta-button"
-            disabled={!plan}
-            onClick={() => onNavigate('learningPlan', { planData: { plan, attemptId } })}
-          >
-            {plan ? '학습 플랜 계획 확인' : '학습 플랜 생성 중...'}
-          </button>
         </div>
         <ConfirmModal
           open={!!pendingLeave}

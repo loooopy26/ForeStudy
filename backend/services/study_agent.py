@@ -2,6 +2,7 @@
 """Study Agent helpers for summary, quiz generation, grading, and tutoring."""
 
 import asyncio
+import json
 import re
 from datetime import date, timedelta
 from math import ceil
@@ -141,7 +142,91 @@ async def generate_quiz(
             for question_type, batch_count, target_difficulty in batch_requests
         ]
     )
-    return [question for batch in batches for question in batch]
+    # difficulty_mix가 있으면 난이도 티어마다 별도 모델 호출이 나가는데(위 gather), 각 호출은
+    # 서로의 결과를 모른 채 같은 context에서 가장 눈에 띄는 개념을 독립적으로 고른다. 그 결과
+    # "팬인/팬아웃" 같은 주제가 easy/normal/hard에 각각 한 번씩, 총 3번 겹쳐 나오는 문제가
+    # 실제로 재현됨 — topic_tag 기준으로 배치 간 중복을 찾아 겹치는 문제만 다른 주제로 다시
+    # 생성한다.
+    flat = [
+        [question, question_type, target_difficulty]
+        for (question_type, _batch_count, target_difficulty), batch in zip(batch_requests, batches)
+        for question in batch
+    ]
+    if difficulty_mix:
+        await _replace_duplicate_topics(
+            flat,
+            context=context,
+            difficulty=difficulty,
+            weak_topics=weak_topics,
+            quiz_kind=quiz_kind,
+            learner_profile=learner_profile,
+            plan_scope=plan_scope,
+        )
+    return [entry[0] for entry in flat]
+
+
+def _topic_key(topic_tag: str | None) -> str:
+    return re.sub(r"[^\w가-힣]", "", (topic_tag or "").lower())
+
+
+def _find_duplicate_indices(flat: list[list]) -> tuple[list[int], list[str]]:
+    seen: dict[str, int] = {}
+    duplicate_indices: list[int] = []
+    for i, (question, _, _) in enumerate(flat):
+        key = _topic_key(question.get("topic_tag"))
+        if not key:
+            continue
+        if key in seen:
+            duplicate_indices.append(i)
+        else:
+            seen[key] = i
+    kept_topics = [flat[i][0].get("topic_tag") for i in seen.values() if flat[i][0].get("topic_tag")]
+    return duplicate_indices, kept_topics
+
+
+async def _replace_duplicate_topics(
+    flat: list[list],
+    *,
+    context: str,
+    difficulty: str,
+    weak_topics: list[str] | None,
+    quiz_kind: str,
+    learner_profile: dict | None,
+    plan_scope: dict | None,
+    max_rounds: int = 3,
+) -> None:
+    """flat의 각 항목은 [question, question_type, target_difficulty]. topic_tag가 이미 다른
+    문제에서 나온 것과 같은(정규화 후 일치) 항목을 찾아, 그 자리만 다른 주제로 교체한다.
+    같은 context에서 유독 두드러지는 주제(예: SQLD 자료의 "관계대수")가 있으면 교체 호출도
+    다시 그 주제로 쏠릴 수 있어서, 한 라운드 안에서는 순차로 돌며 그때그때 새로 고른 주제도
+    회피 목록에 더하고, 그래도 남는 중복이 있으면 최대 max_rounds번까지 다시 검사한다."""
+    for _round in range(max_rounds):
+        duplicate_indices, kept_topics = _find_duplicate_indices(flat)
+        if not duplicate_indices:
+            return
+        avoid_topics = list(kept_topics)
+        for i in duplicate_indices:
+            try:
+                result = await _generate_quiz_batch(
+                    context,
+                    question_type=flat[i][1],
+                    count=1,
+                    difficulty=difficulty,
+                    target_difficulty=flat[i][2],
+                    weak_topics=weak_topics,
+                    quiz_kind=quiz_kind,
+                    learner_profile=learner_profile,
+                    plan_scope=plan_scope,
+                    avoid_topics=avoid_topics,
+                )
+            except RuntimeError:
+                continue  # 교체 실패 시 원래 문제(주제는 겹치지만 유효한 문제)를 그대로 둔다
+            if not result:
+                continue
+            flat[i][0] = result[0]
+            new_topic = result[0].get("topic_tag")
+            if new_topic:
+                avoid_topics.append(new_topic)
 
 
 async def _generate_quiz_batch(
@@ -155,11 +240,44 @@ async def _generate_quiz_batch(
     learner_profile: dict | None,
     plan_scope: dict | None,
     target_difficulty: str | None = None,
+    avoid_topics: list[str] | None = None,
 ) -> list[dict]:
     weak_hint = (
         f"\nPrioritize these weak topics when relevant: {', '.join(weak_topics)}."
         if weak_topics
         else ""
+    )
+    avoid_hint = (
+        "\nThese topics are already covered by other questions in this same quiz — do NOT write "
+        f"another question about any of them, pick a different concept from the context instead: "
+        f"{', '.join(avoid_topics)}."
+        if avoid_topics
+        else ""
+    )
+
+    circular_answer_warning = (
+        "Never let the correct_answer just repeat words already given in question_text — the "
+        "question must require knowledge the learner has to supply, not just echo back a phrase "
+        "the question itself already stated. For example, if question_text is \"Which principle "
+        "states that a class should have only one responsibility?\", the correct_answer must be the "
+        "specific name of that principle (e.g. \"Single Responsibility Principle\") — never a vague "
+        "restatement of the question's own topic or category (e.g. never just \"a software "
+        "engineering principle\" or \"the principle described above\"). This also applies to short "
+        "phrases, not just long ones: if question_text is \"Which of the 4 core Agile values "
+        "captures the meaning of 'valuing responding to change'?\", the correct_answer must NOT be "
+        "just \"responding to change\" — that is the same phrase from the question with a particle "
+        "attached, not an answer. Before finalizing correct_answer, check whether it (or a trivial "
+        "rewording of it) already appears inside question_text; if so, rewrite the question so the "
+        "answer must be recalled, not just copied.\n"
+        "Special case — questions of the form \"Which of the N core values/principles/stages means "
+        "X?\": this shape is the most common source of circular answers, so avoid it by default. "
+        "If you use it anyway, X must be phrased using entirely different vocabulary from the named "
+        "item itself (no shared multi-character phrase at all) — e.g. instead of asking which value "
+        "\"means responding to change\", ask which value is about \"adjusting plans when new "
+        "information emerges instead of rigidly following the original schedule\". If you cannot "
+        "think of a genuinely different phrasing, do not use this question shape — write a direct "
+        "definition or application question instead (e.g. \"What does the Agile value of responding "
+        "to change mean in practice?\" with an explanatory answer, not the value's own name)."
     )
 
     if question_type == "multiple_choice":
@@ -168,14 +286,16 @@ async def _generate_quiz_batch(
             "Provide exactly 4 options and set correct_answer to the exact option text. "
             "Each option must be a distinct, substantive answer choice written out in full — "
             "never a bare letter like \"A\"/\"B\"/\"C\"/\"D\", never a placeholder, and never "
-            "duplicated or reworded from another option in the same question."
+            "duplicated or reworded from another option in the same question. Every option "
+            "(including the correct one) must name a specific, concrete concept, term, or value — "
+            f"never a vague paraphrase of the question's own topic. {circular_answer_warning}"
         )
         example_fields = '"question_type": "multiple_choice",\n      "options": ["option1", "option2", "option3", "option4"],\n      "correct_answer": "the exact matching option text",'
     elif question_type == "short_answer":
         type_instruction = (
             "Every question's question_type must be exactly \"short_answer\". "
             "Set options to an empty array [] and put a concise model answer in correct_answer. "
-            "Do not generate multiple-choice options for these questions."
+            f"Do not generate multiple-choice options for these questions. {circular_answer_warning}"
         )
         example_fields = '"question_type": "short_answer",\n      "options": [],\n      "correct_answer": "concise model answer",'
     else:
@@ -212,7 +332,7 @@ facts supported by the study-material context below.
 """
 
     prompt = f"""Create {count} {question_type} quiz questions from the study-material context below.
-Overall requested difficulty: {difficulty}.{weak_hint}
+Overall requested difficulty: {difficulty}.{weak_hint}{avoid_hint}
 
 {plan_instruction}
 
@@ -242,12 +362,35 @@ For explanation, write only a natural Korean explanation of the correct answer. 
 copy context headers, excerpts, citations, source labels, pages, or markers such as "발췌", "출처",
 "[0]", or "(p.1)"."""
     messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
+    current_messages = messages
 
-    max_attempts = 5
+    max_attempts = 8
     last_normalized: list[dict] = []
     for attempt in range(max_attempts):
-        result = await upstage.chat_json(messages, temperature=0.5)
-        questions = result["questions"][:count]
+        result = await upstage.chat_json(current_messages, temperature=0.5)
+        raw_questions = result.get("questions")
+        if not isinstance(raw_questions, list) or not raw_questions:
+            # 드물게 모델이 JSON은 유효하지만 "questions" 키 자체를 빠뜨리거나 빈 배열로
+            # 돌려주는 경우가 있다(재현 확인됨) — 예전엔 여기서 바로 KeyError로 요청 전체가
+            # 죽었는데, 다른 검증 실패와 동일하게 재시도 루프를 타도록 고친다.
+            if attempt < max_attempts - 1:
+                current_messages = messages + [
+                    {"role": "assistant", "content": json.dumps(result, ensure_ascii=False)},
+                    {
+                        "role": "user",
+                        "content": (
+                            "That response did not include a valid non-empty \"questions\" array. "
+                            f"Return the JSON again with exactly {count} questions in the "
+                            "\"questions\" array as specified."
+                        ),
+                    },
+                ]
+                continue
+            raise RuntimeError(
+                f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 유효하게 "
+                "만들지 못했습니다 (questions 배열 누락)."
+            )
+        questions = raw_questions[:count]
         normalized = [_normalize_question(question) for question in questions]
         for question in normalized:
             if question_type == "short_answer":
@@ -267,12 +410,54 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
         if not broken and len(normalized) == count:
             return normalized
         # The model sometimes drops the "options" array for a question (more common on
-        # "hard" items), returns duplicate/placeholder options, or returns fewer items
-        # than requested. Retry generation instead of silently shipping a broken quiz.
+        # "hard" items), returns duplicate/placeholder options, or returns fewer items than
+        # requested — or repeats a circular answer. Retrying with the exact same prompt tends
+        # to reproduce the same mistake (it's a real observed pattern, not just bad luck), so
+        # point out precisely what was wrong with the rejected question(s) and ask the model to
+        # fix that specific issue instead of blindly resubmitting the same prompt.
+        if attempt < max_attempts - 1 and broken:
+            broken_examples = "\n".join(
+                f"- question_text: \"{q.get('question_text', '')}\" / "
+                f"correct_answer: \"{q.get('correct_answer', '')}\""
+                for q in broken[:3]
+            )
+            current_messages = messages + [
+                {"role": "assistant", "content": json.dumps(result, ensure_ascii=False)},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{len(broken)} of those questions are invalid — most likely because "
+                        "correct_answer just repeats a phrase already in question_text (a circular "
+                        "answer the learner doesn't actually need to know anything to guess), or "
+                        "because options are duplicated/empty/placeholder text. The problem ones:\n"
+                        f"{broken_examples}\n"
+                        f"Return the full corrected JSON again with all {count} questions, fixing "
+                        "this specific problem in every question (not just the ones listed above)."
+                    ),
+                },
+            ]
     raise RuntimeError(
         f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 유효하게 만들지 못했습니다 "
         "(중복되거나 비어있는 보기 포함)."
     )
+
+
+def _is_circular_answer(question_text: str, answer: str) -> bool:
+    """정답이 질문 문장 속 표현을 그대로 되풀이하기만 하는 경우를 걸러낸다.
+
+    실제 발견된 사례들:
+    - "소프트웨어 공학의 기본 원칙 중 '~하다'는 내용은 무엇을 설명하는가?" 라는
+      질문에 정답이 그냥 "소프트웨어 공학의 기본 원칙"이었던 경우
+    - "애자일 개발의 4가지 핵심 가치 중 '변화 대응을 중시한다'는 의미를 담고
+      있는 가치는 무엇인가요?" 라는 질문에 정답이 그냥 "변화 대응"이었던 경우
+      (질문 속 표현에 조사만 붙였을 뿐 사실상 같은 말)
+    두 경우 다 질문이 이미 답을 그대로 말해준 것이나 다름없어서 학습자가 구체적인
+    개념을 몰라도 맞힐 수 있고, 오답 해설도 억지스러워진다. 공백을 제거한 정답
+    전체가 질문 문장 안에 그대로 들어있으면(=정답이 질문에서 새로운 정보를 전혀
+    안 더한 경우) 순환 답변으로 간주한다. 4글자 미만은 우연히 겹칠 수 있어 제외한다."""
+    normalized_answer = re.sub(r"\s+", "", answer)
+    normalized_question = re.sub(r"\s+", "", question_text)
+    return len(normalized_answer) >= 4 and normalized_answer in normalized_question
 
 
 def _is_question_well_formed(question: dict) -> bool:
@@ -280,10 +465,13 @@ def _is_question_well_formed(question: dict) -> bool:
 
     사용자에게 보여주기 전에 걸러야 하는 실제 사례: 보기 두 개가 완전히 같은 문장인
     경우(선택 시 두 버튼이 동시에 체크됨), 보기가 "A"/"B" 같은 자리표시자만 있는 경우,
-    correct_answer가 실제 보기 중 어느 것과도 일치하지 않아 채점이 항상 틀리게 되는 경우."""
+    correct_answer가 실제 보기 중 어느 것과도 일치하지 않아 채점이 항상 틀리게 되는 경우,
+    정답이 질문 문장을 그대로 되풀이하기만 하는 경우."""
     question_text = str(question.get("question_text") or "").strip()
     correct_answer = str(question.get("correct_answer") or "").strip()
     if len(question_text) < 5 or not correct_answer:
+        return False
+    if _is_circular_answer(question_text, correct_answer):
         return False
 
     question_type = question.get("question_type")
@@ -291,7 +479,12 @@ def _is_question_well_formed(question: dict) -> bool:
         options = [str(o).strip() for o in (question.get("options") or [])]
         if len(options) < 2:
             return False
-        if any(len(o) < 3 for o in options):
+        # 자리표시자("A"/"B"/"1" 같은 한 글자)만 걸러내는 게 목적이었는데 기준이 3자였던
+        # 탓에 "XP", "칸반", "CI", "QA"처럼 실제로 유효한 2글자 용어 보기까지 매번
+        # 잘못 걸러지고 있었다(실제 발견된 사례: options에 "칸반"/"XP"가 섞여 있으면
+        # 문제 자체가 멀쩡해도 매번 재시도 5~8번을 다 태우다 실패했다). 한 글자
+        # 자리표시자만 거르도록 기준을 2자로 낮춘다.
+        if any(len(o) < 2 for o in options):
             return False
         if len({o.lower() for o in options}) != len(options):
             return False

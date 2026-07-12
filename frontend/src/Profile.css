@@ -312,18 +312,35 @@
   color: #4e412d;
 }
 
-.status-more {
-  display: inline-flex;
+.profile-status-cert-selector {
+  display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 11px;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -2px 0 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f5f0e3;
+  color: #776b58;
+}
+
+.profile-status-cert-selector span {
+  font-size: 12px;
   font-weight: 700;
-  color: #6a7c4b;
+}
+
+.profile-status-cert-selector select {
+  min-width: 0;
+  max-width: 70%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #4e412d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
   cursor: pointer;
-  font-family: inherit;
 }
 
 .status-rows {

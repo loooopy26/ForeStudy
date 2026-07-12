@@ -167,13 +167,17 @@ async def embed(texts: list[str], *, kind: str = "passage") -> list[list[float]]
 
 async def parse_document(file_path: Path) -> dict:
     """Document Parse. elements[] 에 heading/paragraph/table 등 레이아웃 요소가
-    읽기 순서대로 들어 있다. 50MB 이하는 동기 API로 바로 처리한다.
-    50MB 초과 PDF는 청크로 잘라 동기 API를 반복 호출해 병합하고(async의 413 이슈 회피),
-    PDF가 아닌 형식(ppt/docx 등)은 청크 분할이 어려워 비동기 API로 제출한다."""
+    읽기 순서대로 들어 있다. 50MB 이하 & 100페이지 이하는 동기 API로 바로 처리한다.
+    PDF가 50MB를 넘거나 페이지가 100장을 넘으면(동기 API 자체의 페이지 한도) 청크로 잘라
+    동기 API를 반복 호출해 병합하고(async의 413 이슈 회피), PDF가 아닌 형식(ppt/docx 등)은
+    청크 분할이 어려워 크기가 클 때만 비동기 API로 제출한다."""
+    if file_path.suffix.lower() == ".pdf":
+        page_count = len(PdfReader(str(file_path)).pages)
+        if file_path.stat().st_size <= _SYNC_SIZE_LIMIT_BYTES and page_count <= _CHUNK_MAX_PAGES:
+            return await _parse_document_sync(file_path)
+        return await _parse_pdf_in_chunks(file_path)
     if file_path.stat().st_size <= _SYNC_SIZE_LIMIT_BYTES:
         return await _parse_document_sync(file_path)
-    if file_path.suffix.lower() == ".pdf":
-        return await _parse_pdf_in_chunks(file_path)
     return await _parse_document_async(file_path)
 
 

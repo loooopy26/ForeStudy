@@ -13,8 +13,6 @@ import {
 } from './api'
 import './Chat.css'
 
-const SUGGESTIONS = ['이 자료의 핵심 내용을 요약해줘', '이해가 잘 안 되는 부분을 다시 설명해줘', '예제를 들어서 설명해줘']
-
 function formatHistoryDate(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`)
   return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
@@ -55,7 +53,6 @@ function Chat({ onNavigate, materialId }) {
   // null이면 스트리밍 중이 아님. ''는 요청은 갔지만 아직 첫 조각이 안 온 상태(점 3개 표시),
   // 그 이후엔 도착한 조각들을 이어붙인 진행 중인 답변 텍스트.
   const [streamingReply, setStreamingReply] = useState(null)
-  const [showSuggestions, setShowSuggestions] = useState(true)
   const [attachedImage, setAttachedImage] = useState(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState(null)
   const logRef = useRef(null)
@@ -80,7 +77,6 @@ function Chat({ onNavigate, materialId }) {
     setSessionError(null)
     setMessages([])
     setPlanScope(null)
-    setShowSuggestions(true)
     setView('live')
     clearAttachedImage()
     if (!materialId) {
@@ -101,7 +97,6 @@ function Chat({ onNavigate, materialId }) {
         if (cancelled) return
         if (existing.messages?.length) {
           setMessages(toBubbleMessages(existing.messages))
-          setShowSuggestions(false)
           return
         }
 
@@ -143,7 +138,6 @@ function Chat({ onNavigate, materialId }) {
     setInput('')
     setAttachedImage(null)
     setAttachedPreviewUrl(null)
-    setShowSuggestions(false)
     setThinking(true)
     setStreamingReply('')
     try {
@@ -297,16 +291,6 @@ function Chat({ onNavigate, materialId }) {
               </div>
             )}
           </div>
-
-          {showSuggestions && sessionId && (
-            <div className="suggestions">
-              {SUGGESTIONS.map((s) => (
-                <button type="button" className="chip" key={s} onClick={() => submitText(s)}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
 
           {attachedPreviewUrl && (
             <div className="composer-attachment">
