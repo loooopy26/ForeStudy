@@ -277,8 +277,9 @@ export function removeCurrentCertificate(certificateId) {
   return nextCertificates
 }
 
-export async function getStats(userId) {
-  return apiRequest(`/stats/${userId}`)
+export async function getStats(userId, materialId = '') {
+  const query = materialId ? `?material_id=${encodeURIComponent(materialId)}` : ''
+  return apiRequest(`/stats/${userId}${query}`)
 }
 
 export async function startTimer(userId) {
