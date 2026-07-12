@@ -19,6 +19,7 @@ from routers import (
     character,
     cert_goals,
     dashboard,
+    exam_day,
     goals,
     growth_reports,
     item_generation,
@@ -129,5 +130,6 @@ for api_router in [
     item_generation.router,
     character.router,
     location.router,
+    exam_day.router,
 ]:
     register_router(api_router)

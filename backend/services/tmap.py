@@ -17,6 +17,7 @@ import time
 import httpx
 
 from config import settings
+from services import google_routes
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,11 @@ async def get_walk_route(origin: dict, destination: dict) -> dict:
 
 
 async def get_transit_route(origin: dict, destination: dict) -> dict:
+    # Prefer Google Routes for public transit.  Its API key is separate from
+    # TMAP because POI/walk/car features still use TMAP in this project.
+    if settings.google_maps_api_key:
+        return await google_routes.get_transit_route(origin, destination)
+
     body = {
         "startX": str(origin["longitude"]),
         "startY": str(origin["latitude"]),

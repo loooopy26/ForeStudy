@@ -685,3 +685,26 @@ CREATE TABLE notification_weekly_send_log (
     send_count      INT NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, week_start_date)
 );
+
+-- =====================================================================
+-- 13. 시험 당일 AI 어시스턴트 (저장된 시험 계획 + 마지막 안내 결과)
+-- =====================================================================
+
+CREATE TABLE exam_day_plans (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    certification_name    TEXT NOT NULL,
+    exam_site_name        TEXT NOT NULL,
+    exam_site_address     TEXT NOT NULL,
+    exam_date             DATE NOT NULL,
+    exam_start_time       TEXT NOT NULL,            -- 'HH:MM'
+    origin_latitude       DOUBLE PRECISION NOT NULL, -- 출발지(집 등)
+    origin_longitude      DOUBLE PRECISION NOT NULL,
+    buffer_minutes        INT NOT NULL DEFAULT 30 CHECK (buffer_minutes BETWEEN 0 AND 180),
+    -- 어시스턴트 실행 결과(경로/출발시각/주변장소/안내/시험장 팁) 캐시. 시험 당일 아침에
+    -- 다시 조회할 때 외부 API를 전부 재호출하지 않아도 되도록 저장해 둔다.
+    last_assistant_result JSONB,
+    last_assistant_at     TIMESTAMPTZ,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_exam_day_plans_user ON exam_day_plans(user_id, exam_date);

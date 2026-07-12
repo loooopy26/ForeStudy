@@ -73,12 +73,10 @@ const KIND_VARIANTS = {
 const ASSET = '/assets/'
 
 function getItemImage(item) {
+  if (item.imageUrl) return item.imageUrl // AI 생성 아이템: 백엔드가 준 절대 URL
   if (item.custom) return null
   const image = item.image
-  if (!image) return null
-  // AI로 생성된 아이템은 백엔드가 절대 URL(http://.../generated-items/...)을 내려준다.
-  // 카탈로그 아이템은 /assets/ 밑의 로컬 파일명만 갖고 있어 접두사를 붙여야 한다.
-  return /^https?:\/\//.test(image) ? image : `${ASSET}${image}`
+  return image ? `${ASSET}${image}` : null
 }
 
 function hashText(value = '') {
@@ -1066,6 +1064,7 @@ export function ItemArt({ item, size = 56, framed = true, rotate = 0 }) {
           width: size,
           height: size,
           objectFit: 'contain',
+          transform: rotate ? `rotate(${rotate}deg)` : undefined, // 방에서 회전한 가구(주로 침대) 반영
           filter: framed ? 'drop-shadow(0 4px 6px rgba(102, 83, 42, 0.18))' : 'drop-shadow(0 5px 6px rgba(102, 83, 42, 0.28))',
         }}
       />

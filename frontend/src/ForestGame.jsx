@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react'
 import QuestPage from './QuestPage'
 import AchievementPage from './AchievementPage'
-import { getCurrentUser, getMyUser } from './api'
-
-const ACORNS_OWNER_KEY = 'forestudy_acorns_owner_v1'
 import './questTheme.css'
-
-// TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패) 화면 확인용으로 보여줄 값.
-// 백엔드 세팅 후 이 상수와 아래 catch의 fallback 처리는 제거할 것.
-const DEV_FALLBACK_DOTORI = 2450
 
 // 퀘스트 게시판 + 업적/성장 화면의 상태·로직 묶음.
 // (기존 로컬 App.jsx에서 phone 프레임 래퍼만 제거하고 그대로 옮김.
@@ -45,7 +38,7 @@ function ForestGame({ onNavigate, initialSub }) {
   })
   const [acorns, setAcorns] = useState(() => {
     const saved = localStorage.getItem('forestudy_acorns_v4')
-    return saved ? parseInt(saved) : 0
+    return saved ? parseInt(saved) : 2450
   })
   const [quests, setQuests] = useState(() => {
     const saved = localStorage.getItem('forestudy_quests_v4')
@@ -58,19 +51,6 @@ function ForestGame({ onNavigate, initialSub }) {
 
   // 'quests' | 'achievements' — 게시판 내부 화면 전환
   const [sub, setSub] = useState(initialSub === 'achievements' ? 'achievements' : 'quests')
-
-  // 로컬에 진행 중인 도토리 값이 없거나, 마지막으로 값을 가져온 유저와 지금 로그인한
-  // 유저가 다르면(=로그인/로그아웃으로 계정이 바뀌면) 백엔드의 실제 보유 도토리로 초기화한다.
-  useEffect(() => {
-    const owner = getCurrentUser()?.id || 'demo'
-    if (localStorage.getItem('forestudy_acorns_v4') && localStorage.getItem(ACORNS_OWNER_KEY) === owner) return
-    getMyUser().then((user) => {
-      setAcorns(user.dotori)
-      localStorage.setItem(ACORNS_OWNER_KEY, owner)
-    }).catch((err) => {
-      if (err instanceof TypeError) setAcorns(DEV_FALLBACK_DOTORI)
-    })
-  }, [])
 
   // Persist state in localStorage
   useEffect(() => {

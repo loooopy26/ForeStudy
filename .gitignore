@@ -50,3 +50,6 @@ backend-server.err
 backend-server.out
 frontend-server.out
 frontend-server.err
+
+# Local debug/scratch dumps
+backend/check_user.json

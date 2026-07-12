@@ -7,7 +7,6 @@ export function getMaterialId() {
 
 export function setMaterialId(materialId) {
   if (materialId) localStorage.setItem('forestudy_material_id', materialId)
-  else localStorage.removeItem('forestudy_material_id')
 }
 
 export function getLastAttemptId() {
@@ -205,15 +204,12 @@ export async function getDemoUser() {
   return apiRequest('/auth/demo')
 }
 
-export async function getMe(userId) {
-  return apiRequest(`/auth/me/${userId}`)
-}
-
-// 로그인한 유저가 있으면 그 유저의 최신 정보(도토리 등)를, 없으면(로그인 없는 MVP 화면)
-// 데모 유저 정보를 반환한다. 도토리를 보여주는 화면들이 공통으로 사용한다.
+// 로그인 상태면 실제 계정(도토리 등) 정보를, 아니면 데모 유저 정보를 반환한다.
 export async function getMyUser() {
-  const current = getCurrentUser()
-  if (current?.id) return getMe(current.id)
+  const currentUser = getCurrentUser()
+  if (currentUser?.id) {
+    return apiRequest(`/auth/me/${currentUser.id}`)
+  }
   return getDemoUser()
 }
 
@@ -281,16 +277,12 @@ export function removeCurrentCertificate(certificateId) {
   return nextCertificates
 }
 
-export async function getStats(userId, materialId = '') {
-  const query = materialId ? `?material_id=${encodeURIComponent(materialId)}` : ''
-  return apiRequest(`/stats/${userId}${query}`)
+export async function getStats(userId) {
+  return apiRequest(`/stats/${userId}`)
 }
 
-export async function startTimer(userId, materialId = null) {
-  return apiRequest('/timer/start', {
-    method: 'POST',
-    body: JSON.stringify({ user_id: userId, material_id: materialId }),
-  })
+export async function startTimer(userId) {
+  return apiRequest('/timer/start', { method: 'POST', body: JSON.stringify({ user_id: userId }) })
 }
 
 export async function pauseTimer(sessionId, segmentMinutes, reason = 'leave_library') {
@@ -478,45 +470,107 @@ export async function getTodayCurriculumDay(certificationName) {
   }
 }
 
-// 인벤토리 저장(내 방/캐릭터 화면과 공유하는 더미 SQLite 데이터)은 로그인 여부와 무관하게
-// 고정 데모 유저를 쓴다 (Library.jsx의 TIMER_DEMO_USER_ID와 동일한 값). 도토리 차감만
-// 로그인한 유저가 있으면 real_user_id로 실제 계정(PostgreSQL users.dotori)에서 이뤄진다.
-const AI_ITEM_DEMO_USER_ID = 1
-
-export async function generateAiItem(prompt, activeTab = 'wear') {
+// 자연어 설명으로 나만의 커스텀 아이템을 만든다. 분류 선택 없이 프롬프트만 받으며,
+// 만든 아이템은 '커스텀' 탭에 모이고 방에 배치할 수 있는 오브젝트(decor)로 만들어진다.
+// 실제 이미지 생성은 백엔드 담당(추후 백엔드 팀의 아이템 생성 API에 연결)이라,
+// 여기서는 프론트 단독으로 도는 로컬 프리뷰 아이템을 만든다.
+export async function generateAiItem(prompt) {
   const text = prompt.trim()
-  const kindByTab = {
-    wear: 'outfit',
-    furniture: 'furniture',
-    decor: 'decor',
-    surface: 'wallpaper',
-  }
-  const kind = kindByTab[activeTab] || 'outfit'
-  const nameBase = text.split(/\s+/).slice(0, 2).join(' ') || 'AI 아이템'
+  if (!text) throw new Error('만들고 싶은 아이템을 설명해주세요')
 
-  const realUserId = getCurrentUser()?.id || null
-  const { item, remaining_token } = await apiRequest('/items/generate', {
+  const user = getCurrentUser()
+  let userIdVal = 1
+  // 로그인한 실제 유저(UUID)면 real_user_id로 넘겨 백엔드가 진짜 도토리(PostgreSQL users.dotori)를
+  // 차감하게 한다. 이게 없으면 백엔드는 항상 0으로 시작하는 SQLite 더미 토큰을 쓰려다 잔액
+  // 부족으로 실패한다. int user_id는 인벤토리/이미지 레코드용으로 계속 함께 보낸다.
+  let realUserId = null
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (user && user.id) {
+    if (typeof user.id === 'number') {
+      userIdVal = user.id
+    } else {
+      const parsed = parseInt(user.id, 10)
+      if (!isNaN(parsed)) {
+        userIdVal = parsed
+      } else {
+        userIdVal = Math.abs(hashText(user.id)) || 1
+      }
+      if (UUID_RE.test(user.id)) {
+        realUserId = user.id
+      }
+    }
+  }
+
+  // 백엔드 AI 생성 API 호출
+  const res = await apiRequest('/items/generate', {
     method: 'POST',
-    body: JSON.stringify({
-      user_id: AI_ITEM_DEMO_USER_ID,
-      real_user_id: realUserId,
-      prompt: text,
-    }),
+    body: JSON.stringify({ user_id: userIdVal, prompt: text, real_user_id: realUserId }),
   })
+
+  const item = res.item
+
+  // 프롬프트 키워드 기반으로 벽지/바닥/가구/장식 kind 분류 매핑
+  let kind = 'decor'
+  const lowerPrompt = text.toLowerCase()
+  if (lowerPrompt.includes('벽지') || lowerPrompt.includes('wallpaper')) {
+    kind = 'wallpaper'
+  } else if (
+    lowerPrompt.includes('바닥') ||
+    lowerPrompt.includes('floor') ||
+    lowerPrompt.includes('장판') ||
+    lowerPrompt.includes('타일') ||
+    lowerPrompt.includes('잔디')
+  ) {
+    kind = 'floor'
+  } else if (
+    lowerPrompt.includes('가구') ||
+    lowerPrompt.includes('책상') ||
+    lowerPrompt.includes('의자') ||
+    lowerPrompt.includes('침대') ||
+    lowerPrompt.includes('책장') ||
+    lowerPrompt.includes('선반') ||
+    lowerPrompt.includes('협탁') ||
+    lowerPrompt.includes('서랍') ||
+    lowerPrompt.includes('소파') ||
+    lowerPrompt.includes('desk') ||
+    lowerPrompt.includes('chair') ||
+    lowerPrompt.includes('bed') ||
+    lowerPrompt.includes('furniture')
+  ) {
+    kind = 'furniture'
+  }
+
+  // 렌더링에 적합하도록 색상 해시 및 속성 매핑
+  const palette = [
+    ['#7d9c62', '#5f7a43'],
+    ['#e8a4b0', '#d3808f'],
+    ['#9ec1d9', '#7ba3bf'],
+    ['#e9c46a', '#d4a83f'],
+    ['#a9825f', '#8a6647'],
+  ]
+  const [color, trim] = palette[Math.abs(hashText(text)) % palette.length]
 
   return {
     id: `ai-${item.item_id}`,
-    name: `${nameBase} 아이템`,
+    name: item.name,
     price: 0,
     kind,
-    image: `${API_BASE}${item.image_url}`,
-    description: `"${text}" 느낌으로 만든 AI 커스텀 아이템이에요.`,
+    art: 'plant', // 기본 art
+    color,
+    trim,
+    imageUrl: `${API_BASE}${item.image_url}`, // 백엔드 정적 파일 서빙 URL 지정
+    description: `"${text}" 느낌으로 만든 커스텀 아이템이에요.`,
     tags: text.split(/\s+/).filter(Boolean).slice(0, 3),
     generated: true,
-    // 로그인한 유저는 remaining_token이 실제 차감 후 dotori 잔액이라, 헤더 지갑을 로컬에서
-    // 임의로 빼는 대신 이 값으로 그대로 맞춰야 서버와 어긋나지 않는다.
-    remainingDotori: realUserId ? remaining_token : null,
   }
+}
+
+function hashText(text) {
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0
+  }
+  return hash
 }
 
 export async function deleteCurriculum(curriculumId) {

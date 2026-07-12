@@ -42,6 +42,8 @@ export function GoodsTabs({ tabs, active, onChange }) {
 
 // owned: 보유 여부, active: 착용/배치 중.
 // ownedLabel: 보유 시 가격 대신 보여줄 문구, showOwnedBadge: 우측 상단 '보유' 배지 여부(상점은 끔)
+// onDelete: 주어지면 카드 우상단에 삭제(×) 버튼을 노출한다 (커스텀 아이템 전용).
+// 카드 자체가 <button>이라 삭제 버튼을 중첩하지 않고, 래퍼 안에 형제로 나란히 둔다.
 export function ItemCard({
   item,
   owned,
@@ -49,10 +51,11 @@ export function ItemCard({
   onClick,
   artSize = 52,
   ownedLabel,
+  onDelete,
 }) {
   const footerLabel = active ? '사용 중' : owned ? (ownedLabel ?? '보유 중') : null
 
-  return (
+  const card = (
     <button type="button" className={`goods-card${active ? ' selected' : ''}`} onClick={() => onClick(item)}>
       <span className="goods-card-visual">
         <ItemArt item={item} size={artSize} />
@@ -69,6 +72,24 @@ export function ItemCard({
         )}
       </span>
     </button>
+  )
+
+  if (!onDelete) return card
+
+  return (
+    <div className="goods-card-wrap">
+      {card}
+      <button
+        type="button"
+        className="goods-card-delete"
+        onClick={() => onDelete(item)}
+        aria-label={`${item.name} 삭제`}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+    </div>
   )
 }
 
