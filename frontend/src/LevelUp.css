@@ -1,0 +1,362 @@
+/* 레벨 업 축하 화면 — 박스 없이 크림+그린 포레스트 톤 배경 위에 요소만 얹는다. */
+.levelup-page {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(216, 233, 208, 0.55) 0%, rgba(0, 0, 0, 0) 58%),
+    #fbf7ee;
+  overflow: hidden;
+}
+
+/* 카드(박스) 제거 → 투명한 세로 스택 */
+.levelup-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+
+/* 각 요소는 아래에서 위로 천천히 하나씩 떠오른다(순번 --order * 0.62s 지연).
+   살짝 지나쳤다 정착하는 쫀득한(스프링) 이징. */
+.levelup-item {
+  opacity: 0;
+  animation: levelup-rise 0.85s cubic-bezier(0.22, 1.5, 0.36, 1) both;
+  animation-delay: calc(var(--order, 0) * 0.62s);
+}
+
+@keyframes levelup-rise {
+  0%   { opacity: 0; transform: translateY(34px); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.levelup-kicker {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #8a8272;
+}
+
+.levelup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 26px;
+  font-weight: 900;
+  color: #2d6c4d;
+  letter-spacing: 0.5px;
+}
+
+/* 캐릭터 무대: 고양이가 계속 손을 흔들며 축하한다 */
+.levelup-stage {
+  position: relative;
+  height: 172px;
+  margin: 0 auto 6px;
+}
+
+.levelup-avatar {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 10px !important;
+  width: 132px !important;
+  height: 160px !important;
+  transform: translateX(-50%);
+  transform-origin: bottom center;
+  animation: character-breathe 3.4s ease-in-out infinite;
+}
+
+.levelup-stage-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 108px;
+  height: 14px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(102, 83, 42, 0.14);
+}
+
+/* 고양이는 등장 직후 잠깐 가만히 있다가(팔은 평소처럼 내린 상태),
+   --wave-start 시점부터 손을 들어 인사 모션을 시작해 이후로는 계속 반복한다. */
+.levelup-stage .cat-arm-wave {
+  transform-box: fill-box;
+  transform-origin: 84% 88%;
+  opacity: 0;
+  animation:
+    levelup-wave-reveal 0.4s ease-out var(--wave-start, 3.7s) both,
+    levelup-wiggle 2.2s ease-in-out var(--wave-start, 3.7s) infinite;
+}
+
+@keyframes levelup-wave-reveal {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 평소 팔(내린 상태)은 흔들기 시작하는 순간 스르륵 사라진다 */
+.levelup-stage .cat-arm-left {
+  opacity: 1;
+  animation: levelup-arm-left-hide 0.3s ease-in var(--wave-start, 3.7s) both;
+}
+
+@keyframes levelup-arm-left-hide {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes levelup-wiggle {
+  0%   { transform: rotate(-14deg); }
+  25%  { transform: rotate(10deg); }
+  50%  { transform: rotate(-10deg); }
+  75%  { transform: rotate(7deg); }
+  100% { transform: rotate(-14deg); }
+}
+
+/* 레벨 표시: 게이지가 다 찬 뒤, 같은 자리에서 Lv.11 → Lv.12 로 "뿅" 하고 바뀐다.
+   두 칩을 같은 그리드 칸에 겹쳐 두어, 이전 레벨이 사라지는 자리에 오른 레벨이 튀어나온다. */
+.levelup-levels {
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  min-height: 32px; /* 자리 확보 → 레이아웃 흔들림 방지 */
+  margin-bottom: 14px;
+}
+
+.levelup-levels > .levelup-chip {
+  grid-area: 1 / 1; /* 두 칩이 같은 칸(가운데)에 겹친다 */
+}
+
+.levelup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+  transform-origin: center;
+}
+
+/* 이전 레벨: 등장 → 잠깐 유지 → 오른 레벨이 뿅 할 때 그 자리에서 스르륵 사라짐 */
+.levelup-chip.old {
+  background: #f1ebdc;
+  border: 1px solid #e3d8bf;
+  color: #a49b88;
+  opacity: 0;
+  animation: levelup-chip-swap var(--old-dur, 1s) cubic-bezier(0.34, 1.4, 0.5, 1) var(--old-delay, 0s) both;
+}
+
+/* 등장 때 살짝 지나쳤다 정착(쫀득) → 유지 → 리셋 순간 그 자리에서 사라짐 */
+@keyframes levelup-chip-swap {
+  0%   { opacity: 0; transform: scale(0.6) translateY(8px); }
+  22%  { opacity: 1; transform: scale(1.06) translateY(0); }
+  32%  { transform: scale(1); }
+  74%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.5); }
+}
+
+/* 오른 레벨: 같은 자리에서 작게→오버슈트→제자리로 "뿅" 튀어나온 뒤 통통 강조 */
+.levelup-chip.new {
+  background: #2d6c4d;
+  border: 1px solid #2d6c4d;
+  color: #fdfbf4;
+  box-shadow: 0 4px 10px -4px rgba(45, 108, 77, 0.55);
+  opacity: 0;
+  animation:
+    levelup-chip-pop 0.72s cubic-bezier(0.3, 1.7, 0.5, 1) var(--rise-delay, 0s) both,
+    levelup-chip-pulse 2.1s ease-in-out calc(var(--rise-delay, 0s) + 0.78s) infinite;
+}
+
+/* 작게→크게 지나쳤다→살짝 되돌아왔다 정착: 쫀득한 더블 바운스 */
+@keyframes levelup-chip-pop {
+  0%   { opacity: 0; transform: scale(0.2); }
+  50%  { opacity: 1; transform: scale(1.2); }
+  72%  { transform: scale(0.94); }
+  88%  { transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes levelup-chip-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+.levelup-arrow {
+  color: #b4aa93;
+}
+
+/* 칭호 (홈 화면의 "성실한 학습자") */
+.levelup-title {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #4a4436;
+}
+
+/* XP 바 */
+.levelup-xp {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.levelup-xp-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #8a8272;
+}
+
+.levelup-xp-label {
+  color: #2d6c4d;
+}
+
+.levelup-progress {
+  height: 10px;
+  border-radius: 100px;
+  background: #ece4d2;
+  overflow: hidden;
+}
+
+/* 좌→우로 채워지되, 채워지는 시간(--xp-duration)은 획득 경험치량에 따라 유동적.
+   자기 요소가 떠오른 뒤(--xp-delay) 채워지기 시작한다. */
+.levelup-progress-fill {
+  height: 100%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, #7FB79A, #2d6c4d);
+  width: var(--xp-target, 62%);
+  transform-origin: left center;
+  /* 쫀득하게: 목표치를 살짝 지나쳤다 정착하는 백-이징 */
+  animation: levelup-xp-fill var(--xp-duration, 1.8s) cubic-bezier(0.34, 1.42, 0.5, 1)
+    var(--xp-delay, 1.6s) both;
+}
+
+/* 2단계: (A) 0→100% 가득 참 → 잠깐 유지 → 리셋(0) → (B) 현재 진행도(--xp-target)까지.
+   RESET_FRAC(=44%)는 JS와 동일하게 맞춰야 레벨 바뀜 타이밍이 정확히 겹친다. */
+@keyframes levelup-xp-fill {
+  0%      { width: 0; }
+  40%     { width: 100%; }
+  44%     { width: 100%; }
+  44.001% { width: 0; }
+  100%    { width: var(--xp-target, 62%); }
+}
+
+/* XP 숫자: 리셋 순간(--swap-at)에 2,000/2,000 → 1,240/2,000 으로 교체 */
+.levelup-xp-amount {
+  display: inline-grid;
+  justify-items: end;
+}
+
+.levelup-xp-amount > .xp-amt {
+  grid-area: 1 / 1;
+}
+
+.xp-amt-old {
+  animation: xp-amt-out 0.2s ease var(--swap-at, 2s) both;
+}
+
+.xp-amt-new {
+  opacity: 0;
+  animation: xp-amt-in 0.28s ease var(--swap-at, 2s) both;
+}
+
+@keyframes xp-amt-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes xp-amt-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 보상 */
+.levelup-rewards {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.levelup-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 12px;
+  background: #f6f0e0;
+  border: 1px solid #eadfc6;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a4436;
+}
+
+.levelup-continue {
+  width: 100%;
+  padding: 13px 0;
+  border: none;
+  border-radius: 14px;
+  background: #2d6c4d;
+  color: #fdfbf4;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.levelup-continue:hover { background: #275e43; }
+.levelup-continue:active { transform: scale(0.985); }
+
+/* 축하 조각(팔레트 색만 사용) */
+.levelup-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -14px;
+  left: calc(6% + var(--i) * 9.5%);
+  width: 9px;
+  height: 13px;
+  border-radius: 3px;
+  opacity: 0;
+  animation: confetti-fall 3.6s linear infinite;
+  animation-delay: calc(var(--i) * 0.37s);
+}
+
+.piece-0 { background: #8bb069; }
+.piece-1 { background: #f0c04a; width: 8px; height: 8px; border-radius: 50%; }
+.piece-2 { background: #e8b4bc; }
+.piece-3 { background: #2d6c4d; width: 7px; height: 11px; }
+.piece-4 { background: #d9ab6e; width: 8px; height: 8px; border-radius: 50%; }
+
+@keyframes confetti-fall {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+  6%   { opacity: 0.9; }
+  85%  { opacity: 0.9; }
+  100% { transform: translateY(105vh) rotate(340deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .levelup-item { animation: none; opacity: 1; }
+  .levelup-avatar { animation: none; }
+  .levelup-stage .cat-arm-wave { animation: none; opacity: 1; transform: rotate(0deg); }
+  .levelup-stage .cat-arm-left { animation: none; opacity: 0; }
+  .levelup-chip.old { animation: none; opacity: 0; }
+  .levelup-chip.new { animation: none; opacity: 1; }
+  .xp-amt-old { animation: none; opacity: 0; }
+  .xp-amt-new { animation: none; opacity: 1; }
+  .levelup-progress-fill { animation: none; width: var(--xp-target, 62%); }
+  .confetti-piece { animation: none; opacity: 0; }
+}
