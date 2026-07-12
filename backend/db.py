@@ -77,6 +77,27 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
     await pool.execute(
         "ALTER TABLE tutor_chat_messages ADD COLUMN IF NOT EXISTS image_url TEXT"
     )
+    # 시험 당일 AI 어시스턴트: 시험 계획과 마지막 안내 결과를 저장한다 (routers/exam_day.py).
+    await pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exam_day_plans (
+            id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            certification_name    TEXT NOT NULL,
+            exam_site_name        TEXT NOT NULL,
+            exam_site_address     TEXT NOT NULL,
+            exam_date             DATE NOT NULL,
+            exam_start_time       TEXT NOT NULL,
+            origin_latitude       DOUBLE PRECISION NOT NULL,
+            origin_longitude      DOUBLE PRECISION NOT NULL,
+            buffer_minutes        INT NOT NULL DEFAULT 30 CHECK (buffer_minutes BETWEEN 0 AND 180),
+            last_assistant_result JSONB,
+            last_assistant_at     TIMESTAMPTZ,
+            created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_exam_day_plans_user ON exam_day_plans(user_id, exam_date);
+        """
+    )
 
 
 async def close_pool() -> None:

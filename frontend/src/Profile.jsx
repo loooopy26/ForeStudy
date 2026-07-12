@@ -38,6 +38,7 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
   const { equipped } = useGoods()
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
+  const [level, setLevel] = useState(null)
   const [certGoalInfo, setCertGoalInfo] = useState(null)
   const [certificates, setCertificates] = useState(getCurrentCertificates)
   const [selectedCertificate, setSelectedCertificate] = useState(null)
@@ -49,7 +50,10 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
     getStats(TIMER_DEMO_USER_ID, materialId).then(setStats).catch((err) => {
       if (err instanceof TypeError) setStats(DEV_FALLBACK_STATS)
     })
-    getMyUser().then((user) => setDotori(user.dotori)).catch((err) => {
+    getMyUser().then((user) => {
+      setDotori(user.dotori)
+      setLevel(user.level)
+    }).catch((err) => {
       if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
     })
   }, [materialId])
@@ -153,7 +157,7 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
           <div className="profile-info hero-copy">
             <div className="profile-level hero-level">
               <StarIcon size={15} />
-              <span>Lv.12</span>
+              <span>Lv.{level !== null ? level : '-'}</span>
             </div>
             <p className="profile-sub">성실한 학습자</p>
             <div className="xp-row">

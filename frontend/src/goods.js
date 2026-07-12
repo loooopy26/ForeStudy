@@ -204,6 +204,26 @@ export function useGoods() {
     })
   }, [])
 
+  // 커스텀 아이템 삭제: 커스텀 목록에서 지우고, 보유/착용/방 배치에 남은 참조도 함께 정리한다.
+  // (기본 카탈로그 아이템에는 쓰지 않는다 — 되살릴 방법이 있는 구매 아이템과 달리 커스텀은 영구 삭제)
+  const removeCustomItem = useCallback((id) => {
+    setGlobalCustomItems((prev) => prev.filter((saved) => saved.id !== id))
+    setGlobalOwned((prev) => prev.filter((ownedId) => ownedId !== id))
+    setGlobalEquipped((prev) => {
+      const next = { ...prev }
+      for (const slot of Object.keys(next)) {
+        if (next[slot] === id) next[slot] = null
+      }
+      return next
+    })
+    setGlobalRoom((prev) => ({
+      ...prev,
+      wallpaper: prev.wallpaper === id ? null : prev.wallpaper,
+      floor: prev.floor === id ? null : prev.floor,
+      placed: prev.placed.filter((p) => p.id !== id),
+    }))
+  }, [])
+
   // 착용 중이면 벗고, 아니면 같은 부위 아이템을 교체 착용.
   const toggleEquip = useCallback((item) => {
     setGlobalEquipped((prev) => ({
@@ -262,6 +282,7 @@ export function useGoods() {
     buy,
     spend,
     addCustomItem,
+    removeCustomItem,
     toggleEquip,
     toggleRoomItem,
     moveRoomItem,

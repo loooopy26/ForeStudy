@@ -26,7 +26,7 @@ const TAB_FILTER = {
 
 function ShopPage({ onNavigate, initialSub }) {
   const goods = useGoods()
-  const { wallet, isOwned, buy, customItems } = goods
+  const { wallet, isOwned, buy, customItems, removeCustomItem } = goods
   const [tab, setTab] = useState('wear')
   const isFromRoom = initialSub === 'ai-from-room'
   const [showAi, setShowAi] = useState(initialSub === 'ai' || isFromRoom)
@@ -47,6 +47,13 @@ function ShopPage({ onNavigate, initialSub }) {
     } else {
       setToast({ text: '도토리가 부족해요' })
     }
+  }
+
+  const handleDelete = (item) => {
+    // 커스텀 아이템은 되살릴 수 없으므로 삭제 전에 한 번 확인한다.
+    if (!window.confirm(`'${item.name}'을(를) 삭제할까요? 되돌릴 수 없어요.`)) return
+    removeCustomItem(item.id)
+    setToast({ text: `${item.name} 삭제 완료` })
   }
 
   const handleKept = (item) => {
@@ -95,7 +102,7 @@ function ShopPage({ onNavigate, initialSub }) {
                 active={false}
                 onClick={handleBuy}
                 ownedLabel="보유 중"
-                showOwnedBadge={false}
+                onDelete={tab === CUSTOM_TAB ? handleDelete : undefined}
               />
             ))}
           </div>

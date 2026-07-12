@@ -48,7 +48,7 @@ NAVER_CLIENT_ID=your_naver_client_id
 NAVER_CLIENT_SECRET=your_naver_client_secret
 ```
 
-`UPSTAGE_API_KEY`, `TMAP_APP_KEY`, Naver 키는 해당 기능을 사용할 때만 필요합니다. 키가 없어도 서버는 실행되며, 관련 API 호출에서 설정 안내를 반환합니다.
+`UPSTAGE_API_KEY`, `TMAP_APP_KEY`, `GOOGLE_MAPS_API_KEY`, Naver 키는 해당 기능을 사용할 때만 필요합니다. 키가 없어도 서버는 실행되며, 관련 API 호출에서 설정 안내를 반환합니다. `GOOGLE_MAPS_API_KEY`를 설정하면 대중교통 경로를 Google Routes API로 조회하고, 없으면 TMAP 대중교통 길안내로 대체합니다.
 
 ```powershell
 python -m venv .venv
@@ -80,8 +80,15 @@ VITE_API_BASE_URL=http://localhost:8000
 `TMAP_APP_KEY`를 설정하면 다음 API와 화면이 활성화됩니다.
 
 - `POST /api/location/nearby-study-places`: 현재 위치와 자연어 요청을 기반으로 학습 장소를 추천합니다.
-- `POST /api/location/exam-day-assistant`: 시험장 주소를 좌표로 변환하고, 도보·자동차·대중교통별 이동 시간과 권장 출발 시각을 계산합니다.
-- `GET /api/location/health`: TMAP 키 설정 여부를 확인합니다.
+- `POST /api/location/exam-day-assistant`: 시험장 주소를 좌표로 변환하고, 도보·자동차·대중교통별 이동 시간과 권장 출발 시각을 계산합니다. `GOOGLE_MAPS_API_KEY`가 있으면 대중교통 구간은 Google Routes API로 조회합니다.
+- `GET /api/location/health`: TMAP·Google Routes 키 설정 여부와 대중교통 제공자를 확인합니다.
+
+시험 계획을 저장해 두고 시험 당일 계획 ID만으로 어시스턴트를 실행할 수도 있습니다(`GOOGLE_MAPS_API_KEY`/`TMAP_APP_KEY` 동일하게 사용).
+
+- `POST /api/exam-day/plans`: 자격증·시험장·일시·출발지를 담은 시험 계획을 저장합니다.
+- `GET /api/exam-day/plans`, `GET /api/exam-day/plans/{plan_id}`: 저장된 계획 목록/상세와 마지막 실행 결과를 조회합니다.
+- `POST /api/exam-day/plans/{plan_id}/assistant`: 저장된 계획으로 이동 안내를 실행합니다.
+- `DELETE /api/exam-day/plans/{plan_id}`: 저장된 계획을 삭제합니다.
 
 Naver Search API 키는 “조용한”, “24시간”, “넓은 좌석” 같은 시설 조건을 장소 후기에서 추가 확인할 때만 사용합니다.
 

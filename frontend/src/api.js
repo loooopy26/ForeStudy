@@ -178,6 +178,15 @@ export async function getDemoUser() {
   return apiRequest('/auth/demo')
 }
 
+// 로그인 상태면 실제 계정(도토리 등) 정보를, 아니면 데모 유저 정보를 반환한다.
+export async function getMyUser() {
+  const currentUser = getCurrentUser()
+  if (currentUser?.id) {
+    return apiRequest(`/auth/me/${currentUser.id}`)
+  }
+  return getDemoUser()
+}
+
 export async function login(email, password) {
   return apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
 }
@@ -426,6 +435,11 @@ export async function generateAiItem(prompt) {
 
   const user = getCurrentUser()
   let userIdVal = 1
+  // 로그인한 실제 유저(UUID)면 real_user_id로 넘겨 백엔드가 진짜 도토리(PostgreSQL users.dotori)를
+  // 차감하게 한다. 이게 없으면 백엔드는 항상 0으로 시작하는 SQLite 더미 토큰을 쓰려다 잔액
+  // 부족으로 실패한다. int user_id는 인벤토리/이미지 레코드용으로 계속 함께 보낸다.
+  let realUserId = null
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (user && user.id) {
     if (typeof user.id === 'number') {
       userIdVal = user.id
@@ -436,13 +450,16 @@ export async function generateAiItem(prompt) {
       } else {
         userIdVal = Math.abs(hashText(user.id)) || 1
       }
+      if (UUID_RE.test(user.id)) {
+        realUserId = user.id
+      }
     }
   }
 
   // 백엔드 AI 생성 API 호출
   const res = await apiRequest('/items/generate', {
     method: 'POST',
-    body: JSON.stringify({ user_id: userIdVal, prompt: text }),
+    body: JSON.stringify({ user_id: userIdVal, prompt: text, real_user_id: realUserId }),
   })
 
   const item = res.item

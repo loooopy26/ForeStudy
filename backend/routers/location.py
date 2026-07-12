@@ -91,6 +91,14 @@ _ATTRIBUTE_SEARCH_TIMEOUT_SECONDS = 6.0
 _ATTRIBUTE_SEARCH_MAX_RESULTS = 3
 _ATTRIBUTE_CONTENT_FETCH_TIMEOUT_SECONDS = 8.0
 
+# 시험 당일 어시스턴트: 시험장 실제 방문 후기(Naver 블로그)에서 주차/입구/대기환경 같은
+# 현장 팁을 뽑는다. TMAP/LLM 안내가 못 주는 "가본 사람만 아는" 정보라 별도로 검색한다.
+# 부가 기능이므로 Naver 미설정/실패 시 조용히 빈 목록으로 대체한다.
+# TMAP 주변 검색과 동시에 실행되는 동안 Naver 응답이 밀리는 경우가 있어(실측: 6초로는
+# 간헐적으로 타임아웃) naver.py 자체 HTTP 타임아웃(10초)에 맞춰 여유를 둔다.
+_EXAM_TIP_SEARCH_TIMEOUT_SECONDS = 12.0
+_EXAM_TIP_MAX_RESULTS = 3
+
 
 def _rule_based_attribute_hints(query: str) -> list[str]:
     found: list[str] = []
@@ -189,6 +197,85 @@ async def _search_place_attributes(place: dict, attribute_hints: list[str]) -> l
     return await asyncio.gather(*[_enrich(r) for r in results])
 
 
+async def _search_exam_site_reviews(exam_site_name: str) -> list[dict]:
+    """시험장 이름으로 실제 방문 후기 블로그 글을 Naver 검색으로 가져온다. 장소 속성 검색과
+    같은 이유로 "시험장명 + 후기"로만 검색하고, 팁 추출은 LLM(_extract_exam_site_tips)이 한다.
+    미설정/실패/타임아웃이면 부가 정보이므로 조용히 빈 목록을 반환한다."""
+    try:
+        results = await asyncio.wait_for(
+            naver.search_blog(f"{exam_site_name} 시험 후기", max_results=_EXAM_TIP_MAX_RESULTS),
+            timeout=_EXAM_TIP_SEARCH_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("시험장 후기 Naver 검색 실패 (site=%s): %r", exam_site_name, exc)
+        return []
+
+    # snippet은 글 앞부분만 잘려 오므로, 가능하면 블로그 원문으로 대체한다 (실패 시 snippet 유지).
+    async def _enrich(result: dict) -> dict:
+        try:
+            content = await asyncio.wait_for(
+                naver.fetch_blog_content(result["url"]),
+                timeout=_ATTRIBUTE_CONTENT_FETCH_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            content = None
+        return {**result, "snippet": content} if content else result
+
+    return await asyncio.gather(*[_enrich(r) for r in results])
+
+
+async def _extract_exam_site_tips(
+    exam_site_name: str, certification_name: str, review_snippets: list[dict]
+) -> list[str]:
+    """후기 글에 실제로 언급된 현장 팁(주차, 입구/고사실 찾기, 대기 환경, 도착 시간 등)만
+    한 문장씩 뽑는다. 같은 시험장이라도 다른 종목(예: 조리기능사) 후기가 걸리는 경우가 많아,
+    종목 전용 준비물/규정은 빼고 시험장(장소) 자체에 대한 팁만 남기도록 자격증 이름을 함께
+    넘긴다. 후기에 없는 내용은 지어내지 않으며, LLM이 없거나 실패하면 빈 목록."""
+    if not review_snippets or not settings.upstage_api_key:
+        return []
+    try:
+        snippet_lines = "\n".join(
+            f"{i}. {s.get('title', '')} - {s.get('snippet', '')}" for i, s in enumerate(review_snippets, 1)
+        )
+        prompt = (
+            f'시험장: "{exam_site_name}"\n'
+            f'사용자가 응시할 자격증: "{certification_name}"\n\n'
+            f"이 시험장을 실제로 다녀온 사람들의 블로그 후기:\n{snippet_lines}\n\n"
+            "위 후기에 실제로 언급된 내용 중에서, 이 시험장에서 시험을 볼 사람에게 도움이 되는 "
+            "현장 팁만 뽑아줘 (예: 주차 가능 여부, 입구/고사실 찾기, 건물 구조, 대기 장소, 화장실, "
+            "주변 소음, 도착 권장 시간 등).\n\n"
+            "규칙:\n"
+            "- 위 후기에 실제로 나온 내용만 사용해라. 후기에 없는 일반적인 시험 조언(신분증 챙기기 등)을 지어내지 마라.\n"
+            f"- 후기가 '{exam_site_name}'이 아닌 다른 장소나 다른 주제에 대한 글이면 그 글은 무시해라.\n"
+            f"- 시험장(장소) 자체에 대한 팁만 뽑아라. 후기 작성자가 응시한 종목이 '{certification_name}'과 "
+            "다르면, 그 종목에만 해당하는 준비물/복장/시험 진행 규정(예: 조리복, 칼, 재료 등)은 제외해라. "
+            "주차/건물/대기실/매점/입실 시간처럼 어떤 종목이든 해당되는 내용은 뽑아도 된다.\n"
+            "- 팁 하나당 한국어 한 문장. 쓸 만한 팁이 없으면 빈 배열을 반환해라.\n\n"
+            'Return JSON only: {"tips": ["팁1", "팁2"]}'
+        )
+        result = await asyncio.wait_for(
+            upstage.chat_json(
+                [
+                    {
+                        "role": "system",
+                        "content": "너는 시험장 방문 후기에서 현장 팁을 추출하는 도우미야. 후기에 없는 내용은 절대 지어내지 않아.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                max_tokens=500,
+            ),
+            timeout=_LLM_REASON_TIMEOUT_SECONDS,
+        )
+        return [t.strip() for t in (result.get("tips") or []) if isinstance(t, str) and t.strip()]
+    except asyncio.TimeoutError:
+        logger.warning("시험장 팁 LLM 추출 타임아웃 (site=%s)", exam_site_name)
+        return []
+    except Exception:
+        logger.exception("시험장 팁 LLM 추출 실패 (site=%s)", exam_site_name)
+        return []
+
+
 def _require_tmap() -> None:
     if not settings.tmap_app_key:
         raise HTTPException(
@@ -199,7 +286,13 @@ def _require_tmap() -> None:
 
 @router.get("/health")
 def location_health():
-    return {"tmap_configured": bool(settings.tmap_app_key), "required_env": ["TMAP_APP_KEY"]}
+    return {
+        "tmap_configured": bool(settings.tmap_app_key),
+        "google_routes_configured": bool(settings.google_maps_api_key),
+        "transit_provider": "google_routes" if settings.google_maps_api_key else "tmap",
+        "required_env": ["TMAP_APP_KEY"],
+        "optional_env": ["GOOGLE_MAPS_API_KEY"],
+    }
 
 
 @router.post("/nearby-study-places")
@@ -320,7 +413,13 @@ async def exam_day_assistant(request: ExamDayAssistantRequest):
             entry["raw"] = info.get("raw")
         serialized_routes[mode] = entry
 
-    nearby_exam_site_places = await _search_nearby_exam_site_places(exam_coord)
+    nearby_exam_site_places, review_snippets = await asyncio.gather(
+        _search_nearby_exam_site_places(exam_coord),
+        _search_exam_site_reviews(request.exam.exam_site_name),
+    )
+    exam_site_tips = await _extract_exam_site_tips(
+        request.exam.exam_site_name, request.exam.certification_name, review_snippets
+    )
 
     exam_info = {
         "certification_name": request.exam.certification_name,
@@ -332,7 +431,7 @@ async def exam_day_assistant(request: ExamDayAssistantRequest):
         exam_info, serialized_routes, nearby_exam_site_places, request.buffer_minutes
     )
 
-    return {
+    result = {
         "exam": {
             **exam_info,
             "exam_site_address": request.exam.exam_site_address,
@@ -342,7 +441,15 @@ async def exam_day_assistant(request: ExamDayAssistantRequest):
         "routes": serialized_routes,
         "nearby_exam_site_places": nearby_exam_site_places,
         "guidance": guidance,
+        # Naver 블로그 후기에서 추출한 현장 팁. 후기가 없거나 Naver/LLM 미설정이면 빈 목록.
+        "exam_site_tips": exam_site_tips,
+        "exam_site_tip_sources": [
+            {"title": s.get("title", ""), "url": s.get("url", "")} for s in review_snippets
+        ],
     }
+    if request.debug:
+        result["exam_site_review_snippets"] = review_snippets
+    return result
 
 
 def _serialize_route(route: dict | None, debug: bool) -> dict | None:
@@ -659,6 +766,8 @@ async def _generate_exam_guidance(exam_info: dict, routes: dict, nearby_places: 
             "위 정보만 근거로 시험 당일 안내를 작성해줘. 이동시간/거리/출발시각 숫자는 위에 주어진 값만 "
             "그대로 인용하고, 새로운 숫자를 계산하거나 추측하지 마.\n\n"
             "규칙:\n"
+            "- recommended_transport_mode는 특별한 이유가 없으면 소요시간이 가장 짧은 수단을 골라라. "
+            "더 오래 걸리는 수단을 추천하려면 그 이유를 recommended_transport_reason에 분명히 설명해야 한다.\n"
             "- risk_notes는 출발시각을 되풀이하지 말고, 교통 정체·배차 지연·주차·날씨처럼 이동 중 실제로 "
             "생길 수 있는 위험 요소를 설명해.\n"
             "- action_plan은 시험 당일 아침 시간 순서대로 할 일만 적어. 커피/식사 같은 여가 활동은 넣지 마.\n"
