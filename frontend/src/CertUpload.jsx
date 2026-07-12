@@ -90,7 +90,7 @@ function CertUpload({ certName, onNavigate }) {
         setProgressMessage('기존에 업로드한 자료의 처리를 확인하고 있어요')
       } else {
         setProgressMessage('파일을 업로드하고 있어요')
-        const uploaded = await uploadMaterial(files[0], `${certName} 학습 자료`)
+        const uploaded = await uploadMaterial(files[0], `${certName} 학습 자료`, certName)
         materialId = uploaded.material_id
         setActiveMaterialId(materialId)
         setProgressMessage('문서에서 텍스트를 추출하고 있어요')

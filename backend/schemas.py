@@ -112,27 +112,28 @@ class QuestCompleteResponse(BaseModel):
 
 # Timer: 도서관 공부 시작, 이탈/정지, 종료 이벤트를 기록합니다.
 # 시간 측정은 프론트에서 하고, 백엔드는 그 값을 받아 DB에 저장만 합니다.
+# user_id/session_id는 로그인 계정 기준 Postgres UUID입니다.
 class TimerStartRequest(BaseModel):
-    user_id: int = Field(..., example=1)
+    user_id: str = Field(..., example="00000000-0000-0000-0000-000000000000")
     material_id: str | None = Field(None, example="material-uuid")
 
 
 class TimerStartResponse(BaseModel):
-    session_id: int
-    user_id: int
+    session_id: str
+    user_id: str
     started_at: datetime
     status: str
 
 
 class TimerPauseRequest(BaseModel):
-    session_id: int = Field(..., example=1)
+    session_id: str = Field(..., example="00000000-0000-0000-0000-000000000000")
     segment_minutes: int = Field(..., ge=0, example=15, description="프론트에서 측정한, 시작(또는 직전 재개) 이후 이번 구간 동안 집중한 분")
     reason: str = Field("leave_library", example="leave_library")
 
 
 class TimerPauseResponse(BaseModel):
-    session_id: int
-    user_id: int
+    session_id: str
+    user_id: str
     paused_at: datetime
     segment_minutes: int
     total_studied_minutes: int
@@ -141,14 +142,14 @@ class TimerPauseResponse(BaseModel):
 
 
 class TimerEndRequest(BaseModel):
-    session_id: int = Field(..., example=1)
+    session_id: str = Field(..., example="00000000-0000-0000-0000-000000000000")
     studied_minutes: int = Field(..., ge=0, example=40, description="프론트에서 측정한 총 공부 시간(분)")
     max_uninterrupted_minutes: int = Field(..., ge=0, example=40, description="프론트에서 측정한, 이탈 없이 이어간 최대 구간(분)")
 
 
 class TimerEndResponse(BaseModel):
-    session_id: int
-    user_id: int
+    session_id: str
+    user_id: str
     started_at: datetime
     ended_at: datetime
     studied_minutes: int
@@ -202,7 +203,7 @@ class QuizSubmitResponse(BaseModel):
 
 # Stats/Reports: 공부 시간, 연속 학습일, 퀴즈 점수 기반 능력치입니다.
 class StatsResponse(BaseModel):
-    user_id: int
+    user_id: str
     focus: int
     comprehension: int
     persistence: int

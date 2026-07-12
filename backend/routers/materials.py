@@ -54,6 +54,7 @@ async def upload_material(
     title: str | None = Form(None, description="자료 제목. 비워두면 파일명에서 확장자를 뺀 값을 사용"),
     user_id: str | None = Form(None, description="자료 소유자 user_id(UUID). 비워두면 데모 사용자로 처리"),
     certification_id: str | None = Form(None, description="연관된 자격증 id(UUID). 없으면 비워둠"),
+    certification_name: str | None = Form(None, description="연관된 자격증 이름. 주어지면 certifications 테이블에서 찾거나 새로 만들어 certification_id로 사용"),
 ):
     """자료 업로드. 202 반환 후 백그라운드에서 파싱→임베딩→요약 진행.
     processed_status가 'ready'가 될 때까지 GET /api/materials/{id} 로 폴링."""
@@ -80,6 +81,17 @@ async def upload_material(
     async with pool.acquire() as conn:
         if user_id is None:
             user_id = await get_or_create_demo_user(conn)
+        if certification_name and certification_name.strip():
+            cert_row = await conn.fetchrow(
+                """
+                INSERT INTO certifications (name)
+                VALUES ($1)
+                ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                RETURNING id
+                """,
+                certification_name.strip(),
+            )
+            certification_id = str(cert_row["id"])
         row = await conn.fetchrow(
             """
             INSERT INTO study_materials (user_id, certification_id, title, file_url, file_type)

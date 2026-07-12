@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Profile from './Profile'
 import Village from './Village'
 import AddCert from './AddCert'
@@ -20,7 +20,7 @@ import StudyMap from './StudyMap'
 import StudyPlaces from './StudyPlaces'
 import ExamAssistant from './ExamAssistant'
 import Auth from './Auth'
-import { getCurrentCertificates, getCurrentUser, getMaterialId, setMaterialId as persistMaterialId } from './api'
+import { getCurrentCertificates, getCurrentUser, getMaterialId, onCertificatesUpdated, setMaterialId as persistMaterialId } from './api'
 import './theme.css'
 import './Shell.css'
 import './App.css'
@@ -110,6 +110,18 @@ function App() {
   const updateLibraryTimer = useCallback((timerState) => {
     setLibraryTimers((timers) => ({ ...timers, [timerKey]: timerState }))
   }, [timerKey])
+
+  // 자격증 목록은 이제 계정 기준으로 백엔드에서 비동기로 불러온다 — 첫 렌더 시점엔
+  // 아직 캐시가 비어 있을 수 있어, 목록이 채워지면 아직 아무 자격증도 선택 안 된
+  // 경우(materialId 미지정)에 한해 초기 선택을 다시 계산해준다.
+  useEffect(() => onCertificatesUpdated(() => {
+    if (materialId) return
+    const cert = getInitialCertificate()
+    if (cert) {
+      setSelectedCert(cert.title)
+      selectMaterial(cert.materialId)
+    }
+  }), [materialId])
 
   return (
     <div className="app-shell">

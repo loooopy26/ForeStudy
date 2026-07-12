@@ -4,10 +4,8 @@
 주요 API: POST /timer/start, POST /timer/pause, POST /timer/end
 """
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter
 
-from database import get_db
 from schemas import (
     TimerEndRequest,
     TimerEndResponse,
@@ -22,14 +20,13 @@ router = APIRouter(prefix="/timer", tags=["timer"])
 
 
 @router.post("/start", response_model=TimerStartResponse)
-def start_study_timer(request: TimerStartRequest, db: Session = Depends(get_db)):
-    return start_timer(db=db, user_id=request.user_id, material_id=request.material_id)
+async def start_study_timer(request: TimerStartRequest):
+    return await start_timer(user_id=request.user_id, material_id=request.material_id)
 
 
 @router.post("/pause", response_model=TimerPauseResponse)
-def pause_study_timer(request: TimerPauseRequest, db: Session = Depends(get_db)):
-    return pause_timer(
-        db=db,
+async def pause_study_timer(request: TimerPauseRequest):
+    return await pause_timer(
         session_id=request.session_id,
         segment_minutes=request.segment_minutes,
         reason=request.reason,
@@ -37,9 +34,8 @@ def pause_study_timer(request: TimerPauseRequest, db: Session = Depends(get_db))
 
 
 @router.post("/end", response_model=TimerEndResponse)
-def end_study_timer(request: TimerEndRequest, db: Session = Depends(get_db)):
-    return end_timer(
-        db=db,
+async def end_study_timer(request: TimerEndRequest):
+    return await end_timer(
         session_id=request.session_id,
         studied_minutes=request.studied_minutes,
         max_uninterrupted_minutes=request.max_uninterrupted_minutes,

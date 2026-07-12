@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import QuestPage from './QuestPage'
 import AchievementPage from './AchievementPage'
 import {
+  claimReward,
+  getClaimedRewards,
   getMyUser,
   getQuestEventConsecutiveDays,
   getQuestEventDayCountThisWeek,
   getQuestEventTotal,
   getQuestEventTotalThisWeek,
-  grantQuestReward,
+  loadQuestEvents,
 } from './api'
 import './questTheme.css'
 
@@ -194,6 +196,27 @@ function ForestGame({ onNavigate, initialSub }) {
     return () => window.removeEventListener('forestudy:quest-events', syncQuestProgress)
   }, [])
 
+  // 로그인 계정 기준 이벤트 로그를 백엔드에서 불러온다 — 로드가 끝나면 위 syncQuestProgress가
+  // 'forestudy:quest-events' 이벤트를 받아 진행률을 다시 계산한다.
+  useEffect(() => {
+    loadQuestEvents()
+  }, [])
+
+  // 이미 보상을 받은 퀘스트/업적은 다른 기기에서도 다시 받을 수 없어야 한다 — 계정 기준으로
+  // 확인해 로컬 상태(quests/achievements)의 claimed 플래그를 백엔드 진실과 맞춘다.
+  useEffect(() => {
+    getClaimedRewards([getDateKey(), getWeekKey(), 'lifetime']).then((claimedIds) => {
+      if (!claimedIds.length) return
+      const claimedSet = new Set(claimedIds)
+      setQuests((current) => current.map((quest) => (
+        claimedSet.has(quest.id) ? { ...quest, claimed: true } : quest
+      )))
+      setAchievements((current) => current.map((ach) => (
+        claimedSet.has(ach.id) ? { ...ach, claimed: true } : ach
+      )))
+    }).catch(() => {})
+  }, [])
+
   // 'quests' | 'achievements' — 게시판 내부 화면 전환
   const [sub, setSub] = useState(initialSub === 'achievements' ? 'achievements' : 'quests')
 
@@ -223,8 +246,10 @@ function ForestGame({ onNavigate, initialSub }) {
   const handleClaimQuest = async (id) => {
     const quest = quests.find((item) => item.id === id)
     if (!quest || quest.claimed) return
+    // 일별 퀘스트는 오늘 날짜, 주간/보너스 퀘스트는 이번 주 시작일을 기준으로 중복 수령을 막는다.
+    const periodKey = quest.type === 'main' ? getDateKey() : getWeekKey()
     try {
-      const user = await grantQuestReward(quest.rewardExp, quest.rewardAcorns)
+      const user = await claimReward(quest.id, periodKey, quest.rewardExp, quest.rewardAcorns)
       setLevel(user.level)
       setExp(user.current_xp)
       setAcorns(user.dotori)
@@ -234,13 +259,19 @@ function ForestGame({ onNavigate, initialSub }) {
     }
   }
 
-  const handleClaimReward = (id) => {
+  const handleClaimReward = async (id) => {
     const ach = achievements.find(a => a.id === id)
     if (!ach || ach.claimed) return
-    setAcorns(prev => prev + ach.rewardAcorns)
-    setAchievements(prev => prev.map(a =>
-      a.id === id ? { ...a, claimed: true } : a
-    ))
+    try {
+      // 업적은 하루/주 단위로 반복되지 않으므로 고정 period_key로 평생 한 번만 받을 수 있다.
+      const user = await claimReward(ach.id, 'lifetime', 0, ach.rewardAcorns)
+      setAcorns(user.dotori)
+      setAchievements(prev => prev.map(a =>
+        a.id === id ? { ...a, claimed: true } : a
+      ))
+    } catch (error) {
+      window.alert(error.message)
+    }
   }
 
   if (sub === 'achievements') {

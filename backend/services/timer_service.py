@@ -1,99 +1,115 @@
-"""Timer persistence service.
+"""도서관 공부 타이머 영속화 서비스.
 
-Screen: library study timer.
-Role: 프론트에서 측정한 타이머 값을 받아 저장만 한다 (경과 시간 계산은 하지 않음).
+담당 탭: 도서관 화면, 공부 시작/이탈 정지/공부 종료.
+로그인 계정(UUID)을 기준으로 Postgres study_sessions/study_session_interruptions에 저장한다
+(예전에는 SQLite에 정수 데모 유저 id로 저장해 로그인 계정과 무관하게 데이터가 섞였다).
 """
 
+import asyncpg
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
 
-from models import StudySession, StudySessionInterruption
-from services.memory_store import mark_activity, now_utc
-from services.reward_service import add_reward
+from db import get_pool
+from services.auth_service import grant_quest_reward
 
 
-def start_timer(db: Session, user_id: int, material_id: str | None = None) -> dict:
-    session = StudySession(user_id=user_id, material_id=material_id, started_at=now_utc(), status="started")
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-
-    mark_activity(user_id)
-    return _to_start_response(session)
-
-
-def pause_timer(db: Session, session_id: int, segment_minutes: int, reason: str) -> dict:
-    session = _get_active_session(db, session_id)
-    paused_at = now_utc()
-
-    interruption = StudySessionInterruption(
-        study_session_id=session.id,
-        interrupted_at=paused_at,
-        segment_minutes=segment_minutes,
-        reason=reason,
-    )
-    db.add(interruption)
-    db.commit()
-    db.refresh(session)
-
-    total_studied_minutes = sum(item.segment_minutes for item in session.interruptions)
+async def start_timer(user_id: str, material_id: str | None = None) -> dict:
+    pool = await get_pool()
+    try:
+        row = await pool.fetchrow(
+            """
+            INSERT INTO study_sessions (user_id, study_material_id, status)
+            VALUES ($1, $2, 'active')
+            RETURNING id, user_id, started_at, status
+            """,
+            user_id,
+            material_id,
+        )
+    except (asyncpg.DataError, asyncpg.ForeignKeyViolationError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="User not found") from exc
     return {
-        "session_id": session.id,
-        "user_id": session.user_id,
-        "paused_at": paused_at,
+        "session_id": str(row["id"]),
+        "user_id": str(row["user_id"]),
+        "started_at": row["started_at"],
+        "status": row["status"],
+    }
+
+
+async def pause_timer(session_id: str, segment_minutes: int, reason: str) -> dict:
+    pool = await get_pool()
+    session = await _get_active_session(pool, session_id)
+    paused_row = await pool.fetchrow(
+        """
+        INSERT INTO study_session_interruptions (study_session_id, paused_at, segment_minutes, reason)
+        VALUES ($1, now(), $2, $3)
+        RETURNING paused_at
+        """,
+        session_id,
+        segment_minutes,
+        reason,
+    )
+    total_studied_minutes = await pool.fetchval(
+        "SELECT COALESCE(SUM(segment_minutes), 0) FROM study_session_interruptions WHERE study_session_id = $1",
+        session_id,
+    )
+    return {
+        "session_id": str(session["id"]),
+        "user_id": str(session["user_id"]),
+        "paused_at": paused_row["paused_at"],
         "segment_minutes": segment_minutes,
-        "total_studied_minutes": total_studied_minutes,
-        "status": "paused",
+        "total_studied_minutes": int(total_studied_minutes),
+        "status": session["status"],
         "reason": reason,
     }
 
 
-def end_timer(db: Session, session_id: int, studied_minutes: int, max_uninterrupted_minutes: int) -> dict:
-    session = _get_active_session(db, session_id)
+async def end_timer(session_id: str, studied_minutes: int, max_uninterrupted_minutes: int) -> dict:
+    pool = await get_pool()
+    session = await _get_active_session(pool, session_id)
 
-    reward_token = 30 if studied_minutes >= 40 else 10 if studied_minutes > 0 else 0
-    session.ended_at = now_utc()
-    session.studied_minutes = studied_minutes
-    session.max_uninterrupted_minutes = max_uninterrupted_minutes
-    session.reward_token = reward_token
-    session.status = "ended"
-    db.commit()
-    db.refresh(session)
+    reward_dotori = 30 if studied_minutes >= 40 else 10 if studied_minutes > 0 else 0
+    row = await pool.fetchrow(
+        """
+        UPDATE study_sessions
+        SET ended_at = now(), studied_minutes = $1, max_uninterrupted_minutes = $2,
+            reward_dotori = $3, status = 'completed'
+        WHERE id = $4
+        RETURNING id, user_id, started_at, ended_at, studied_minutes, max_uninterrupted_minutes,
+                  reward_dotori, status
+        """,
+        studied_minutes,
+        max_uninterrupted_minutes,
+        reward_dotori,
+        session_id,
+    )
 
-    achievement = "Focused study 40 minutes" if studied_minutes >= 40 else "First study completed"
-    add_reward(session.user_id, reward_token, achievement if studied_minutes > 0 else None)
-    mark_activity(session.user_id)
-    return _to_end_response(session)
+    if reward_dotori > 0:
+        # 기존 SQLite reward_service.add_reward(token=exp)와 동일하게 exp == 도토리 지급량으로 맞춘다.
+        await grant_quest_reward(str(row["user_id"]), reward_dotori, reward_dotori)
 
-
-def _get_active_session(db: Session, session_id: int) -> StudySession:
-    session = db.get(StudySession, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Timer session not found")
-    if session.status == "ended":
-        raise HTTPException(status_code=400, detail="Timer session is not active")
-    return session
-
-
-def _to_start_response(session: StudySession) -> dict:
     return {
-        "session_id": session.id,
-        "user_id": session.user_id,
-        "started_at": session.started_at,
-        "status": session.status,
-    }
-
-
-def _to_end_response(session: StudySession) -> dict:
-    return {
-        "session_id": session.id,
-        "user_id": session.user_id,
-        "started_at": session.started_at,
-        "ended_at": session.ended_at,
-        "studied_minutes": session.studied_minutes,
-        "max_uninterrupted_minutes": session.max_uninterrupted_minutes,
-        "reward_token": session.reward_token,
-        "status": session.status,
-        "final_quiz_recommended": session.studied_minutes > 0,
+        "session_id": str(row["id"]),
+        "user_id": str(row["user_id"]),
+        "started_at": row["started_at"],
+        "ended_at": row["ended_at"],
+        "studied_minutes": row["studied_minutes"],
+        "max_uninterrupted_minutes": row["max_uninterrupted_minutes"],
+        "reward_token": row["reward_dotori"],
+        "status": row["status"],
+        "final_quiz_recommended": row["studied_minutes"] > 0,
         "next_action": "POST /api/materials/{material_id}/review-quiz to create a post-study review quiz.",
     }
+
+
+async def _get_active_session(pool: asyncpg.Pool, session_id: str) -> asyncpg.Record:
+    try:
+        row = await pool.fetchrow(
+            "SELECT id, user_id, status FROM study_sessions WHERE id = $1",
+            session_id,
+        )
+    except (asyncpg.DataError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Timer session not found") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Timer session not found")
+    if row["status"] not in ("active", "paused"):
+        raise HTTPException(status_code=400, detail="Timer session is not active")
+    return row

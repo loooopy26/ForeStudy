@@ -6,9 +6,7 @@ import {
   createPlacementQuiz,
   deleteMaterial,
   deleteQuiz,
-  getCurrentCertificates,
   normalizeOptions,
-  removeCurrentCertificate,
   submitQuiz,
 } from './api'
 import { QuizIcon, CheckIcon } from './icons'
@@ -73,8 +71,6 @@ function PlacementTest({ onNavigate, certName, materialId, placementQuiz }) {
     setPendingLeave(null)
     if (materialId) {
       deleteMaterial(materialId).catch(() => {})
-      const match = getCurrentCertificates().find((c) => c.materialId === materialId)
-      if (match) removeCurrentCertificate(match.id)
     }
     onNavigate(page, payload)
   }

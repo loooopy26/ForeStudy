@@ -55,6 +55,41 @@ async def _resolve_user_id(pool, user_id: str | None) -> str:
         return await get_or_create_demo_user(conn)
 
 
+@router.get("/list")
+async def list_goals(user_id: str):
+    """로그인 계정이 등록한 자격증 목록. 자격증 화면들의 '진행 중인 자격증' 카드에서 쓴다."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT g.id AS goal_id, g.certification_id, c.name AS certification_name, g.target_exam_date
+        FROM user_cert_goals g
+        JOIN certifications c ON c.id = g.certification_id
+        WHERE g.user_id = $1 AND g.status = 'active'
+        ORDER BY g.created_at
+        """,
+        user_id,
+    )
+    result = []
+    for row in rows:
+        material = await pool.fetchrow(
+            """
+            SELECT id FROM study_materials
+            WHERE user_id = $1 AND certification_id = $2
+            ORDER BY uploaded_at DESC LIMIT 1
+            """,
+            user_id,
+            row["certification_id"],
+        )
+        result.append({
+            "id": str(row["goal_id"]),
+            "title": row["certification_name"],
+            "materialId": str(material["id"]) if material else None,
+            "subtitle": "학습 중",
+            "targetExamDate": row["target_exam_date"].isoformat() if row["target_exam_date"] else None,
+        })
+    return result
+
+
 @router.get("")
 async def get_goal(certification_name: str, user_id: str | None = None):
     pool = await get_pool()

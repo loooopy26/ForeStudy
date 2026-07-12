@@ -98,6 +98,81 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
         CREATE INDEX IF NOT EXISTS idx_exam_day_plans_user ON exam_day_plans(user_id, exam_date);
         """
     )
+    # 도서관 공부 타이머/상태창: 기존 SQLite 데모 유저 기반 스텁을 걷어내고 로그인 계정
+    # UUID로 Postgres study_sessions에 저장하기 위한 컬럼들 (services/timer_service.py, stat_service.py).
+    await pool.execute(
+        """
+        ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS study_material_id UUID
+            REFERENCES study_materials(id) ON DELETE SET NULL;
+        ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS studied_minutes INT NOT NULL DEFAULT 0;
+        ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS max_uninterrupted_minutes INT NOT NULL DEFAULT 0;
+        ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS reward_dotori INT NOT NULL DEFAULT 0;
+        ALTER TABLE study_session_interruptions ADD COLUMN IF NOT EXISTS segment_minutes INT NOT NULL DEFAULT 0;
+        """
+    )
+    # 프론트가 실제로 보내는 pause 사유('leave_library')가 기존 CHECK 제약에는 없어 그대로 두면
+    # INSERT가 위반으로 실패한다 — 제약을 프론트 값에 맞게 갱신한다.
+    await pool.execute(
+        """
+        ALTER TABLE study_session_interruptions DROP CONSTRAINT IF EXISTS study_session_interruptions_reason_check;
+        ALTER TABLE study_session_interruptions ADD CONSTRAINT study_session_interruptions_reason_check
+            CHECK (reason IN ('tab_hidden','left_site','manual_pause','leave_library'));
+        """
+    )
+    # 상점/내 방/캐릭터 꾸미기: 기존 shop_items/user_inventory/rooms/character_equipment는
+    # 팀원 스텁이 참조하던 미사용 테이블이라, AI 커스텀 아이템까지 다루는 실제 goods API
+    # (services/goods_service.py)가 쓰는 더 단순한 전용 테이블을 별도로 둔다.
+    await pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_owned_items (
+            user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            item_id     TEXT NOT NULL,
+            acquired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (user_id, item_id)
+        );
+        CREATE TABLE IF NOT EXISTS user_custom_items (
+            user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            item_id    TEXT NOT NULL,
+            data       JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (user_id, item_id)
+        );
+        CREATE TABLE IF NOT EXISTS user_equipped_items (
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            slot    TEXT NOT NULL CHECK (slot IN ('outfit','hat','pants','bag','accessory')),
+            item_id TEXT,
+            PRIMARY KEY (user_id, slot)
+        );
+        CREATE TABLE IF NOT EXISTS user_rooms (
+            user_id    UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            wallpaper  TEXT,
+            floor      TEXT,
+            placed     JSONB NOT NULL DEFAULT '[]',
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """
+    )
+    # 퀘스트 게시판: 일별/주별 퀘스트 진행률 계산용 이벤트 로그 + 중복 보상 방지용 수령 기록.
+    # (예전에는 ForestGame.jsx가 이 전부를 localStorage에만 저장해 기기가 바뀌면 진행률이
+    # 초기화되고, 같은 보상을 다른 기기에서 다시 받을 수 있었다.)
+    await pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS quest_events (
+            user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            event_date DATE NOT NULL,
+            amount     NUMERIC NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, event_type, event_date)
+        );
+        CREATE TABLE IF NOT EXISTS claimed_rewards (
+            user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            reward_id  TEXT NOT NULL,
+            period_key TEXT NOT NULL,
+            claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (user_id, reward_id, period_key)
+        );
+        """
+    )
 
 
 async def close_pool() -> None:

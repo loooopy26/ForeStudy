@@ -5,7 +5,7 @@ import villageMap from './assets/village-map.png'
 import certMascot from './assets/cert-mascot.png'
 import { AcornIcon } from './icons'
 import { useGoods } from './goods'
-import { getCertificateProgress, getCurrentCertificates, getMyUser } from './api'
+import { getCertificateProgress, getCurrentCertificates, getMyUser, onCertificatesUpdated } from './api'
 import './Village.css'
 
 const PLACES = [
@@ -54,7 +54,9 @@ const PLACES = [
 function Village({ onNavigate, certName, onSelectCertificate }) {
   const { wallet } = useGoods()
   const [showOngoing, setShowOngoing] = useState(true)
-  const [certificates] = useState(getCurrentCertificates)
+  const [certificates, setCertificates] = useState(getCurrentCertificates)
+
+  useEffect(() => onCertificatesUpdated(() => setCertificates(getCurrentCertificates())), [])
   const [progress, setProgress] = useState({ progress: 0, remainingDays: null })
   const [level, setLevel] = useState(1)
   const activeCertificate = certificates.find((certificate) => certificate.title === certName) || certificates[0]

@@ -17,7 +17,8 @@ import {
   getCertificateProgress,
   getMyUser,
   getStats,
-  removeCurrentCertificate,
+  onCertificatesUpdated,
+  refreshCertificates,
   setCurrentUser,
 } from './api'
 import {
@@ -29,9 +30,6 @@ import {
   StarIcon,
 } from './icons'
 import './Profile.css'
-
-// SQLite 타이머 데모 유저(Library.jsx의 TIMER_DEMO_USER_ID)와 동일한 고정 id.
-const TIMER_DEMO_USER_ID = 1
 
 // TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패) 화면 확인용으로 보여줄 값.
 // 백엔드 세팅 후 이 상수와 아래 catch의 fallback 처리는 제거할 것.
@@ -54,14 +52,16 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
   const [editingNickname, setEditingNickname] = useState(false)
   const [progressByCert, setProgressByCert] = useState({})
 
+  useEffect(() => onCertificatesUpdated(() => setCertificates(getCurrentCertificates())), [])
+
   useEffect(() => {
-    getStats(TIMER_DEMO_USER_ID, materialId).then(setStats).catch((err) => {
-      if (err instanceof TypeError) setStats(DEV_FALLBACK_STATS)
-    })
     getMyUser().then((user) => {
       setDotori(user.dotori)
       setLevel(user.level)
       setCurrentXp(user.current_xp || 0)
+      getStats(user.id, materialId).then(setStats).catch((err) => {
+        if (err instanceof TypeError) setStats(DEV_FALLBACK_STATS)
+      })
     }).catch((err) => {
       if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
     })
@@ -123,7 +123,7 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
       }
       // 목표 시험일 + 일별 학습 플랜(curricula)도 함께 정리 — 없으면 그냥 조용히 넘어간다.
       await deleteCertGoal(selectedCertificate.title).catch(() => { })
-      setCertificates(removeCurrentCertificate(selectedCertificate.id))
+      await refreshCertificates()
       closeCertificateInfo()
     } catch (err) {
       setCertDeleteError(err.message || '학습 자료 삭제에 실패했습니다.')

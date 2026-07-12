@@ -29,34 +29,58 @@ function localTodayKey() {
   return `${year}-${month}-${day}`
 }
 
-const QUEST_EVENTS_KEY = 'forestudy_quest_events'
+// 퀘스트 진행률 계산용 이벤트 로그. 예전에는 localStorage에만 저장돼 기기를 바꾸면
+// 진행률이 초기화됐다 — 이제 로그인 계정 기준으로 백엔드(/api/quest-progress)에 저장한다.
+// 아래 getQuestEvent* 함수들은 여러 화면에서 매 렌더마다 동기적으로 호출되므로, 백엔드에서
+// 받아온 day-key -> {type: amount} 맵을 메모리 캐시로 들고 그 캐시를 읽는 식으로 동작을 유지한다.
+let questEventsCache = {}
+let questEventsLoaded = false
+
+export async function loadQuestEvents() {
+  const userId = getAuthUserId()
+  if (!userId) {
+    questEventsLoaded = true
+    return questEventsCache
+  }
+  try {
+    questEventsCache = await apiRequest(`/api/quest-progress/events?user_id=${encodeURIComponent(userId)}&days=14`)
+  } catch {
+    // 네트워크 오류 시 지금까지 쌓인 캐시를 그대로 유지한다.
+  }
+  questEventsLoaded = true
+  window.dispatchEvent(new Event('forestudy:quest-events'))
+  return questEventsCache
+}
 
 export function recordQuestEvent(type, amount = 1) {
   const increment = Number(amount)
   if (!Number.isFinite(increment) || increment <= 0) return
-  const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
   const today = localTodayKey()
-  const events = saved[today] || {}
+  const events = questEventsCache[today] || {}
   events[type] = (events[type] || 0) + increment
-  saved[today] = events
-  localStorage.setItem(QUEST_EVENTS_KEY, JSON.stringify(saved))
+  questEventsCache = { ...questEventsCache, [today]: events }
   window.dispatchEvent(new Event('forestudy:quest-events'))
+
+  const userId = getAuthUserId()
+  if (userId) {
+    apiRequest('/api/quest-progress/events', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, event_type: type, amount: increment, event_date: today }),
+    }).catch(() => {})
+  }
 }
 
 export function getTodayQuestEvents() {
-  try { return JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')[localTodayKey()] || {} } catch { return {} }
+  return questEventsCache[localTodayKey()] || {}
 }
 
 export function getQuestEventTotal(type, days = 1) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
-    return Array.from({ length: days }, (_, index) => {
-      const day = new Date()
-      day.setDate(day.getDate() - index)
-      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
-      return saved[key]?.[type] || 0
-    }).reduce((sum, value) => sum + value, 0)
-  } catch { return 0 }
+  return Array.from({ length: days }, (_, index) => {
+    const day = new Date()
+    day.setDate(day.getDate() - index)
+    const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+    return questEventsCache[key]?.[type] || 0
+  }).reduce((sum, value) => sum + value, 0)
 }
 
 function getWeekDateKeys() {
@@ -74,38 +98,41 @@ function getWeekDateKeys() {
 }
 
 export function getQuestEventTotalThisWeek(type) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
-    return getWeekDateKeys().reduce((sum, dateKey) => sum + (saved[dateKey]?.[type] || 0), 0)
-  } catch {
-    return 0
-  }
+  return getWeekDateKeys().reduce((sum, dateKey) => sum + (questEventsCache[dateKey]?.[type] || 0), 0)
 }
 
 export function getQuestEventDayCountThisWeek(type, minimumAmount = 1) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
-    return getWeekDateKeys().filter((dateKey) => (saved[dateKey]?.[type] || 0) >= minimumAmount).length
-  } catch {
-    return 0
-  }
+  return getWeekDateKeys().filter((dateKey) => (questEventsCache[dateKey]?.[type] || 0) >= minimumAmount).length
 }
 
 export function getQuestEventConsecutiveDays(type, minimumAmount = 1, maxDays = 7) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
-    let consecutiveDays = 0
-    for (let index = 0; index < maxDays; index += 1) {
-      const date = new Date()
-      date.setDate(date.getDate() - index)
-      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-      if ((saved[dateKey]?.[type] || 0) < minimumAmount) break
-      consecutiveDays += 1
-    }
-    return consecutiveDays
-  } catch {
-    return 0
+  let consecutiveDays = 0
+  for (let index = 0; index < maxDays; index += 1) {
+    const date = new Date()
+    date.setDate(date.getDate() - index)
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    if ((questEventsCache[dateKey]?.[type] || 0) < minimumAmount) break
+    consecutiveDays += 1
   }
+  return consecutiveDays
+}
+
+// 퀘스트/업적 보상 수령 — period_key가 같은 항목은 계정당 한 번만 받을 수 있다(백엔드가 검증).
+// 일별 퀘스트는 오늘 날짜, 주간/보너스 퀘스트는 이번 주 시작일, 업적처럼 반복되지 않는
+// 보상은 호출하는 쪽에서 고정 문자열(예: 'lifetime')을 period_key로 넘기면 된다.
+export async function claimReward(rewardId, periodKey, exp, dotori) {
+  const userId = getAuthUserId()
+  if (!userId) throw new Error('로그인이 필요합니다.')
+  return apiRequest('/api/quest-progress/claim', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, reward_id: rewardId, period_key: periodKey, exp, dotori }),
+  })
+}
+
+export async function getClaimedRewards(periodKeys) {
+  const userId = getAuthUserId()
+  if (!userId) return []
+  return apiRequest(`/api/quest-progress/claimed?user_id=${encodeURIComponent(userId)}&period_keys=${encodeURIComponent(periodKeys.join(','))}`)
 }
 
 // 자격증(자료)별로 독립된 상태를 저장해야 한다 — 예전엔 단일 객체({materialId, ...}) 하나만
@@ -285,6 +312,13 @@ export async function getDemoUser() {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// 실제 로그인 계정의 UUID. 자격증 목표/자료 등 "계정 단위로 저장돼야 하는" API 호출에
+// 빠짐없이 넘기기 위한 공용 헬퍼 — 로그인 상태가 아니면 null(백엔드가 데모 유저로 폴백).
+function getAuthUserId() {
+  const user = getCurrentUser()
+  return user?.id && UUID_RE.test(String(user.id)) ? user.id : null
+}
+
 // 로그인 상태면 실제 계정(도토리 등) 정보를, 아니면 데모 유저 정보를 반환한다.
 export async function getMyUser() {
   const currentUser = getCurrentUser()
@@ -350,44 +384,40 @@ export function clearCurrentUser() {
   localStorage.removeItem('forestudy_user')
 }
 
-const CERTIFICATES_STORAGE_KEY = 'forestudy_certificates'
+// 등록된 자격증 목록은 더 이상 기기(localStorage)가 아니라 로그인 계정 기준으로
+// Postgres user_cert_goals 테이블에서 조회한다 (GET /api/cert-goals/list).
+// 여러 화면이 동기적으로 getCurrentCertificates()를 읽는 기존 패턴을 깨지 않기 위해
+// 모듈 전역 캐시 + 이벤트(goods.js의 계정 동기화와 동일한 관용구)로 감싼다.
+const CERT_UPDATED_EVENT = 'forestudy:certificates-updated'
+let certificatesCache = []
+let certificatesLoaded = false
 
 export function getCurrentCertificates() {
-  try {
-    const certificates = JSON.parse(localStorage.getItem(CERTIFICATES_STORAGE_KEY) || '[]')
-    return Array.isArray(certificates) ? certificates : []
-  } catch {
-    return []
+  if (!certificatesLoaded) refreshCertificates()
+  return certificatesCache
+}
+
+export async function refreshCertificates() {
+  const userId = getAuthUserId()
+  if (!userId) {
+    certificatesCache = []
+  } else {
+    try {
+      const list = await apiRequest(`/api/cert-goals/list?user_id=${encodeURIComponent(userId)}`)
+      certificatesCache = Array.isArray(list) ? list : []
+    } catch {
+      certificatesCache = []
+    }
   }
+  certificatesLoaded = true
+  window.dispatchEvent(new Event(CERT_UPDATED_EVENT))
+  return certificatesCache
 }
 
-export function addCurrentCertificate(title, extra = {}) {
-  const normalizedTitle = title.trim()
-  if (!normalizedTitle) return getCurrentCertificates()
-
-  const certificates = getCurrentCertificates()
-  if (certificates.some((certificate) => certificate.title === normalizedTitle)) return certificates
-
-  const nextCertificates = [
-    ...certificates,
-    {
-      id: crypto.randomUUID(),
-      title: normalizedTitle,
-      subtitle: '학습 준비 중',
-      progress: 0,
-      ...extra,
-    },
-  ]
-  localStorage.setItem(CERTIFICATES_STORAGE_KEY, JSON.stringify(nextCertificates))
-  return nextCertificates
-}
-
-export function removeCurrentCertificate(certificateId) {
-  const nextCertificates = getCurrentCertificates().filter(
-    (certificate) => certificate.id !== certificateId
-  )
-  localStorage.setItem(CERTIFICATES_STORAGE_KEY, JSON.stringify(nextCertificates))
-  return nextCertificates
+// 자격증 등록/삭제 직후 백엔드 상태와 동기화하고 싶을 때 호출한다.
+export function onCertificatesUpdated(handler) {
+  window.addEventListener(CERT_UPDATED_EVENT, handler)
+  return () => window.removeEventListener(CERT_UPDATED_EVENT, handler)
 }
 
 export async function getStats(userId, materialId = '') {
@@ -395,8 +425,11 @@ export async function getStats(userId, materialId = '') {
   return apiRequest(`/stats/${userId}${query}`)
 }
 
-export async function startTimer(userId) {
-  return apiRequest('/timer/start', { method: 'POST', body: JSON.stringify({ user_id: userId }) })
+export async function startTimer(userId, materialId) {
+  return apiRequest('/timer/start', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, material_id: materialId || null }),
+  })
 }
 
 export async function pauseTimer(sessionId, segmentMinutes, reason = 'leave_library') {
@@ -434,10 +467,13 @@ export async function deleteMaterial(materialId) {
   if (!res.ok && res.status !== 404) throw new Error('자료 삭제에 실패했습니다')
 }
 
-export async function uploadMaterial(file, title = '') {
+export async function uploadMaterial(file, title = '', certificationName = '') {
   const form = new FormData()
   form.append('file', file)
   if (title) form.append('title', title)
+  if (certificationName) form.append('certification_name', certificationName)
+  const userId = getAuthUserId()
+  if (userId) form.append('user_id', userId)
   const res = await fetch(`${API_BASE}/api/materials`, { method: 'POST', body: form })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -475,19 +511,27 @@ export function createLearningPlan(attemptId, certificationName) {
 export function saveCertGoal(certificationName, targetExamDate) {
   return apiRequest('/api/cert-goals', {
     method: 'PUT',
-    body: JSON.stringify({ certification_name: certificationName, target_exam_date: targetExamDate }),
+    body: JSON.stringify({
+      certification_name: certificationName,
+      target_exam_date: targetExamDate,
+      user_id: getAuthUserId(),
+    }),
   })
 }
 
 export function getCertGoal(certificationName) {
-  return apiRequest(`/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}`)
+  const userId = getAuthUserId()
+  const userQuery = userId ? `&user_id=${encodeURIComponent(userId)}` : ''
+  return apiRequest(`/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}${userQuery}`)
 }
 
 // 자격증 삭제 시 목표 시험일 + 일별 학습 플랜(curricula)까지 함께 정리한다.
 // DELETE는 204(빈 응답)라서 apiRequest의 response.json() 파싱을 피하려고 raw fetch를 쓴다.
 export async function deleteCertGoal(certificationName) {
+  const userId = getAuthUserId()
+  const userQuery = userId ? `&user_id=${encodeURIComponent(userId)}` : ''
   const res = await fetch(
-    `${API_BASE}/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}`,
+    `${API_BASE}/api/cert-goals?certification_name=${encodeURIComponent(certificationName)}${userQuery}`,
     { method: 'DELETE' }
   )
   if (!res.ok && res.status !== 404) throw new Error('목표 시험일 삭제에 실패했습니다')
@@ -503,7 +547,12 @@ export function prepareReviewQuiz(materialId) {
 export function sendCertGoalChat(certificationName, message, threadId) {
   return apiRequest('/api/cert-goals/agent-chat', {
     method: 'POST',
-    body: JSON.stringify({ certification_name: certificationName, message, thread_id: threadId || null }),
+    body: JSON.stringify({
+      certification_name: certificationName,
+      message,
+      thread_id: threadId || null,
+      user_id: getAuthUserId(),
+    }),
   })
 }
 

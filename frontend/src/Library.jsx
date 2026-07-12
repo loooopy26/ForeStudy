@@ -4,15 +4,13 @@ import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import CertSelect from './CertSelect'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, pauseTimer, prepareReviewQuiz, recordQuestEvent, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, updateCurriculumDay, uploadMaterial } from './api'
+import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getMyUser, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, onCertificatesUpdated, pauseTimer, prepareReviewQuiz, recordQuestEvent, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, updateCurriculumDay, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
 const MIN_DURATION_MIN = 1
 const MAX_DURATION_MIN = 180
 const RING_LENGTH = 653.45
-// 로그인이 없는 MVP라 SQLite 타이머 쪽은 고정 데모 유저를 사용한다 (AI 도서관의 데모 유저와 별개).
-const TIMER_DEMO_USER_ID = 1
 
 const STATUS_LABEL = {
   pending: '대기 중',
@@ -97,10 +95,13 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   const [durationError, setDurationError] = useState('')
   const runningRef = useRef(running)
   const studySecRef = useRef(restoredTimer.studySec)
+  const [, forceCertRerender] = useState(0)
 
   useEffect(() => {
     runningRef.current = running
   }, [running])
+
+  useEffect(() => onCertificatesUpdated(() => forceCertRerender((n) => n + 1)), [])
 
   // 타이머 세션 상태는 렌더링과 무관해서 ref로 관리한다.
   const sessionIdRef = useRef(restoredTimer.sessionId || null)
@@ -221,7 +222,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
     setUploading(true)
     setUploadError(null)
     try {
-      const { material_id } = await uploadMaterial(file)
+      const { material_id } = await uploadMaterial(file, '', certName)
       onSelectMaterial(material_id)
       refreshMaterials()
     } catch (err) {
@@ -307,7 +308,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
     if (!running) {
       if (!sessionIdRef.current) {
         try {
-          const { session_id } = await startTimer(TIMER_DEMO_USER_ID, materialId)
+          const user = await getMyUser()
+          const { session_id } = await startTimer(user.id, materialId)
           sessionIdRef.current = session_id
         } catch {
           // 세션 생성에 실패해도 로컬 타이머는 그대로 진행한다.

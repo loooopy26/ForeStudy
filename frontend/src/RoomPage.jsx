@@ -280,6 +280,9 @@ function RoomPage({ onNavigate }) {
     if (draggingId) {
       event.currentTarget.releasePointerCapture(event.pointerId)
       setDraggingId(null)
+      // 드래그 중에는 로컬 상태만 갱신하다가(moveRoomItem), 드래그가 끝나는 이 시점에만
+      // 최종 위치를 백엔드로 동기화한다 — 매 픽셀마다 네트워크 요청을 보내지 않기 위해서다.
+      saveRoom()
     }
   }
 

@@ -197,18 +197,44 @@ CREATE TABLE quests (
 );
 CREATE INDEX idx_quests_user_date ON quests(user_id, quest_date);
 
+-- 위 quests 테이블은 미사용이다(실제 화면은 프론트에서 결정적으로 생성한 일/주간 퀘스트
+-- 목록을 쓴다 — ForestGame.jsx). 실제로 저장이 필요한 건 진행률 계산용 이벤트 로그와
+-- 보상 중복 수령 방지 기록뿐이라 routers/quest_progress.py는 아래 두 테이블만 쓴다.
+
+-- 일/주간 퀘스트 진행률 계산용 이벤트 로그 (예: daily-timer, weekly-quiz, bonus-study-minutes)
+CREATE TABLE quest_events (
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    event_date DATE NOT NULL,
+    amount     NUMERIC NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, event_type, event_date)
+);
+
+-- 퀘스트/업적 보상 중복 수령 방지 (period_key: 일별은 날짜, 주별은 주 시작일, 업적은 고정값)
+CREATE TABLE claimed_rewards (
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reward_id  TEXT NOT NULL,
+    period_key TEXT NOT NULL,
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, reward_id, period_key)
+);
+
 -- =====================================================================
 -- 6. 도서관 - 공부시간 타이머
 -- =====================================================================
 
 CREATE TABLE study_sessions (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    quest_id       UUID REFERENCES quests(id) ON DELETE SET NULL,
-    started_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ended_at       TIMESTAMPTZ,
-    active_seconds INT NOT NULL DEFAULT 0,
-    status         TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','completed','abandoned'))
+    id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quest_id                   UUID REFERENCES quests(id) ON DELETE SET NULL,
+    study_material_id          UUID REFERENCES study_materials(id) ON DELETE SET NULL,
+    started_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at                   TIMESTAMPTZ,
+    active_seconds             INT NOT NULL DEFAULT 0,
+    studied_minutes            INT NOT NULL DEFAULT 0,   -- 프론트에서 측정한 총 공부 시간(분)
+    max_uninterrupted_minutes  INT NOT NULL DEFAULT 0,    -- 이탈 없이 이어간 최대 구간(분) — 집중력 계산용
+    reward_dotori              INT NOT NULL DEFAULT 0,
+    status                     TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','completed','abandoned'))
 );
 CREATE INDEX idx_study_sessions_user ON study_sessions(user_id, started_at);
 
@@ -218,7 +244,8 @@ CREATE TABLE study_session_interruptions (
     study_session_id   UUID NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
     paused_at          TIMESTAMPTZ NOT NULL,
     resumed_at         TIMESTAMPTZ,
-    reason             TEXT NOT NULL DEFAULT 'tab_hidden' CHECK (reason IN ('tab_hidden','left_site','manual_pause'))
+    segment_minutes    INT NOT NULL DEFAULT 0,   -- 시작(또는 직전 재개) 이후 이번 구간 동안 집중한 분
+    reason             TEXT NOT NULL DEFAULT 'tab_hidden' CHECK (reason IN ('tab_hidden','left_site','manual_pause','leave_library'))
 );
 
 -- =====================================================================
@@ -514,6 +541,46 @@ CREATE TABLE forest_growth_events (
 -- =====================================================================
 -- 9. 내 방 / 상점 / 캐릭터 꾸미기
 -- =====================================================================
+--
+-- 아래 themes/shop_items/user_inventory/rooms/room_placements/characters/character_equipment는
+-- 초기 설계 단계에서 만들어졌지만 실제로는 쓰이지 않는다. 실제 상점/방/캐릭터 API
+-- (routers/goods.py, services/goods_service.py)는 AI로 만든 커스텀 아이템까지 함께
+-- 다뤄야 해서 카탈로그 아이템(UUID)만 가정한 이 구조 대신, item_id를 프론트 카탈로그의
+-- 문자열 슬러그(goods.js의 CATALOG id) 그대로 쓰는 더 단순한 전용 테이블을 쓴다.
+
+-- 구매/보유 아이템 id (기본 카탈로그 + AI 커스텀 아이템 공용)
+CREATE TABLE user_owned_items (
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id     TEXT NOT NULL,
+    acquired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, item_id)
+);
+
+-- AI로 만든 커스텀 아이템의 전체 데이터(이름/분류/색상/이미지 등, goods.js CATALOG 항목과 동일한 모양)
+CREATE TABLE user_custom_items (
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id    TEXT NOT NULL,
+    data       JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, item_id)
+);
+
+-- 슬롯별 장착 아이템 (캐릭터 꾸미기)
+CREATE TABLE user_equipped_items (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slot    TEXT NOT NULL CHECK (slot IN ('outfit','hat','pants','bag','accessory')),
+    item_id TEXT,
+    PRIMARY KEY (user_id, slot)
+);
+
+-- 내 방 배치 상태: 벽지/바닥 + 배치된 가구/장식 목록(JSON 배열: [{id,x,y,scale,rotate}])
+CREATE TABLE user_rooms (
+    user_id    UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    wallpaper  TEXT,
+    floor      TEXT,
+    placed     JSONB NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE themes (
     id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),

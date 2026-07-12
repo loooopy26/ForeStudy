@@ -1,13 +1,12 @@
 // 상점/내 방/캐릭터 화면이 공유하는 카탈로그와 로컬 상태.
 // 도토리 지갑은 퀘스트 보드(ForestGame)와 같은 키(forestudy_acorns_v4)를 쓴다.
+// 보유템/장착/방 배치/커스텀 아이템은 로그인 계정(UUID) 기준으로 백엔드(/api/goods)에 저장된다 —
+// 예전에는 여기가 전부 localStorage였어서 기기를 바꾸면 사라졌다. 드래그처럼 매우 잦은 로컬
+// 조작은 여전히 즉시 반영하고, 토글/회전/드래그 종료 같은 "확정" 시점에만 백엔드로 동기화한다.
 import { useCallback, useEffect, useState } from 'react'
-import { getMyUser, spendMyDotori } from './api'
+import { apiRequest, getMyUser, spendMyDotori } from './api'
 
 const WALLET_KEY = 'forestudy_acorns_v4'
-const OWNED_KEY = 'forestudy_goods_owned_v1'
-const EQUIPPED_KEY = 'forestudy_equipped_v1'
-const ROOM_KEY = 'forestudy_room_v1'
-const CUSTOM_ITEMS_KEY = 'forestudy_custom_items_v1'
 
 export const WEARABLE_KINDS = ['outfit', 'hat', 'pants', 'bag', 'accessory']
 
@@ -89,12 +88,11 @@ export const CATALOG = [
 
 // AI로 만든 커스텀 아이템(전체 객체) 목록. 방 화면에서도 이 목록으로 아이템을 찾는다.
 export function readCustomItems() {
-  return readJson(CUSTOM_ITEMS_KEY, [])
+  return globalCustomItems
 }
 
 // 기본 카탈로그에 없으면 AI 커스텀 아이템에서도 찾는다.
-export const getItem = (id) =>
-  CATALOG.find((item) => item.id === id) || readCustomItems().find((item) => item.id === id)
+export const getItem = (id) => CATALOG.find((item) => item.id === id) || globalCustomItems.find((item) => item.id === id)
 
 function readJson(key, fallback) {
   try {
@@ -108,29 +106,18 @@ function readJson(key, fallback) {
 const DEFAULT_EQUIPPED = { outfit: null, hat: null, pants: null, bag: null, accessory: null }
 const DEFAULT_ROOM = { wallpaper: null, floor: null, placed: [] }
 
-export function readEquipped() {
-  return { ...DEFAULT_EQUIPPED, ...readJson(EQUIPPED_KEY, {}) }
-}
-
-// 상점/내 방/캐릭터 화면 공용 훅. 지갑·보유·착용·방 배치를 localStorage에 유지한다.
+// 상점/내 방/캐릭터 화면 공용 훅. 지갑·보유·착용·방 배치를 백엔드(로그인 계정)와 동기화한다.
 // Global states stored at the module level to synchronize state across components in real-time
 let globalWallet = (() => {
   const saved = localStorage.getItem(WALLET_KEY)
   return saved ? parseInt(saved) : 0
 })()
-let globalOwned = readJson(OWNED_KEY, [])
-let globalCustomItems = readJson(CUSTOM_ITEMS_KEY, [])
-let globalEquipped = readEquipped()
-let globalRoom = (() => {
-  const raw = readJson(ROOM_KEY, {})
-  // 이전 드레싱룸 특화 배치 좌표(x가 15, 30, 78 등 벽쪽에 치우친 좌표들)가 저장되어 있으면 롤백 초기화 진행
-  const hasDressingLayout = raw.placed && raw.placed.some(p => [15, 30, 78, 23, 32].includes(p.x))
-  if (hasDressingLayout) {
-    localStorage.removeItem(ROOM_KEY)
-    return DEFAULT_ROOM
-  }
-  return { ...DEFAULT_ROOM, ...raw }
-})()
+let globalOwned = []
+let globalCustomItems = []
+let globalEquipped = { ...DEFAULT_EQUIPPED }
+let globalRoom = { ...DEFAULT_ROOM }
+let globalUserId = null
+let goodsLoaded = false
 
 const listeners = new Set()
 function notifyAll() {
@@ -147,31 +134,47 @@ export function syncGoodsWallet(value) {
   if (typeof value === 'number') setGlobalWallet(value)
 }
 
-function setGlobalOwned(value) {
-  globalOwned = typeof value === 'function' ? value(globalOwned) : value
-  localStorage.setItem(OWNED_KEY, JSON.stringify(globalOwned))
+function applyGoodsState(state) {
+  if (!state) return
+  globalOwned = state.owned || []
+  globalCustomItems = state.customItems || []
+  globalEquipped = { ...DEFAULT_EQUIPPED, ...(state.equipped || {}) }
+  globalRoom = { ...DEFAULT_ROOM, ...(state.room || {}) }
+  goodsLoaded = true
   notifyAll()
 }
 
-function setGlobalCustomItems(value) {
-  globalCustomItems = typeof value === 'function' ? value(globalCustomItems) : value
-  localStorage.setItem(CUSTOM_ITEMS_KEY, JSON.stringify(globalCustomItems))
-  notifyAll()
+async function loadGoodsState() {
+  try {
+    const user = await getMyUser()
+    globalUserId = user.id
+    const state = await apiRequest(`/api/goods/${user.id}`)
+    applyGoodsState(state)
+  } catch {
+    goodsLoaded = true
+    notifyAll()
+  }
 }
 
-function setGlobalEquipped(value) {
-  globalEquipped = typeof value === 'function' ? value(globalEquipped) : value
-  localStorage.setItem(EQUIPPED_KEY, JSON.stringify(globalEquipped))
-  notifyAll()
+let loadPromise = null
+function ensureGoodsLoaded() {
+  if (!loadPromise) loadPromise = loadGoodsState()
+  return loadPromise
 }
 
-function setGlobalRoom(value) {
-  globalRoom = typeof value === 'function' ? value(globalRoom) : value
-  localStorage.setItem(ROOM_KEY, JSON.stringify(globalRoom))
-  notifyAll()
+// 방 배치처럼 잦은 로컬 조작 뒤, 확정 시점(토글/회전/드래그 종료/저장)에만 백엔드로 밀어 넣는다.
+async function syncRoomToBackend() {
+  if (!globalUserId) return
+  try {
+    await apiRequest(`/api/goods/${globalUserId}/room`, {
+      method: 'PUT',
+      body: JSON.stringify({ wallpaper: globalRoom.wallpaper, floor: globalRoom.floor, placed: globalRoom.placed }),
+    })
+  } catch {
+    // 다음 확정 시점에 다시 전체 스냅샷을 보내므로 한 번의 실패는 무시해도 된다.
+  }
 }
 
-// 상점/내 방/캐릭터 화면 공용 훅. 지갑·보유·착용·방 배치를 localStorage에 유지한다.
 export function useGoods() {
   const [, forceUpdate] = useState({})
 
@@ -185,6 +188,7 @@ export function useGoods() {
         .catch(() => {})
     }
     listeners.add(handleUpdate)
+    ensureGoodsLoaded()
     syncAccountWallet()
     window.addEventListener('forestudy:user-updated', syncAccountWallet)
     return () => {
@@ -199,13 +203,19 @@ export function useGoods() {
   const buy = useCallback(async (item) => {
     if (globalOwned.includes(item.id)) return true
     if (globalWallet < item.price) return false
+    await ensureGoodsLoaded()
+    if (!globalUserId) return false
     try {
-      const updated = await spendMyDotori(item.price)
-      if (typeof updated?.dotori === 'number') setGlobalWallet(updated.dotori)
+      const result = await apiRequest(`/api/goods/${globalUserId}/buy`, {
+        method: 'POST',
+        body: JSON.stringify({ item_id: item.id, price: item.price }),
+      })
+      if (typeof result?.dotori === 'number') setGlobalWallet(result.dotori)
     } catch {
       return false
     }
-    setGlobalOwned((prev) => [...prev, item.id])
+    globalOwned = [...globalOwned, item.id]
+    notifyAll()
     return true
   }, [])
 
@@ -215,81 +225,86 @@ export function useGoods() {
     return true
   }, [])
 
-  const addCustomItem = useCallback((item) => {
-    setGlobalCustomItems((prev) => {
-      return prev.some((saved) => saved.id === item.id) ? prev : [...prev, item]
-    })
-    setGlobalOwned((prev) => {
-      return prev.includes(item.id) ? prev : [...prev, item.id]
-    })
+  const addCustomItem = useCallback(async (item) => {
+    await ensureGoodsLoaded()
+    if (!globalUserId) return
+    try {
+      const state = await apiRequest(`/api/goods/${globalUserId}/custom-items`, {
+        method: 'POST',
+        body: JSON.stringify({ item }),
+      })
+      applyGoodsState(state)
+    } catch {
+      // 실패해도 로컬에는 최소한 보이도록 낙관적으로 반영한다.
+      globalCustomItems = globalCustomItems.some((saved) => saved.id === item.id)
+        ? globalCustomItems
+        : [...globalCustomItems, item]
+      globalOwned = globalOwned.includes(item.id) ? globalOwned : [...globalOwned, item.id]
+      notifyAll()
+    }
   }, [])
 
   // 커스텀 아이템 삭제: 커스텀 목록에서 지우고, 보유/착용/방 배치에 남은 참조도 함께 정리한다.
   // (기본 카탈로그 아이템에는 쓰지 않는다 — 되살릴 방법이 있는 구매 아이템과 달리 커스텀은 영구 삭제)
-  const removeCustomItem = useCallback((id) => {
-    setGlobalCustomItems((prev) => prev.filter((saved) => saved.id !== id))
-    setGlobalOwned((prev) => prev.filter((ownedId) => ownedId !== id))
-    setGlobalEquipped((prev) => {
-      const next = { ...prev }
-      for (const slot of Object.keys(next)) {
-        if (next[slot] === id) next[slot] = null
-      }
-      return next
-    })
-    setGlobalRoom((prev) => ({
-      ...prev,
-      wallpaper: prev.wallpaper === id ? null : prev.wallpaper,
-      floor: prev.floor === id ? null : prev.floor,
-      placed: prev.placed.filter((p) => p.id !== id),
-    }))
+  const removeCustomItem = useCallback(async (id) => {
+    await ensureGoodsLoaded()
+    if (!globalUserId) return
+    try {
+      const state = await apiRequest(`/api/goods/${globalUserId}/custom-items/${id}`, { method: 'DELETE' })
+      applyGoodsState(state)
+    } catch {
+      globalCustomItems = globalCustomItems.filter((saved) => saved.id !== id)
+      globalOwned = globalOwned.filter((ownedId) => ownedId !== id)
+      notifyAll()
+    }
   }, [])
 
   // 착용 중이면 벗고, 아니면 같은 부위 아이템을 교체 착용.
   const toggleEquip = useCallback((item) => {
-    setGlobalEquipped((prev) => ({
-      ...prev,
-      [item.kind]: prev[item.kind] === item.id ? null : item.id,
-    }))
+    const nextItemId = globalEquipped[item.kind] === item.id ? null : item.id
+    globalEquipped = { ...globalEquipped, [item.kind]: nextItemId }
+    notifyAll()
+    if (globalUserId) {
+      apiRequest(`/api/goods/${globalUserId}/equip`, {
+        method: 'POST',
+        body: JSON.stringify({ slot: item.kind, item_id: nextItemId }),
+      }).catch(() => {})
+    }
   }, [])
 
   // 방 배치 토글: 없으면 기본 위치에 추가, 있으면 제거. 벽지/바닥은 표면 교체.
   const toggleRoomItem = useCallback((item) => {
-    setGlobalRoom((prev) => {
-      let next
-      if (item.kind === 'wallpaper' || item.kind === 'floor') {
-        next = { ...prev, [item.kind]: prev[item.kind] === item.id ? null : item.id }
-      } else {
-        const exists = prev.placed.some((p) => p.id === item.id)
-        const basePos = DEFAULT_POS[item.id] || { x: 50, y: 65 }
-        // 기본 배치 위치가 없는 AI 아이템은 겹쳐서 선택하기 힘든 것을 막기 위해 미세한 랜덤 오프셋을 줍니다.
-        const offset = DEFAULT_POS[item.id] ? 0 : Number((Math.random() * 8 - 4).toFixed(1))
-        const placed = exists
-          ? prev.placed.filter((p) => p.id !== item.id)
-          : [...prev.placed, { id: item.id, x: basePos.x + offset, y: basePos.y + offset }]
-        next = { ...prev, placed }
-      }
-      return next
-    })
+    if (item.kind === 'wallpaper' || item.kind === 'floor') {
+      globalRoom = { ...globalRoom, [item.kind]: globalRoom[item.kind] === item.id ? null : item.id }
+    } else {
+      const exists = globalRoom.placed.some((p) => p.id === item.id)
+      const basePos = DEFAULT_POS[item.id] || { x: 50, y: 65 }
+      // 기본 배치 위치가 없는 AI 아이템은 겹쳐서 선택하기 힘든 것을 막기 위해 미세한 랜덤 오프셋을 줍니다.
+      const offset = DEFAULT_POS[item.id] ? 0 : Number((Math.random() * 8 - 4).toFixed(1))
+      const placed = exists
+        ? globalRoom.placed.filter((p) => p.id !== item.id)
+        : [...globalRoom.placed, { id: item.id, x: basePos.x + offset, y: basePos.y + offset }]
+      globalRoom = { ...globalRoom, placed }
+    }
+    notifyAll()
+    syncRoomToBackend()
   }, [])
 
   const moveRoomItem = useCallback((id, x, y) => {
-    setGlobalRoom((prev) => ({
-      ...prev,
-      placed: prev.placed.map((p) => (p.id === id ? { ...p, x, y } : p)),
-    }))
+    globalRoom = { ...globalRoom, placed: globalRoom.placed.map((p) => (p.id === id ? { ...p, x, y } : p)) }
+    notifyAll()
   }, [])
 
   // 가구별 크기와 회전값도 함께 저장한다. 이전에 저장한 배치에는 값이 없을 수 있어
   // 화면에서는 각각 1, 0을 기본값으로 사용한다.
   const transformRoomItem = useCallback((id, changes) => {
-    setGlobalRoom((prev) => ({
-      ...prev,
-      placed: prev.placed.map((p) => (p.id === id ? { ...p, ...changes } : p)),
-    }))
+    globalRoom = { ...globalRoom, placed: globalRoom.placed.map((p) => (p.id === id ? { ...p, ...changes } : p)) }
+    notifyAll()
+    syncRoomToBackend()
   }, [])
 
   const saveRoom = useCallback(() => {
-    localStorage.setItem(ROOM_KEY, JSON.stringify(globalRoom))
+    syncRoomToBackend()
   }, [])
 
   return {
@@ -298,6 +313,7 @@ export function useGoods() {
     customItems: globalCustomItems,
     equipped: globalEquipped,
     room: globalRoom,
+    goodsLoaded,
     isOwned,
     buy,
     spend,

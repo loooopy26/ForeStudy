@@ -3,15 +3,14 @@ import ConfirmModal from './ConfirmModal'
 import Header from './Header'
 import MarkdownText from './MarkdownText'
 import {
-  addCurrentCertificate,
   createCurriculum,
   deleteCertGoal,
   deleteCurriculum,
   deleteMaterial,
   getCertGoal,
   getCurrentCertificates,
+  refreshCertificates,
   regenerateCurriculum,
-  removeCurrentCertificate,
   saveCertGoal,
   sendCertGoalChat,
 } from './api'
@@ -65,11 +64,11 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
     if (curriculum?.curriculum_id) {
       deleteCurriculum(curriculum.curriculum_id).catch(() => {})
     }
-    deleteCertGoal(resolvedCertName).catch(() => {})
+    deleteCertGoal(resolvedCertName)
+      .catch(() => {})
+      .finally(() => refreshCertificates())
     if (materialId) {
       deleteMaterial(materialId).catch(() => {})
-      const match = getCurrentCertificates().find((c) => c.materialId === materialId)
-      if (match) removeCurrentCertificate(match.id)
     }
     onNavigate(page, payload)
   }
@@ -77,9 +76,9 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   const cancelLeave = () => setPendingLeave(null)
 
   const confirmAndFinish = () => {
-    // 여기서 처음으로 자격증이 "등록됨" 목록에 실제로 올라간다.
-    addCurrentCertificate(resolvedCertName, { materialId, subtitle: '학습 중' })
-    onNavigate('profile')
+    // 목표 시험일 저장 + 커리큘럼 생성은 이미 앞 단계에서 백엔드(user_cert_goals)에
+    // 반영돼 있다 — 여기서는 자격증 목록 캐시만 새로고침해서 화면에 반영한다.
+    refreshCertificates().finally(() => onNavigate('profile'))
   }
 
   const startGoalFlow = async () => {
