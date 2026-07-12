@@ -68,6 +68,7 @@ class StudySession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    material_id: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     studied_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

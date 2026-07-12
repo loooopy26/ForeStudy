@@ -7,7 +7,7 @@ Role: provide SQLAlchemy engine, DB session, and table initialization.
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -34,3 +34,7 @@ def init_db() -> None:
     import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(study_sessions)"))}
+        if "material_id" not in columns:
+            connection.execute(text("ALTER TABLE study_sessions ADD COLUMN material_id VARCHAR(100)"))

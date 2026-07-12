@@ -7,6 +7,7 @@ export function getMaterialId() {
 
 export function setMaterialId(materialId) {
   if (materialId) localStorage.setItem('forestudy_material_id', materialId)
+  else localStorage.removeItem('forestudy_material_id')
 }
 
 export function getLastAttemptId() {
@@ -254,12 +255,16 @@ export function removeCurrentCertificate(certificateId) {
   return nextCertificates
 }
 
-export async function getStats(userId) {
-  return apiRequest(`/stats/${userId}`)
+export async function getStats(userId, materialId = '') {
+  const query = materialId ? `?material_id=${encodeURIComponent(materialId)}` : ''
+  return apiRequest(`/stats/${userId}${query}`)
 }
 
-export async function startTimer(userId) {
-  return apiRequest('/timer/start', { method: 'POST', body: JSON.stringify({ user_id: userId }) })
+export async function startTimer(userId, materialId = null) {
+  return apiRequest('/timer/start', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, material_id: materialId }),
+  })
 }
 
 export async function pauseTimer(sessionId, segmentMinutes, reason = 'leave_library') {

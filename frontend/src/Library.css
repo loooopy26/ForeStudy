@@ -46,6 +46,38 @@
   padding-bottom: 0;
 }
 
+.library-cert-selector {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid oklch(0.82 0.03 82 / 0.85);
+  border-radius: 12px;
+  background: oklch(0.99 0.012 82 / 0.82);
+  color: var(--ink-soft);
+}
+
+.library-cert-selector > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.library-cert-selector select {
+  min-width: 0;
+  max-width: 68%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+  cursor: pointer;
+}
+
 .study-goal {
   position: relative;
   padding: 20px 18px 28px;

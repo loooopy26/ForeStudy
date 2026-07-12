@@ -104,6 +104,7 @@ class QuestCompleteResponse(BaseModel):
 # 시간 측정은 프론트에서 하고, 백엔드는 그 값을 받아 DB에 저장만 합니다.
 class TimerStartRequest(BaseModel):
     user_id: int = Field(..., example=1)
+    material_id: str | None = Field(None, example="material-uuid")
 
 
 class TimerStartResponse(BaseModel):

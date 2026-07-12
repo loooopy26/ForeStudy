@@ -12,8 +12,8 @@ from services.memory_store import mark_activity, now_utc
 from services.reward_service import add_reward
 
 
-def start_timer(db: Session, user_id: int) -> dict:
-    session = StudySession(user_id=user_id, started_at=now_utc(), status="started")
+def start_timer(db: Session, user_id: int, material_id: str | None = None) -> dict:
+    session = StudySession(user_id=user_id, material_id=material_id, started_at=now_utc(), status="started")
     db.add(session)
     db.commit()
     db.refresh(session)

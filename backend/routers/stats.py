@@ -4,7 +4,7 @@
 주요 API: GET /stats/{user_id}
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -15,5 +15,9 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @router.get("/{user_id}", response_model=StatsResponse)
-async def read_user_stats(user_id: int, db: Session = Depends(get_db)):
-    return await get_user_stats(db=db, user_id=user_id)
+async def read_user_stats(
+    user_id: int,
+    material_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    return await get_user_stats(db=db, user_id=user_id, material_id=material_id)

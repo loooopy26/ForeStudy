@@ -23,7 +23,7 @@ router = APIRouter(prefix="/timer", tags=["timer"])
 
 @router.post("/start", response_model=TimerStartResponse)
 def start_study_timer(request: TimerStartRequest, db: Session = Depends(get_db)):
-    return start_timer(db=db, user_id=request.user_id)
+    return start_timer(db=db, user_id=request.user_id, material_id=request.material_id)
 
 
 @router.post("/pause", response_model=TimerPauseResponse)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import Profile from './Profile'
 import Village from './Village'
 import AddCert from './AddCert'
@@ -20,7 +20,7 @@ import StudyMap from './StudyMap'
 import StudyPlaces from './StudyPlaces'
 import ExamAssistant from './ExamAssistant'
 import Auth from './Auth'
-import { getCurrentUser, getMaterialId, setMaterialId as persistMaterialId } from './api'
+import { getCurrentCertificates, getCurrentUser, getMaterialId, setMaterialId as persistMaterialId } from './api'
 import './theme.css'
 import './Shell.css'
 import './App.css'
@@ -70,14 +70,20 @@ function resolveRouteFromPath() {
   return { page: landingPage, sub: undefined }
 }
 
+function getInitialCertificate() {
+  const certificates = getCurrentCertificates()
+  return certificates.find((certificate) => certificate.materialId === getMaterialId()) || certificates[0] || null
+}
+
 function App() {
   const [route, setRoute] = useState(resolveRouteFromPath)
-  const [materialId, setMaterialId] = useState(() => getMaterialId() || null)
-  const [selectedCert, setSelectedCert] = useState('')
+  const [materialId, setMaterialId] = useState(() => getInitialCertificate()?.materialId || getMaterialId() || null)
+  const [selectedCert, setSelectedCert] = useState(() => getInitialCertificate()?.title || '')
   const [placementQuiz, setPlacementQuiz] = useState(null)
   const [planData, setPlanData] = useState(null)
-  const [libraryTimer, setLibraryTimer] = useState(null)
+  const [libraryTimers, setLibraryTimers] = useState({})
   const Screen = SCREENS[route.page] || Profile
+  const timerKey = selectedCert || '__default__'
 
   const navigate = (page, payload) => {
     if (payload?.cert) setSelectedCert(payload.cert)
@@ -89,23 +95,35 @@ function App() {
   }
 
   const selectMaterial = (id) => {
-    persistMaterialId(id)
-    setMaterialId(id)
+    persistMaterialId(id || '')
+    setMaterialId(id || null)
   }
+
+  const selectCertificate = (certificate) => {
+    if (!certificate) return
+    setSelectedCert(certificate.title)
+    selectMaterial(certificate.materialId)
+  }
+
+  const updateLibraryTimer = useCallback((timerState) => {
+    setLibraryTimers((timers) => ({ ...timers, [timerKey]: timerState }))
+  }, [timerKey])
 
   return (
     <div className="app-shell">
       <div className="phone-frame">
         <Screen
+          key={route.page === 'library' ? `library-${timerKey}` : route.page}
           onNavigate={navigate}
           materialId={materialId}
           onSelectMaterial={selectMaterial}
+          onSelectCertificate={selectCertificate}
           initialSub={route.sub}
           certName={selectedCert}
           placementQuiz={placementQuiz}
           planData={planData}
-          timerState={libraryTimer}
-          onTimerStateChange={setLibraryTimer}
+          timerState={libraryTimers[timerKey] || null}
+          onTimerStateChange={updateLibraryTimer}
         />
       </div>
     </div>
