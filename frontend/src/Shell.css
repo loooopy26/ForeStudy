@@ -344,6 +344,12 @@ button.header-badge {
   line-height: 1.6;
 }
 
+.explain-box.error {
+  background: var(--red-tint);
+  border-color: var(--red-border);
+  color: var(--red-text);
+}
+
 .cta-area {
   flex-shrink: 0;
   padding: 14px 22px 26px;
@@ -373,6 +379,10 @@ button.header-badge {
 .cta-button:disabled {
   cursor: default;
   background: var(--disabled-btn);
+}
+
+.similar-quiz-progress {
+  margin-top: 10px;
 }
 
 .confirm-modal-backdrop {

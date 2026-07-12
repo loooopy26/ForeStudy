@@ -19,6 +19,7 @@ import {
   saveQuizResult,
   setLastAttemptId,
   setQuizProgress,
+  updateCurriculumDay,
 } from './api'
 import './Shell.css'
 
@@ -49,8 +50,8 @@ function Quiz({ onNavigate }) {
   }
 
   const startNewQuiz = async () => {
-    clearQuizProgress()
-    clearQuizResult()
+    clearQuizProgress(materialId)
+    clearQuizResult(materialId)
     setResult(null)
     setResultDismissed(false)
     setIdx(0)
@@ -166,10 +167,13 @@ function Quiz({ onNavigate }) {
         }),
       })
       setLastAttemptId(data.attempt_id)
+      if (data.correct_count === data.total_count && isDailyQuizUnlocked(materialId) && quiz.plan_scope?.day_id) {
+        updateCurriculumDay(quiz.plan_scope.day_id, { progress_status: 'completed' }).catch(() => {})
+      }
       setResult(data)
       setResultDismissed(false)
       saveQuizResult(materialId, quiz, data)
-      clearQuizProgress()
+      clearQuizProgress(materialId)
     } catch (err) {
       setError(err.message)
     } finally {

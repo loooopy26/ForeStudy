@@ -213,6 +213,14 @@ export function ChevronRightIcon({ size = 14 }) {
   )
 }
 
+export function ChevronDownIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function HomeIcon({ size = 22 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">

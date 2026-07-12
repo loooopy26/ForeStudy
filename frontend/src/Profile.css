@@ -261,6 +261,17 @@
   color: #4b6f42;
 }
 
+.profile-nickname-row { display: flex; align-items: center; gap: 7px; }
+.profile-nickname-row .profile-sub { margin: 8px 0 10px; }
+.profile-nickname-button { border: 1px solid #b9cda0; border-radius: 999px; background: rgba(255,255,255,.6); color: #5d8145; font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; padding: 3px 8px; }
+.profile-nickname-edit { display: flex; gap: 6px; margin: 6px 0; }
+.profile-nickname-edit input { width: 130px; border: 1px solid #b9cda0; border-radius: 8px; padding: 5px 7px; font: inherit; }
+.profile-nickname-edit button { border: 0; border-radius: 8px; background: #6b9947; color: white; font: inherit; font-size: 12px; font-weight: 700; padding: 5px 8px; }
+.cert-info-progress { width: 100%; margin-top: 14px; }
+.cert-info-progress > div:first-child { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 12px; color: var(--ink-soft); }
+.cert-info-progress strong { color: var(--green-text-strong); }
+.cert-info-progress .progress-track { width: 100%; height: 10px; }
+
 .hero-copy .profile-sub {
   margin: 8px 0 10px;
   font-size: 14px;
@@ -329,24 +340,24 @@
   font-weight: 700;
 }
 
-.profile-status-cert-selector select {
-  min-width: 0;
-  max-width: 70%;
-  border: none;
-  outline: none;
-  background: transparent;
+.profile-status-cert-selector .cert-select-trigger span {
   color: #4e412d;
-  font: inherit;
   font-size: 13px;
-  font-weight: 700;
-  text-align: right;
-  cursor: pointer;
 }
 
 .status-rows {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.status-empty-message {
+  margin: 0;
+  padding: 18px 8px;
+  color: #8a7d68;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .status-row {

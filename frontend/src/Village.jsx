@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import MainNav from './MainNav'
+import CertSelect from './CertSelect'
 import villageMap from './assets/village-map.png'
 import certMascot from './assets/cert-mascot.png'
 import { AcornIcon } from './icons'
 import { useGoods } from './goods'
+import { getCertificateProgress, getCurrentCertificates } from './api'
 import './Village.css'
 
 const PLACES = [
@@ -49,9 +51,16 @@ const PLACES = [
   },
 ]
 
-function Village({ onNavigate }) {
+function Village({ onNavigate, certName, onSelectCertificate }) {
   const { wallet } = useGoods()
   const [showOngoing, setShowOngoing] = useState(true)
+  const [certificates] = useState(getCurrentCertificates)
+  const [progress, setProgress] = useState({ progress: 0, remainingDays: null })
+  const activeCertificate = certificates.find((certificate) => certificate.title === certName) || certificates[0]
+
+  useEffect(() => {
+    if (activeCertificate) getCertificateProgress(activeCertificate.title).then(setProgress).catch(() => {})
+  }, [activeCertificate?.title])
 
   return (
     <div className="village-page">
@@ -112,11 +121,19 @@ function Village({ onNavigate }) {
             <div className="boss-main">
               <p className="boss-eyebrow">진행중인 자격증</p>
               <div className="boss-head">
-                <span className="boss-name">정보처리기사</span>
-                <span className="boss-pct">72%</span>
+                {certificates.length > 1 ? (
+                  <CertSelect
+                    certificates={certificates}
+                    value={activeCertificate?.title || ''}
+                    onChange={onSelectCertificate}
+                    menuPlacement="top"
+                  />
+                ) : <span className="boss-name">{activeCertificate?.title || '등록한 자격증 없음'}</span>}
+                {progress.remainingDays !== null && <span className="boss-dday">D-{progress.remainingDays}</span>}
+                <span className="boss-pct">{progress.progress}%</span>
               </div>
               <div className="progress-track">
-                <div className="progress-fill warm" style={{ width: '72%' }} />
+                <div className="progress-fill warm" style={{ width: `${progress.progress}%` }} />
               </div>
             </div>
           </div>

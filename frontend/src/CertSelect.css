@@ -1,0 +1,62 @@
+.cert-select {
+  position: relative;
+}
+
+.cert-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cert-select-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #EDE2CE;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(120, 100, 70, 0.18);
+  z-index: 5;
+}
+
+/* 화면 하단 근처(예: 마을 페이지의 진행중인 자격증 카드)처럼 아래로 열면
+   overflow: hidden인 부모에 잘리는 위치에서는 위로 열리도록 한다. */
+.cert-select-menu-top {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.cert-select-option {
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b6156;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cert-select-option:hover {
+  background: #F5EFE2;
+}
+
+.cert-select-option.active {
+  background: #3F7A4C;
+  color: #fff;
+}

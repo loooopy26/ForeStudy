@@ -5,6 +5,7 @@ import certFlag from './assets/cert-flag.png'
 import homeBackground from './assets/home-bg.png'
 import homeCharacter from './assets/home-character.png'
 import CharacterAvatar from './CharacterAvatar'
+import CertSelect from './CertSelect'
 import { useGoods, getItem } from './goods'
 import {
   clearCurrentUser,
@@ -12,9 +13,12 @@ import {
   deleteMaterial,
   getCertGoal,
   getCurrentCertificates,
+  getCurrentUser,
+  getCertificateProgress,
   getMyUser,
   getStats,
   removeCurrentCertificate,
+  setCurrentUser,
 } from './api'
 import {
   AcornIcon,
@@ -44,6 +48,9 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deletingCertificate, setDeletingCertificate] = useState(false)
   const [certDeleteError, setCertDeleteError] = useState('')
+  const [nickname, setNickname] = useState(() => getCurrentUser()?.nickname || '성실한 학습자')
+  const [editingNickname, setEditingNickname] = useState(false)
+  const [progressByCert, setProgressByCert] = useState({})
 
   useEffect(() => {
     getStats(TIMER_DEMO_USER_ID, materialId).then(setStats).catch((err) => {
@@ -53,6 +60,19 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
       if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
     })
   }, [materialId])
+
+  useEffect(() => {
+    Promise.all(certificates.map(async (certificate) => [certificate.id, await getCertificateProgress(certificate.title)]))
+      .then((entries) => setProgressByCert(Object.fromEntries(entries)))
+      .catch(() => {})
+  }, [certificates])
+
+  const saveNickname = () => {
+    const next = nickname.trim() || '성실한 학습자'
+    setNickname(next)
+    setCurrentUser({ ...(getCurrentUser() || {}), nickname: next })
+    setEditingNickname(false)
+  }
 
   const handleLogout = () => {
     clearCurrentUser()
@@ -155,7 +175,17 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
               <StarIcon size={15} />
               <span>Lv.12</span>
             </div>
-            <p className="profile-sub">성실한 학습자</p>
+            {editingNickname ? (
+              <form className="profile-nickname-edit" onSubmit={(event) => { event.preventDefault(); saveNickname() }}>
+                <input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength="20" autoFocus />
+                <button type="submit">저장</button>
+              </form>
+            ) : (
+              <div className="profile-nickname-row">
+                <p className="profile-sub">{nickname}</p>
+                <button type="button" className="profile-nickname-button" onClick={() => setEditingNickname(true)}>수정</button>
+              </div>
+            )}
             <div className="xp-row">
               <span className="xp-label">XP</span>
               <span>1,240 / 2,000</span>
@@ -172,46 +202,40 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
           </div>
 
           {certificates.length > 1 && (
-            <label className="profile-status-cert-selector">
+            <div className="profile-status-cert-selector">
               <span>자격증별 상태</span>
-              <select
-                value={certName}
-                onChange={(event) => {
-                  const certificate = certificates.find((item) => item.title === event.target.value)
-                  if (certificate) onSelectCertificate(certificate)
-                }}
-              >
-                {certificates.map((certificate) => (
-                  <option key={certificate.id} value={certificate.title}>{certificate.title}</option>
-                ))}
-              </select>
-            </label>
+              <CertSelect certificates={certificates} value={certName} onChange={onSelectCertificate} />
+            </div>
           )}
 
-          <div className="status-rows">
-            {statRows.map(({ key, label, value, Icon, suffix = '' }) => (
-              <div className="status-row" key={key}>
-                <span className="status-label">
-                  <span className="status-icon-badge">
-                    <Icon size={14} />
+          {certificates.length === 0 ? (
+            <p className="status-empty-message">자격증을 등록하면 상태창이 표시됩니다.</p>
+          ) : (
+            <div className="status-rows">
+              {statRows.map(({ key, label, value, Icon, suffix = '' }) => (
+                <div className="status-row" key={key}>
+                  <span className="status-label">
+                    <span className="status-icon-badge">
+                      <Icon size={14} />
+                    </span>
+                    <span className="status-label-text">{label}</span>
                   </span>
-                  <span className="status-label-text">{label}</span>
-                </span>
 
-                <div className="progress-track">
-                  <div
-                    className={`progress-fill${value !== undefined && value <= 50 ? ' warm' : ''}`}
-                    style={{ width: `${value ?? 0}%` }}
-                  />
+                  <div className="progress-track">
+                    <div
+                      className={`progress-fill${value !== undefined && value <= 50 ? ' warm' : ''}`}
+                      style={{ width: `${value ?? 0}%` }}
+                    />
+                  </div>
+
+                  <span className="status-value">
+                    {value !== undefined ? value : '-'}
+                    {value !== undefined ? suffix : ''}
+                  </span>
                 </div>
-
-                <span className="status-value">
-                  {value !== undefined ? value : '-'}
-                  {value !== undefined ? suffix : ''}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="mini-card-row">
@@ -249,7 +273,7 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
                     </div>
                     <p>{certificate.subtitle}</p>
                   </div>
-                  <div className="cert-progress">진행률 {certificate.progress}%</div>
+                  <div className="cert-progress">진행률 {progressByCert[certificate.id]?.progress ?? 0}%</div>
                   <button type="button" className="start-button cert-start" onClick={() => openCertificateInfo(certificate)}>
                     정보 보기
                   </button>
@@ -285,6 +309,10 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
                 </h2>
               </div>
               <button type="button" onClick={closeCertificateInfo} aria-label="닫기">×</button>
+            </div>
+            <div className="cert-info-progress">
+              <div><span>플랜 진행률</span><strong>{progressByCert[selectedCertificate.id]?.progress ?? 0}%</strong></div>
+              <div className="progress-track"><div className="progress-fill" style={{ width: `${progressByCert[selectedCertificate.id]?.progress ?? 0}%` }} /></div>
             </div>
 
             <div className="cert-delete-area">

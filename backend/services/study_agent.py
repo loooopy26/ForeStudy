@@ -4,8 +4,11 @@
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from datetime import date, timedelta
 from math import ceil
+
+import httpx
 
 from . import rag, upstage
 
@@ -89,6 +92,7 @@ async def generate_quiz(
     quiz_kind: str = "study_review",
     learner_profile: dict | None = None,
     plan_scope: dict | None = None,
+    on_progress: Callable[[int], None] | None = None,
 ) -> list[dict]:
     """Generate a quiz matching question_mix exactly.
 
@@ -126,19 +130,28 @@ async def generate_quiz(
                 batch_requests.append((question_type, min(batch_size, remaining), None))
                 remaining -= batch_size
 
+    async def _tracked_batch(question_type: str, batch_count: int, target_difficulty: str | None) -> list[dict]:
+        result = await _generate_quiz_batch(
+            context,
+            question_type=question_type,
+            count=batch_count,
+            difficulty=difficulty,
+            target_difficulty=target_difficulty,
+            weak_topics=weak_topics,
+            quiz_kind=quiz_kind,
+            learner_profile=learner_profile,
+            plan_scope=plan_scope,
+        )
+        # 배치 하나(최대 5문제)가 끝날 때마다 바로 알려준다 — 전체가 끝날 때까지 기다렸다가
+        # 한번에 알리면 진행률 표시 의미가 없다. gather는 순서를 기다리지 않고 각 배치가
+        # 끝나는 즉시 이 콜백을 호출한다.
+        if on_progress:
+            on_progress(len(result))
+        return result
+
     batches = await asyncio.gather(
         *[
-            _generate_quiz_batch(
-                context,
-                question_type=question_type,
-                count=batch_count,
-                difficulty=difficulty,
-                target_difficulty=target_difficulty,
-                weak_topics=weak_topics,
-                quiz_kind=quiz_kind,
-                learner_profile=learner_profile,
-                plan_scope=plan_scope,
-            )
+            _tracked_batch(question_type, batch_count, target_difficulty)
             for question_type, batch_count, target_difficulty in batch_requests
         ]
     )
@@ -169,18 +182,27 @@ def _topic_key(topic_tag: str | None) -> str:
     return re.sub(r"[^\w가-힣]", "", (topic_tag or "").lower())
 
 
-def _find_duplicate_indices(flat: list[list]) -> tuple[list[int], list[str]]:
-    seen: dict[str, int] = {}
+def _find_duplicate_indices(flat: list[list], cap: int = 2) -> tuple[list[int], list[str]]:
+    """topic_tag(정규화 후)별로 최대 cap개까지는 허용하고, 그 이상 반복되면 교체 대상으로
+    표시한다. 완전 유일성을 강제하면(cap=1) 자료에 실제로 그만큼 서로 다른 주제가 없을 때
+    회피 지시를 줘도 계속 같은 주제로 돌아오다가 라운드 한도 안에 못 고치고 포기해버린다
+    (실측: 25문제 복습 퀴즈에서 한 주제가 7번까지 겹치는 사례). 소량의 반복은 허용해
+    "완전히 못 고침"보다 "약간 겹침"이 되도록 한다."""
+    counts: dict[str, int] = {}
+    kept_seen: set[str] = set()
     duplicate_indices: list[int] = []
+    kept_topics: list[str] = []
     for i, (question, _, _) in enumerate(flat):
-        key = _topic_key(question.get("topic_tag"))
+        topic_tag = question.get("topic_tag")
+        key = _topic_key(topic_tag)
         if not key:
             continue
-        if key in seen:
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] > cap:
             duplicate_indices.append(i)
-        else:
-            seen[key] = i
-    kept_topics = [flat[i][0].get("topic_tag") for i in seen.values() if flat[i][0].get("topic_tag")]
+        elif key not in kept_seen:
+            kept_seen.add(key)
+            kept_topics.append(topic_tag)
     return duplicate_indices, kept_topics
 
 
@@ -367,28 +389,48 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
     max_attempts = 8
     last_normalized: list[dict] = []
     for attempt in range(max_attempts):
-        result = await upstage.chat_json(current_messages, temperature=0.5)
+        try:
+            result = await upstage.chat_json(current_messages, temperature=0.5)
+        except httpx.HTTPError as exc:
+            # Upstage 호출이 타임아웃/네트워크 오류로 실패하는 경우가 실제로 있다(재현
+            # 확인됨) — 예전엔 여기서 잡히지 않은 채 asyncio.gather 전체를 죽여서, 이미
+            # 끝난 다른 배치들까지 전부 버려지고 퀴즈 생성이 통째로 실패했다. 다른 검증
+            # 실패와 동일하게 재시도 대상으로 취급한다(메시지는 그대로 유지 — 모델이 준
+            # 응답이 없으니 "이전 응답 피드백"을 만들 수 없다).
+            if attempt < max_attempts - 1:
+                continue
+            raise RuntimeError(
+                f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 응답을 "
+                f"받지 못했습니다 (네트워크 오류: {exc})."
+            ) from exc
         raw_questions = result.get("questions")
-        if not isinstance(raw_questions, list) or not raw_questions:
-            # 드물게 모델이 JSON은 유효하지만 "questions" 키 자체를 빠뜨리거나 빈 배열로
-            # 돌려주는 경우가 있다(재현 확인됨) — 예전엔 여기서 바로 KeyError로 요청 전체가
-            # 죽었는데, 다른 검증 실패와 동일하게 재시도 루프를 타도록 고친다.
+        # 드물게 모델이 JSON은 유효하지만 "questions" 키 자체를 빠뜨리거나 빈 배열로 돌려주거나
+        # (재현 확인됨), 배열 안에 객체 대신 문자열을 넣어 돌려주는 경우가 있다(재현 확인됨 —
+        # 이 경우 _normalize_question이 question.get(...)에서 AttributeError로 죽었다). 예전엔
+        # 둘 다 재시도 루프 밖에서 바로 요청 전체를 죽였는데, 다른 검증 실패와 동일하게 재시도
+        # 루프를 타도록 고친다.
+        if (
+            not isinstance(raw_questions, list)
+            or not raw_questions
+            or not all(isinstance(q, dict) for q in raw_questions)
+        ):
             if attempt < max_attempts - 1:
                 current_messages = messages + [
                     {"role": "assistant", "content": json.dumps(result, ensure_ascii=False)},
                     {
                         "role": "user",
                         "content": (
-                            "That response did not include a valid non-empty \"questions\" array. "
-                            f"Return the JSON again with exactly {count} questions in the "
-                            "\"questions\" array as specified."
+                            "That response did not include a valid \"questions\" array of question "
+                            f"objects. Return the JSON again with exactly {count} questions in the "
+                            "\"questions\" array, where each item is a JSON object as specified "
+                            "(not a plain string)."
                         ),
                     },
                 ]
                 continue
             raise RuntimeError(
                 f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 유효하게 "
-                "만들지 못했습니다 (questions 배열 누락)."
+                "만들지 못했습니다 (questions 배열 누락 또는 형식 오류)."
             )
         questions = raw_questions[:count]
         normalized = [_normalize_question(question) for question in questions]
@@ -460,6 +502,15 @@ def _is_circular_answer(question_text: str, answer: str) -> bool:
     return len(normalized_answer) >= 4 and normalized_answer in normalized_question
 
 
+def _is_placeholder_option(option: str) -> bool:
+    """빈 문자열이거나, "A"/"B"/"1" 같은 영문 알파벳/숫자 한 글자 자리표시자면 True.
+    "σ", "π", "÷", "×", "칸반" 같은 정상적인 한 글자·짧은 보기는 걸러지지 않는다."""
+    stripped = option.strip()
+    if not stripped:
+        return True
+    return len(stripped) == 1 and stripped.isascii() and stripped.isalnum()
+
+
 def _is_question_well_formed(question: dict) -> bool:
     """퀴즈로 내보내기 전 최소한의 무결성 검사.
 
@@ -479,12 +530,13 @@ def _is_question_well_formed(question: dict) -> bool:
         options = [str(o).strip() for o in (question.get("options") or [])]
         if len(options) < 2:
             return False
-        # 자리표시자("A"/"B"/"1" 같은 한 글자)만 걸러내는 게 목적이었는데 기준이 3자였던
-        # 탓에 "XP", "칸반", "CI", "QA"처럼 실제로 유효한 2글자 용어 보기까지 매번
-        # 잘못 걸러지고 있었다(실제 발견된 사례: options에 "칸반"/"XP"가 섞여 있으면
-        # 문제 자체가 멀쩡해도 매번 재시도 5~8번을 다 태우다 실패했다). 한 글자
-        # 자리표시자만 거르도록 기준을 2자로 낮춘다.
-        if any(len(o) < 2 for o in options):
+        # 자리표시자("A"/"B"/"1" 같은 한 글자)만 걸러내는 게 목적이었는데, 길이 기준
+        # (< 2, < 3)만으로는 "σ"/"π"/"÷"/"×" 같은 정상적인 한 글자 기호 정답까지 매번
+        # 잘못 걸러졌다(실제 발견 사례: 관계대수 Select 연산 기호를 묻는 정상 문제가
+        # options=["π","σ","÷","×"]라는 이유만으로 재시도 8번을 다 태우다 실패). 영문
+        # 알파벳/숫자 한 글자만 자리표시자로 보고, 그 외 한 글자(그리스 문자, 수학 기호,
+        # 한글 등)는 정상 보기로 허용한다.
+        if any(_is_placeholder_option(o) for o in options):
             return False
         if len({o.lower() for o in options}) != len(options):
             return False

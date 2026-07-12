@@ -11,9 +11,13 @@ from pydantic import BaseModel, Field
 
 from agents import graph as agent_graph
 from db import get_pool
-from services import rag
+from services import rag, study_agent
 
 router = APIRouter(prefix="/api", tags=["AI quiz"])
+
+# 오답노트 유사 문제 생성 진행률. attempt_id별로 하나씩만 동시에 생성한다고 가정하고
+# 메모리에만 들고 있는다(재시작하면 사라져도 무방 — 진행 중 상태를 잠깐 보여주는 용도).
+_similar_quiz_progress: dict[str, dict[str, int]] = {}
 
 # 배치고사/AI 퀴즈 난이도별 고정 문항 수 — AI가 알아서 배분하지 않고 항상 이 개수를 강제한다.
 # {난이도: {문제유형: 개수}} 형태.
@@ -161,10 +165,14 @@ async def _create_material_quiz(
         query = _plan_query(today_plan) or query
     # top_k=8이면 분량이 큰 자료에서 가장 눈에 띄는 주제(예: SQLD 자료의 "관계대수") 근처
     # 청크로만 채워져서 문제 주제가 그쪽으로 쏠리는 경향이 있었다 — 더 넓은 페이지 범위를
-    # 끌어와 소재를 다양화한다. 더 키울수록(14~20) 다양성은 좋아지지만 컨텍스트가 커질수록
-    # 배치 검증 재시도가 소진되는 실패율도 같이 올라가는 게 실측 확인됨 — 12가 다양성과
-    # 안정성 사이 균형점.
-    chunks = await rag.retrieve_chunks(material_id, query, top_k=12)
+    # 끌어와 소재를 다양화한다. 더 키울수록 다양성은 좋아지지만 컨텍스트가 커질수록 배치
+    # 검증 재시도가 소진되는 실패율도 같이 올라가는 게 실측 확인됨(10문제짜리 배치고사
+    # 기준 12가 균형점). 복습 퀴즈(25문제, forced_num_questions)는 배치고사보다 2.5배 많은
+    # 주제를 서로 안 겹치게 뽑아야 하는데, 같은 top_k=12로는 실측 결과 섹션(주제 구간)이
+    # 3개밖에 안 잡혀 소재가 금방 바닥나 보기가 억지로 중복/부실해지는 경향이 있었다
+    # (top_k=20이면 9개 섹션) — 문제 수에 맞춰 review는 더 넓게 가져온다.
+    top_k = 20 if forced_num_questions > 10 else 12
+    chunks = await rag.retrieve_chunks(material_id, query, top_k=top_k)
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
@@ -382,8 +390,19 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
+    # 이 요청이 진행되는 동안 GET .../similar-quiz/progress로 "지금까지 몇 문제 만들어졌는지"
+    # 폴링할 수 있도록 메모리에 카운터를 둔다(그래프 래퍼를 거치지 않고 study_agent.generate_quiz를
+    # 직접 호출 — 배치가 끝날 때마다 콜백을 받으려면 langgraph state로 콜러블을 넘기는 것보다
+    # 이쪽이 단순하다).
+    _similar_quiz_progress[attempt_id] = {"done": 0, "total": num_questions}
+
+    def _on_progress(count: int) -> None:
+        entry = _similar_quiz_progress.get(attempt_id)
+        if entry:
+            entry["done"] += count
+
     try:
-        questions = await agent_graph.run_generate_quiz(
+        questions = await study_agent.generate_quiz(
             rag.format_context(chunks),
             num_questions=num_questions,
             difficulty=attempt["difficulty"] or "normal",
@@ -391,9 +410,12 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
             question_mix={"multiple_choice": num_questions},
             quiz_kind="study_review",
             learner_profile=None,
+            on_progress=_on_progress,
         )
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)) from exc
+    finally:
+        _similar_quiz_progress.pop(attempt_id, None)
     if len(questions) < num_questions:
         raise HTTPException(
             502, f"AI generated only {len(questions)} questions. Expected {num_questions}."
@@ -425,6 +447,15 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
         "weak_topics": weak_topics,
         "questions": persisted["questions"],
     }
+
+
+@router.get("/attempts/{attempt_id}/similar-quiz/progress")
+async def get_similar_quiz_progress(attempt_id: str):
+    """유사 문제 생성 중 지금까지 몇 문제가 만들어졌는지. 생성 중이 아니면 done=total=0."""
+    entry = _similar_quiz_progress.get(attempt_id)
+    if not entry:
+        return {"done": 0, "total": 0, "generating": False}
+    return {"done": entry["done"], "total": entry["total"], "generating": True}
 
 
 @router.delete("/quizzes/{quiz_id}", status_code=204)
@@ -514,6 +545,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
     wrong_note_rows = []
     mastered_wrong_note_ids = []
     mastered_source_question_ids = []
+    mastered_source_attempt_ids: set[str] = set()
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -562,6 +594,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                 for row in mastered_rows:
                     mastered_wrong_note_ids.append(str(row["id"]))
                     mastered_source_question_ids.append(str(row["source_question_id"]))
+                    mastered_source_attempt_ids.add(str(row["source_attempt_id"]))
                     # 이제 '맞은 문제'로 취급되므로, 원래 문항의 해설도 오답 분석 대신
                     # 정답 해설로 바꿔둔다.
                     await conn.execute(
@@ -574,6 +607,28 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                         row["source_attempt_id"],
                         row["source_question_id"],
                     )
+
+            # 유사문제로 원본 오답을 전부 마스터했으면, 그 오답의 원본 퀴즈가 속한 일별
+            # 학습 플랜도 완료 처리한다 — 오늘 퀴즈를 틀렸어도 복습으로 다 극복했으면 오늘
+            # 학습을 끝낸 것으로 인정한다(사용자 요청). 원본 퀴즈에 연결된 날짜가 없으면
+            # (day_id가 없는 퀴즈면) 아무 것도 하지 않는다.
+            for source_attempt_id in mastered_source_attempt_ids:
+                remaining = await conn.fetchval(
+                    "SELECT count(*) FROM wrong_answer_notes WHERE quiz_attempt_id = $1 AND status <> 'mastered'",
+                    source_attempt_id,
+                )
+                if remaining:
+                    continue
+                await conn.execute(
+                    """
+                    UPDATE curriculum_days cd
+                    SET progress_status = 'completed'
+                    FROM quiz_attempts a
+                    JOIN quizzes q ON q.id = a.quiz_id
+                    WHERE a.id = $1 AND q.curriculum_day_id = cd.id
+                    """,
+                    source_attempt_id,
+                )
 
             if quiz["quiz_type"] != "placement":
                 for result in results:

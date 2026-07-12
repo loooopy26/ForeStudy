@@ -172,6 +172,22 @@
   color: var(--ink);
 }
 
+.boss-head .cert-select-trigger span {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.boss-dday {
+  margin-left: auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e0edd9;
+  color: #527542;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .boss-pct {
   font-size: 13px;
   font-weight: 800;

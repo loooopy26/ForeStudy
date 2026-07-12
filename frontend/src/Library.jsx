@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
+import CertSelect from './CertSelect'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, pauseTimer, prepareReviewQuiz, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, uploadMaterial } from './api'
+import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, pauseTimer, prepareReviewQuiz, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, updateCurriculumDay, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
@@ -180,21 +181,6 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
       }
 
         requireDailyQuizCompletion(materialId, planDay.date)
-        const savedQuiz = getQuizProgress(materialId)
-        if (
-          savedQuiz?.quiz?.plan_scope?.day_id === planDay.day_id
-          || preparingQuizRef.current
-          || isQuizGenerating(materialId)
-        ) return
-        preparingQuizRef.current = true
-        markQuizGenerating(materialId)
-        prepareReviewQuiz(materialId)
-          .then((quiz) => setQuizProgress(materialId, quiz, {}, 0))
-          .catch(() => {})
-          .finally(() => {
-            preparingQuizRef.current = false
-            clearQuizGenerating(materialId)
-          })
       })
       .catch(() => {
         if (!cancelled) setTodayPlanDay(null)
@@ -203,6 +189,30 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
       cancelled = true
     }
   }, [certName, materialId])
+
+  // 오늘의 복습 퀴즈는 도서관 화면에 들어오자마자가 아니라, 사용자가 실제로 "공부 시작"을
+  // 눌러 이 자료의 타이머를 시작하는 시점에만 백그라운드로 미리 생성한다 — 자격증을 여러 개
+  // 등록해두고 화면만 오갈 때 여러 자료의 퀴즈가 동시에 생성되는 걸 애초에 구조적으로
+  // 막기 위함(사용자 요청).
+  const startBackgroundQuizPreparation = () => {
+    const planDay = todayPlanRef.current
+    if (!materialId || !planDay) return
+    const savedQuiz = getQuizProgress(materialId)
+    if (
+      savedQuiz?.quiz?.plan_scope?.day_id === planDay.day_id
+      || preparingQuizRef.current
+      || isQuizGenerating(materialId)
+    ) return
+    preparingQuizRef.current = true
+    markQuizGenerating(materialId)
+    prepareReviewQuiz(materialId)
+      .then((quiz) => setQuizProgress(materialId, quiz, {}, 0))
+      .catch(() => {})
+      .finally(() => {
+        preparingQuizRef.current = false
+        clearQuizGenerating(materialId)
+      })
+  }
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
@@ -271,7 +281,10 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
           finishSession()
           setTimerCompleted(true)
           const planDay = todayPlanRef.current
-          if (materialId && planDay) unlockDailyQuiz(materialId, planDay.date)
+          if (materialId && planDay) {
+            unlockDailyQuiz(materialId, planDay.date)
+            updateCurriculumDay(planDay.day_id, { progress_status: 'in_progress' }).catch(() => {})
+          }
           return 0
         }
         return r - 1
@@ -294,6 +307,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
         } catch {
           // 세션 생성에 실패해도 로컬 타이머는 그대로 진행한다.
         }
+        startBackgroundQuizPreparation()
       }
       segmentStartRef.current = Date.now()
       runningRef.current = true
@@ -425,20 +439,10 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
 
       <div className="body-scroll library-body">
         {!focusMode && certificates.length > 1 && (
-          <label className="library-cert-selector">
+          <div className="library-cert-selector">
             <span>학습 자격증</span>
-            <select
-              value={certName}
-              onChange={(event) => {
-                const certificate = certificates.find((item) => item.title === event.target.value)
-                if (certificate) onSelectCertificate(certificate)
-              }}
-            >
-              {certificates.map((certificate) => (
-                <option key={certificate.id} value={certificate.title}>{certificate.title}</option>
-              ))}
-            </select>
-          </label>
+            <CertSelect certificates={certificates} value={certName} onChange={onSelectCertificate} />
+          </div>
         )}
         <button type="button" className="focus-pill" onClick={() => setFocusMode((value) => !value)}>
           <FocusIcon />
@@ -579,16 +583,18 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
                     const key = toDateKey(date)
                     const planDay = calendarDayMap.get(key)
                     const selected = selectedPlanDay?.date === key
+                    const completed = planDay?.progress_status === 'completed'
                     return (
                       <button
                         type="button"
-                        className={`calendar-day${planDay ? ' has-plan' : ''}${selected ? ' selected' : ''}`}
+                        className={`calendar-day${planDay ? ' has-plan' : ''}${completed ? ' completed' : ''}${selected ? ' selected' : ''}`}
                         key={key}
                         onClick={() => planDay && setSelectedPlanDay(planDay)}
                         disabled={!planDay}
                       >
                         <span>{date.getDate()}</span>
                         {planDay && <small>{planDay.focus_topic}</small>}
+                        {completed && <b className="calendar-day-complete">✓</b>}
                       </button>
                     )
                   })}
@@ -601,6 +607,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
                       {selectedPlanDay.planned_minutes && <span>{selectedPlanDay.planned_minutes}분</span>}
                     </div>
                     <h3>{selectedPlanDay.focus_topic}</h3>
+                    {selectedPlanDay.progress_status === 'completed' && <p className="calendar-detail-complete">✓ 완료된 학습 플랜</p>}
                     {selectedPlanDay.summary && <p>{selectedPlanDay.summary}</p>}
                     {selectedPlanDay.checkpoint && <p>{selectedPlanDay.checkpoint}</p>}
                     {selectedPlanDay.study_tip && <p><strong>학습 팁:</strong> {selectedPlanDay.study_tip}</p>}

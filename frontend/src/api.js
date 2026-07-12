@@ -30,26 +30,46 @@ function localTodayKey() {
   return `${year}-${month}-${day}`
 }
 
-export function getQuizProgress(materialId) {
+// 자격증(자료)별로 독립된 상태를 저장해야 한다 — 예전엔 단일 객체({materialId, ...}) 하나만
+// 저장해서, 자격증 2개를 오가면 나중에 확인한 자격증이 이전 자격증의 "오늘 퀴즈 진행 상황"을
+// 덮어썼다. 그러면 다시 그 자격증으로 돌아왔을 때 이미 푼 퀴즈가 없는 것처럼 보여서 사용자가
+// 요청하지 않았는데도 자동으로 새 퀴즈를 생성해버리는 문제가 있었다(실제 재현 확인됨) —
+// materialId를 key로 하는 맵으로 바꿔 자격증마다 따로 기억한다.
+function readJsonMap(key) {
   try {
-    const saved = JSON.parse(localStorage.getItem(QUIZ_PROGRESS_KEY) || 'null')
-    if (!saved || saved.materialId !== materialId) return null
-    if (saved.quiz?.mode === 'similar_review' || saved.quiz?.source_attempt_id) {
-      clearQuizProgress()
-      return null
-    }
-    return saved
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null')
+    return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
-    return null
+    return {}
   }
 }
 
-export function setQuizProgress(materialId, quiz, answers = {}, idx = 0) {
-  localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify({ materialId, quiz, answers, idx }))
+export function getQuizProgress(materialId) {
+  const map = readJsonMap(QUIZ_PROGRESS_KEY)
+  const saved = map[materialId]
+  if (!saved) return null
+  if (saved.quiz?.mode === 'similar_review' || saved.quiz?.source_attempt_id) {
+    clearQuizProgress(materialId)
+    return null
+  }
+  return saved
 }
 
-export function clearQuizProgress() {
-  localStorage.removeItem(QUIZ_PROGRESS_KEY)
+export function setQuizProgress(materialId, quiz, answers = {}, idx = 0) {
+  if (!materialId) return
+  const map = readJsonMap(QUIZ_PROGRESS_KEY)
+  map[materialId] = { quiz, answers, idx }
+  localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify(map))
+}
+
+export function clearQuizProgress(materialId) {
+  if (!materialId) {
+    localStorage.removeItem(QUIZ_PROGRESS_KEY)
+    return
+  }
+  const map = readJsonMap(QUIZ_PROGRESS_KEY)
+  delete map[materialId]
+  localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify(map))
 }
 
 // 채점까지 끝난 오늘의 AI 퀴즈 결과. 화면을 나갔다 들어와도 다시 생성하지 않고
@@ -58,84 +78,90 @@ export function clearQuizProgress() {
 const QUIZ_RESULT_KEY = 'forestudy_quiz_result'
 
 export function saveQuizResult(materialId, quiz, result) {
-  localStorage.setItem(
-    QUIZ_RESULT_KEY,
-    JSON.stringify({ materialId, date: localTodayKey(), quiz, result, dismissed: false })
-  )
+  if (!materialId) return
+  const map = readJsonMap(QUIZ_RESULT_KEY)
+  map[materialId] = { date: localTodayKey(), quiz, result, dismissed: false }
+  localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify(map))
 }
 
 export function getQuizResult(materialId) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(QUIZ_RESULT_KEY) || 'null')
-    if (!saved || saved.materialId !== materialId || saved.date !== localTodayKey()) return null
-    return saved
-  } catch {
-    return null
-  }
+  const map = readJsonMap(QUIZ_RESULT_KEY)
+  const saved = map[materialId]
+  if (!saved || saved.date !== localTodayKey()) return null
+  return saved
 }
 
 export function dismissQuizResult(materialId) {
-  const saved = getQuizResult(materialId)
-  if (saved) localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify({ ...saved, dismissed: true }))
+  const map = readJsonMap(QUIZ_RESULT_KEY)
+  if (map[materialId]) {
+    map[materialId] = { ...map[materialId], dismissed: true }
+    localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify(map))
+  }
 }
 
-export function clearQuizResult() {
-  localStorage.removeItem(QUIZ_RESULT_KEY)
+export function clearQuizResult(materialId) {
+  if (!materialId) {
+    localStorage.removeItem(QUIZ_RESULT_KEY)
+    return
+  }
+  const map = readJsonMap(QUIZ_RESULT_KEY)
+  delete map[materialId]
+  localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify(map))
 }
 
 export function requireDailyQuizCompletion(materialId, planDate = localTodayKey()) {
-  if (materialId) localStorage.setItem(DAILY_QUIZ_REQUIREMENT_KEY, JSON.stringify({ materialId, planDate }))
+  if (!materialId) return
+  const map = readJsonMap(DAILY_QUIZ_REQUIREMENT_KEY)
+  map[materialId] = planDate
+  localStorage.setItem(DAILY_QUIZ_REQUIREMENT_KEY, JSON.stringify(map))
 }
 
 export function isDailyQuizCompletionRequired(materialId) {
-  try {
-    const requirement = JSON.parse(localStorage.getItem(DAILY_QUIZ_REQUIREMENT_KEY) || 'null')
-    return requirement?.materialId === materialId && requirement?.planDate === localTodayKey()
-  } catch {
-    return false
-  }
+  const map = readJsonMap(DAILY_QUIZ_REQUIREMENT_KEY)
+  return map[materialId] === localTodayKey()
 }
 
 export function unlockDailyQuiz(materialId, planDate = localTodayKey()) {
-  if (materialId) localStorage.setItem(DAILY_QUIZ_UNLOCK_KEY, JSON.stringify({ materialId, planDate }))
+  if (!materialId) return
+  const map = readJsonMap(DAILY_QUIZ_UNLOCK_KEY)
+  map[materialId] = planDate
+  localStorage.setItem(DAILY_QUIZ_UNLOCK_KEY, JSON.stringify(map))
 }
 
 export function isDailyQuizUnlocked(materialId) {
-  try {
-    const unlocked = JSON.parse(localStorage.getItem(DAILY_QUIZ_UNLOCK_KEY) || 'null')
-    return unlocked?.materialId === materialId && unlocked?.planDate === localTodayKey()
-  } catch {
-    return false
-  }
+  const map = readJsonMap(DAILY_QUIZ_UNLOCK_KEY)
+  return map[materialId] === localTodayKey()
 }
 
 // Library.jsx가 오늘의 복습 퀴즈를 미리 생성하는 동안, Quiz.jsx가 같은 자료에 대해
 // 중복으로 또 생성하지 않도록 두 화면이 공유하는 "생성 중" 표시. 탭이 닫히는 등으로
 // 마커가 못 지워지는 경우를 대비해 일정 시간이 지나면 stale로 취급한다.
+// 자격증(자료)별로 독립된 항목을 저장해야 한다 — 예전엔 단일 객체({materialId,
+// startedAt}) 하나만 저장해서, 자격증 2개를 오가면 한쪽 자료의 "생성 중" 표시가
+// 다른 자료 걸로 덮어써졌다. 그러면 Library.jsx의 백그라운드 생성과 Quiz.jsx 자체
+// 생성이 서로의 진행 상태를 못 보고 같은 자료에 중복으로 생성 요청을 보내
+// (실측: 동시에 3번) 매번 재시도 예산을 나눠 쓰다 502로 실패하는 문제가 있었다.
 const QUIZ_GENERATING_KEY = 'forestudy_quiz_generating'
 const QUIZ_GENERATING_STALE_MS = 3 * 60 * 1000
 
 export function markQuizGenerating(materialId) {
-  if (materialId) localStorage.setItem(QUIZ_GENERATING_KEY, JSON.stringify({ materialId, startedAt: Date.now() }))
+  if (!materialId) return
+  const map = readJsonMap(QUIZ_GENERATING_KEY)
+  map[materialId] = Date.now()
+  localStorage.setItem(QUIZ_GENERATING_KEY, JSON.stringify(map))
 }
 
 export function clearQuizGenerating(materialId) {
-  try {
-    const marker = JSON.parse(localStorage.getItem(QUIZ_GENERATING_KEY) || 'null')
-    if (!marker || marker.materialId === materialId) localStorage.removeItem(QUIZ_GENERATING_KEY)
-  } catch {
-    localStorage.removeItem(QUIZ_GENERATING_KEY)
-  }
+  if (!materialId) return
+  const map = readJsonMap(QUIZ_GENERATING_KEY)
+  delete map[materialId]
+  localStorage.setItem(QUIZ_GENERATING_KEY, JSON.stringify(map))
 }
 
 export function isQuizGenerating(materialId) {
-  try {
-    const marker = JSON.parse(localStorage.getItem(QUIZ_GENERATING_KEY) || 'null')
-    if (!marker || marker.materialId !== materialId) return false
-    return Date.now() - marker.startedAt <= QUIZ_GENERATING_STALE_MS
-  } catch {
-    return false
-  }
+  const map = readJsonMap(QUIZ_GENERATING_KEY)
+  const startedAt = map[materialId]
+  return typeof startedAt === 'number' && Date.now() - startedAt <= QUIZ_GENERATING_STALE_MS
 }
 
 export async function apiRequest(path, options = {}) {
@@ -394,6 +420,25 @@ export function regenerateCurriculum(goalId, attemptId, targetExamDate) {
 
 export function getActiveCurriculum(goalId) {
   return apiRequest(`/api/cert-goals/${goalId}/curricula/active`)
+}
+
+export async function getCertificateProgress(certificateName) {
+  const goal = await getCertGoal(certificateName)
+  if (!goal?.found || !goal.goal_id) return { progress: 0, remainingDays: null }
+  const curriculum = await getActiveCurriculum(goal.goal_id)
+  const days = (curriculum?.weeks || []).flatMap((week) => week.days || [])
+  const completed = days.filter((day) => day.progress_status === 'completed').length
+  const progress = days.length ? Math.round(completed / days.length * 100) : 0
+  const examDate = goal.target_exam_date ? new Date(`${goal.target_exam_date}T00:00:00`) : null
+  const remainingDays = examDate ? Math.max(0, Math.ceil((examDate - new Date()) / 86400000)) : null
+  return { progress, remainingDays, targetExamDate: goal.target_exam_date || null }
+}
+
+export function updateCurriculumDay(dayId, changes) {
+  return apiRequest(`/api/cert-goals/curriculum-days/${dayId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  })
 }
 
 function todayKey() {

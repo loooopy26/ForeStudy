@@ -182,7 +182,9 @@ async def parse_document(file_path: Path) -> dict:
 
 
 async def _parse_pdf_in_chunks(file_path: Path) -> dict:
-    """50MB를 넘는 PDF를 용량/페이지 기준으로 잘라 동기 API를 순차 호출한 뒤 결과를 병합한다."""
+    """50MB를 넘는 PDF를 용량/페이지 기준으로 잘라 동기 API를 순차 호출한 뒤 결과를 병합한다.
+    청크 파싱을 동시에 보내는 방식도 시도해봤지만, Document Parse API가 동일 키의 동시
+    요청 자체를 레이트리밋해서(실측: 단 2개 동시 호출로도 429) 순차 호출로 되돌렸다."""
     reader = PdfReader(str(file_path))
     total_pages = len(reader.pages)
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import { CheckIcon, CrossIcon, ReviewIcon } from './icons'
@@ -46,7 +46,18 @@ function Review({ onNavigate }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
+  const [genProgress, setGenProgress] = useState({ done: 0, total: 0 })
   const [submitting, setSubmitting] = useState(false)
+  const similarQuizAbortRef = useRef(null)
+  const similarQuizPollRef = useRef(null)
+  const errorBoxRef = useRef(null)
+
+  // 오류 배너가 화면 맨 위에 있어서, 문제 목록 아래쪽에서 "이 회차 복습하기"를 누른
+  // 채로 실패하면 스크롤을 올리지 않는 한 실패 메시지 자체를 못 보고 "아무 반응이
+  // 없다"고 오해하기 쉬웠다(실제 재현 확인됨) — 에러가 뜨면 그 위치로 스크롤한다.
+  useEffect(() => {
+    if (error) errorBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [error])
 
   const loadAttempts = async () => {
     if (!materialId) {
@@ -69,6 +80,14 @@ function Review({ onNavigate }) {
     loadAttempts()
   }, [])
 
+  // 다른 탭으로 이동하는 등 화면 자체가 언마운트되는 경우에도 폴링/요청이 새어나가지 않게 정리.
+  useEffect(() => {
+    return () => {
+      if (similarQuizPollRef.current) clearInterval(similarQuizPollRef.current)
+      if (similarQuizAbortRef.current) similarQuizAbortRef.current.abort()
+    }
+  }, [])
+
   const selectAttempt = async (attemptId) => {
     setLoading(true)
     setError('')
@@ -85,7 +104,24 @@ function Review({ onNavigate }) {
     }
   }
 
+  // 유사 문제 생성이 진행 중일 때 화면을 벗어나면 요청을 취소한다 — 안 그러면 뒤로가기를
+  // 눌러도 생성이 백그라운드에서 계속 진행되다가, 완료되는 순간 사용자가 이미 떠난 화면을
+  // 무시하고 강제로 퀴즈 화면으로 이동시켜버리는 문제가 있었다(실제 재현 확인됨).
+  const cancelSimilarQuizGeneration = () => {
+    if (similarQuizPollRef.current) {
+      clearInterval(similarQuizPollRef.current)
+      similarQuizPollRef.current = null
+    }
+    if (similarQuizAbortRef.current) {
+      similarQuizAbortRef.current.abort()
+      similarQuizAbortRef.current = null
+    }
+    setGenerating(false)
+    setGenProgress({ done: 0, total: 0 })
+  }
+
   const backToNotes = () => {
+    cancelSimilarQuizGeneration()
     setView('notes')
     setQuiz(null)
     setResult(null)
@@ -94,6 +130,7 @@ function Review({ onNavigate }) {
   }
 
   const backToDates = () => {
+    cancelSimilarQuizGeneration()
     setView('dates')
     setExpandedNoteId(null)
     setQuiz(null)
@@ -104,22 +141,43 @@ function Review({ onNavigate }) {
 
   const startSimilarQuiz = async () => {
     if (!selectedAttemptId) return
+    const attemptId = selectedAttemptId
+    const controller = new AbortController()
+    similarQuizAbortRef.current = controller
     setGenerating(true)
+    setGenProgress({ done: 0, total: 0 })
     setError('')
     setResult(null)
     setIdx(0)
     setAnswers({})
+
+    similarQuizPollRef.current = setInterval(async () => {
+      try {
+        const p = await apiRequest(`/api/attempts/${attemptId}/similar-quiz/progress`)
+        if (!controller.signal.aborted) setGenProgress({ done: p.done, total: p.total })
+      } catch {
+        // 폴링 실패는 무시 — 다음 틱에서 다시 시도된다.
+      }
+    }, 1000)
+
     try {
-      const data = await apiRequest(`/api/attempts/${selectedAttemptId}/similar-quiz`, {
+      const data = await apiRequest(`/api/attempts/${attemptId}/similar-quiz`, {
         method: 'POST',
         body: JSON.stringify({}),
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) return
       setQuiz(data)
       setView('quiz')
     } catch (err) {
+      if (controller.signal.aborted) return
       setError(err.message)
     } finally {
-      setGenerating(false)
+      if (similarQuizPollRef.current) {
+        clearInterval(similarQuizPollRef.current)
+        similarQuizPollRef.current = null
+      }
+      if (!controller.signal.aborted) setGenerating(false)
     }
   }
 
@@ -183,7 +241,11 @@ function Review({ onNavigate }) {
       <Header title="복습하기" icon={<ReviewIcon />} onBack={headerBack} />
 
       <div className="body-scroll">
-        {error && <div className="explain-box">{error}</div>}
+        {error && (
+          <div className="explain-box error" ref={errorBoxRef}>
+            {error}
+          </div>
+        )}
 
         {view === 'dates' && (
           <div className="note-panel">
@@ -273,9 +335,23 @@ function Review({ onNavigate }) {
               )}
             </div>
             {notes.some((note) => !note.is_correct && !note.mastered) ? (
-              <button type="button" className="cta-button" onClick={startSimilarQuiz} disabled={generating}>
-                {generating ? 'AI가 비슷한 문제를 만드는 중...' : '이 회차 복습하기'}
-              </button>
+              <>
+                <button type="button" className="cta-button" onClick={startSimilarQuiz} disabled={generating}>
+                  {generating
+                    ? genProgress.total > 0
+                      ? `AI가 비슷한 문제를 만드는 중... (${genProgress.done}/${genProgress.total})`
+                      : 'AI가 비슷한 문제를 만드는 중...'
+                    : '이 회차 복습하기'}
+                </button>
+                {generating && genProgress.total > 0 && (
+                  <div className="progress-track similar-quiz-progress">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${Math.round((genProgress.done / genProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </>
             ) : (
               notes.length > 0 && <div className="note-mastered-banner">이 회차 문제를 모두 숙지했어요!</div>
             )}
