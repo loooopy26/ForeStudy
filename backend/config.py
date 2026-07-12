@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     tmap_app_key: str | None = None
     tmap_base_url: str = "https://apis.openapi.sk.com"
 
+    # Google Routes API is used for public-transit routes when configured.
+    # TMAP remains responsible for POI search, walking, and driving routes.
+    google_maps_api_key: str | None = None
+
     # Naver Search API (블로그 검색). 주변 학습장소 추천에서 TMAP이 못 주는 속성(넓다/조용하다 등)
     # 조건을 실제 후기로 확인할 때 쓴다 (routers/location.py, services/naver.py). 없으면 해당
     # 속성 확인 기능만 조용히 건너뛴다.

@@ -38,6 +38,7 @@ UPSTAGE_API_KEY=up_xxxxxxxxxxxxxxxxxxxxxxxx
 
 # 주변 학습 장소 추천과 시험 당일 어시스턴트에 필요
 TMAP_APP_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_MAPS_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # PostgreSQL + pgvector
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/forestudy
