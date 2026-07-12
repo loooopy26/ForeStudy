@@ -17,6 +17,7 @@ import {
   markQuizGenerating,
   normalizeOptions,
   saveQuizResult,
+  recordQuestEvent,
   setLastAttemptId,
   setQuizProgress,
   updateCurriculumDay,
@@ -167,8 +168,17 @@ function Quiz({ onNavigate }) {
         }),
       })
       setLastAttemptId(data.attempt_id)
+      recordQuestEvent('daily-quiz')
+      recordQuestEvent('weekly-quiz')
+      const hasFiveCorrectInARow = (data.results || []).some((_, start) =>
+        data.results.slice(start, start + 5).length === 5
+        && data.results.slice(start, start + 5).every((item) => item.is_correct)
+      )
+      if (hasFiveCorrectInARow) recordQuestEvent('bonus-quiz-streak')
       if (data.correct_count === data.total_count && isDailyQuizUnlocked(materialId) && quiz.plan_scope?.day_id) {
         updateCurriculumDay(quiz.plan_scope.day_id, { progress_status: 'completed' }).catch(() => {})
+        recordQuestEvent('daily-plan')
+        recordQuestEvent('weekly-plan')
       }
       setResult(data)
       setResultDismissed(false)

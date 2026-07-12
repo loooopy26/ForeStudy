@@ -5,7 +5,7 @@ import villageMap from './assets/village-map.png'
 import certMascot from './assets/cert-mascot.png'
 import { AcornIcon } from './icons'
 import { useGoods } from './goods'
-import { getCertificateProgress, getCurrentCertificates } from './api'
+import { getCertificateProgress, getCurrentCertificates, getMyUser } from './api'
 import './Village.css'
 
 const PLACES = [
@@ -56,11 +56,25 @@ function Village({ onNavigate, certName, onSelectCertificate }) {
   const [showOngoing, setShowOngoing] = useState(true)
   const [certificates] = useState(getCurrentCertificates)
   const [progress, setProgress] = useState({ progress: 0, remainingDays: null })
+  const [level, setLevel] = useState(1)
   const activeCertificate = certificates.find((certificate) => certificate.title === certName) || certificates[0]
 
   useEffect(() => {
     if (activeCertificate) getCertificateProgress(activeCertificate.title).then(setProgress).catch(() => {})
   }, [activeCertificate?.title])
+
+  useEffect(() => {
+    const syncAccount = () => {
+      getMyUser()
+        .then((user) => {
+          if (typeof user?.level === 'number') setLevel(user.level)
+        })
+        .catch(() => {})
+    }
+    syncAccount()
+    window.addEventListener('forestudy:user-updated', syncAccount)
+    return () => window.removeEventListener('forestudy:user-updated', syncAccount)
+  }, [])
 
   return (
     <div className="village-page">
@@ -70,7 +84,7 @@ function Village({ onNavigate, certName, onSelectCertificate }) {
         <span className="village-title">마을</span>
         <div className="village-currency">
           <div className="currency-pill">
-            <span className="currency-pill-lvl">Lv.12</span>
+            <span className="currency-pill-lvl">Lv.{level}</span>
             <div className="currency-pill-acorn">
               <AcornIcon size={16} />
               <span>{wallet.toLocaleString()}</span>

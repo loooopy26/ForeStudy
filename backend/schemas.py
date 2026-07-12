@@ -27,6 +27,7 @@ class UserResponse(BaseModel):
     email: str
     nickname: str
     level: int
+    current_xp: int = 0
     dotori: int  # 도토리(재화) 점수 = users.dotori
 
 
@@ -35,6 +36,15 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     message: str
+
+
+class QuestRewardRequest(BaseModel):
+    exp: int = Field(..., ge=0)
+    dotori: int = Field(..., ge=0)
+
+
+class DotoriSpendRequest(BaseModel):
+    amount: int = Field(..., ge=0)
 
 
 # Goals: 사용자가 준비할 자격증 목표와 학습 기간을 설정합니다.

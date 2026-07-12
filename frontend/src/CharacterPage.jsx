@@ -40,9 +40,9 @@ function CharacterPage({ onNavigate }) {
 
   const anyEquipped = WEARABLE_KINDS.some((kind) => equipped[kind])
 
-  const handleCardClick = (item) => {
+  const handleCardClick = async (item) => {
     if (!isOwned(item.id)) {
-      if (buy(item)) {
+      if (await buy(item)) {
         toggleEquip(item)
         setToast({ text: `${item.name} 구매 후 착용했어요!` })
       } else {

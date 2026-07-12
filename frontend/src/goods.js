@@ -1,6 +1,7 @@
 // 상점/내 방/캐릭터 화면이 공유하는 카탈로그와 로컬 상태.
 // 도토리 지갑은 퀘스트 보드(ForestGame)와 같은 키(forestudy_acorns_v4)를 쓴다.
 import { useCallback, useEffect, useState } from 'react'
+import { getMyUser, spendMyDotori } from './api'
 
 const WALLET_KEY = 'forestudy_acorns_v4'
 const OWNED_KEY = 'forestudy_goods_owned_v1'
@@ -142,6 +143,10 @@ function setGlobalWallet(value) {
   notifyAll()
 }
 
+export function syncGoodsWallet(value) {
+  if (typeof value === 'number') setGlobalWallet(value)
+}
+
 function setGlobalOwned(value) {
   globalOwned = typeof value === 'function' ? value(globalOwned) : value
   localStorage.setItem(OWNED_KEY, JSON.stringify(globalOwned))
@@ -172,19 +177,34 @@ export function useGoods() {
 
   useEffect(() => {
     const handleUpdate = () => forceUpdate({})
+    const syncAccountWallet = () => {
+      getMyUser()
+        .then((user) => {
+          if (typeof user?.dotori === 'number') setGlobalWallet(user.dotori)
+        })
+        .catch(() => {})
+    }
     listeners.add(handleUpdate)
+    syncAccountWallet()
+    window.addEventListener('forestudy:user-updated', syncAccountWallet)
     return () => {
       listeners.delete(handleUpdate)
+      window.removeEventListener('forestudy:user-updated', syncAccountWallet)
     }
   }, [])
 
   const isOwned = useCallback((id) => globalOwned.includes(id), [])
 
   // 구매 성공 시 true. 도토리가 모자라면 false.
-  const buy = useCallback((item) => {
+  const buy = useCallback(async (item) => {
     if (globalOwned.includes(item.id)) return true
     if (globalWallet < item.price) return false
-    setGlobalWallet((prev) => prev - item.price)
+    try {
+      const updated = await spendMyDotori(item.price)
+      if (typeof updated?.dotori === 'number') setGlobalWallet(updated.dotori)
+    } catch {
+      return false
+    }
     setGlobalOwned((prev) => [...prev, item.id])
     return true
   }, [])

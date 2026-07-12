@@ -4,7 +4,7 @@ import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
 import CertSelect from './CertSelect'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
-import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, pauseTimer, prepareReviewQuiz, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, updateCurriculumDay, uploadMaterial } from './api'
+import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, pauseTimer, prepareReviewQuiz, recordQuestEvent, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, updateCurriculumDay, uploadMaterial } from './api'
 import './Library.css'
 
 const DEFAULT_DURATION_MIN = 40
@@ -232,12 +232,15 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   }
 
   const finishSession = () => {
-    if (endedRef.current || !sessionIdRef.current) return
+    if (endedRef.current) return
     endedRef.current = true
     const segmentMin = segmentStartRef.current ? Math.round((Date.now() - segmentStartRef.current) / 60000) : 0
     const maxMin = Math.max(maxUninterruptedMinRef.current, segmentMin)
     const studiedMin = Math.max(1, Math.round(studySecRef.current / 60))
-    endTimer(sessionIdRef.current, studiedMin, maxMin).catch(() => {})
+    if (maxMin >= 20) recordQuestEvent('daily-focus')
+    // 보너스 퀘스트의 누적/연속 학습 조건은 실제 타이머로 기록된 시간만 사용한다.
+    recordQuestEvent('bonus-study-minutes', studiedMin)
+    if (sessionIdRef.current) endTimer(sessionIdRef.current, studiedMin, maxMin).catch(() => {})
   }
 
   const pauseRunningTimer = (reason) => {
@@ -283,6 +286,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
           const planDay = todayPlanRef.current
           if (materialId && planDay) {
             unlockDailyQuiz(materialId, planDay.date)
+            recordQuestEvent('daily-timer')
+            recordQuestEvent('weekly-study')
             updateCurriculumDay(planDay.day_id, { progress_status: 'in_progress' }).catch(() => {})
           }
           return 0

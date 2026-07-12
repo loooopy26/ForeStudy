@@ -29,6 +29,85 @@ function localTodayKey() {
   return `${year}-${month}-${day}`
 }
 
+const QUEST_EVENTS_KEY = 'forestudy_quest_events'
+
+export function recordQuestEvent(type, amount = 1) {
+  const increment = Number(amount)
+  if (!Number.isFinite(increment) || increment <= 0) return
+  const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
+  const today = localTodayKey()
+  const events = saved[today] || {}
+  events[type] = (events[type] || 0) + increment
+  saved[today] = events
+  localStorage.setItem(QUEST_EVENTS_KEY, JSON.stringify(saved))
+  window.dispatchEvent(new Event('forestudy:quest-events'))
+}
+
+export function getTodayQuestEvents() {
+  try { return JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')[localTodayKey()] || {} } catch { return {} }
+}
+
+export function getQuestEventTotal(type, days = 1) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
+    return Array.from({ length: days }, (_, index) => {
+      const day = new Date()
+      day.setDate(day.getDate() - index)
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+      return saved[key]?.[type] || 0
+    }).reduce((sum, value) => sum + value, 0)
+  } catch { return 0 }
+}
+
+function getWeekDateKeys() {
+  const today = new Date()
+  const mondayOffset = (today.getDay() + 6) % 7
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - mondayOffset)
+  monday.setHours(0, 0, 0, 0)
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  })
+}
+
+export function getQuestEventTotalThisWeek(type) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
+    return getWeekDateKeys().reduce((sum, dateKey) => sum + (saved[dateKey]?.[type] || 0), 0)
+  } catch {
+    return 0
+  }
+}
+
+export function getQuestEventDayCountThisWeek(type, minimumAmount = 1) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
+    return getWeekDateKeys().filter((dateKey) => (saved[dateKey]?.[type] || 0) >= minimumAmount).length
+  } catch {
+    return 0
+  }
+}
+
+export function getQuestEventConsecutiveDays(type, minimumAmount = 1, maxDays = 7) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUEST_EVENTS_KEY) || '{}')
+    let consecutiveDays = 0
+    for (let index = 0; index < maxDays; index += 1) {
+      const date = new Date()
+      date.setDate(date.getDate() - index)
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      if ((saved[dateKey]?.[type] || 0) < minimumAmount) break
+      consecutiveDays += 1
+    }
+    return consecutiveDays
+  } catch {
+    return 0
+  }
+}
+
 // 자격증(자료)별로 독립된 상태를 저장해야 한다 — 예전엔 단일 객체({materialId, ...}) 하나만
 // 저장해서, 자격증 2개를 오가면 나중에 확인한 자격증이 이전 자격증의 "오늘 퀴즈 진행 상황"을
 // 덮어썼다. 그러면 다시 그 자격증으로 돌아왔을 때 이미 푼 퀴즈가 없는 것처럼 보여서 사용자가
@@ -204,13 +283,47 @@ export async function getDemoUser() {
   return apiRequest('/auth/demo')
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // 로그인 상태면 실제 계정(도토리 등) 정보를, 아니면 데모 유저 정보를 반환한다.
 export async function getMyUser() {
   const currentUser = getCurrentUser()
-  if (currentUser?.id) {
+  if (currentUser?.id && UUID_RE.test(String(currentUser.id))) {
     return apiRequest(`/auth/me/${currentUser.id}`)
   }
-  return getDemoUser()
+  const demoUser = await getDemoUser()
+  setCurrentUser(demoUser)
+  return demoUser
+}
+
+export async function grantQuestReward(exp, dotori) {
+  let user = getCurrentUser()
+  if (!user?.id || !UUID_RE.test(String(user.id))) {
+    user = await getMyUser()
+  }
+  if (!user?.id) throw new Error('로그인이 필요합니다.')
+  const updated = await apiRequest(`/auth/me/${user.id}/quest-reward`, {
+    method: 'POST',
+    body: JSON.stringify({ exp, dotori }),
+  })
+  setCurrentUser(updated)
+  window.dispatchEvent(new Event('forestudy:user-updated'))
+  return updated
+}
+
+export async function spendMyDotori(amount) {
+  let user = getCurrentUser()
+  if (!user?.id || !UUID_RE.test(String(user.id))) {
+    user = await getMyUser()
+  }
+  if (!user?.id) throw new Error('로그인이 필요합니다.')
+  const updated = await apiRequest(`/auth/me/${user.id}/spend-dotori`, {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  })
+  setCurrentUser(updated)
+  window.dispatchEvent(new Event('forestudy:user-updated'))
+  return updated
 }
 
 export async function login(email, password) {

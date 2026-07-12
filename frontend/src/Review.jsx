@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import { CheckIcon, CrossIcon, ReviewIcon } from './icons'
-import { apiRequest, getMaterialAttempts, getMaterialId, normalizeOptions, setLastAttemptId } from './api'
+import { apiRequest, getMaterialAttempts, getMaterialId, normalizeOptions, recordQuestEvent, setLastAttemptId } from './api'
 import './Shell.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
@@ -220,6 +220,11 @@ function Review({ onNavigate }) {
         loadAttempts()
       }
       setResult(data)
+      const masteredCount = data.mastered_source_question_ids?.length || 0
+      for (let index = 0; index < masteredCount; index += 1) {
+        recordQuestEvent('daily-review')
+        recordQuestEvent('weekly-review')
+      }
       setView('result')
     } catch (err) {
       setError(err.message)

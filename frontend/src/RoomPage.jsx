@@ -196,9 +196,9 @@ function RoomPage({ onNavigate }) {
       ? room[item.kind] === item.id
       : room.placed.some((p) => p.id === item.id)
 
-  const handleCardClick = (item) => {
+  const handleCardClick = async (item) => {
     if (!isOwned(item.id)) {
-      if (buy(item)) setToast({ text: `${item.name} 구매 완료! 탭해서 배치해 보세요` })
+      if (await buy(item)) setToast({ text: `${item.name} 구매 완료! 탭해서 배치해 보세요` })
       else setToast({ text: '도토리가 부족해요' })
       return
     }

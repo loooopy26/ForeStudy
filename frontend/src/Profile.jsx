@@ -43,6 +43,7 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
   const [stats, setStats] = useState(null)
   const [dotori, setDotori] = useState(null)
   const [level, setLevel] = useState(null)
+  const [currentXp, setCurrentXp] = useState(0)
   const [certGoalInfo, setCertGoalInfo] = useState(null)
   const [certificates, setCertificates] = useState(getCurrentCertificates)
   const [selectedCertificate, setSelectedCertificate] = useState(null)
@@ -60,6 +61,7 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
     getMyUser().then((user) => {
       setDotori(user.dotori)
       setLevel(user.level)
+      setCurrentXp(user.current_xp || 0)
     }).catch((err) => {
       if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
     })
@@ -136,6 +138,8 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
     { key: 'review', label: '학습 지속성', value: stats?.persistence, Icon: MedalIcon, suffix: '%' },
     { key: 'passRate', label: '합격 가능성', value: stats ? Math.round(stats.pass_rate) : undefined, Icon: StarIcon, suffix: '%' },
   ]
+  const nextLevelXp = (level || 1) * 100
+  const xpPercent = Math.min(100, Math.round(currentXp / nextLevelXp * 100))
 
   return (
     <div className="profile-page">
@@ -192,10 +196,10 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
             )}
             <div className="xp-row">
               <span className="xp-label">XP</span>
-              <span>1,240 / 2,000</span>
+              <span>{currentXp.toLocaleString()} / {nextLevelXp.toLocaleString()}</span>
             </div>
             <div className="progress-track hero-progress">
-              <div className="progress-fill" style={{ width: '62%' }} />
+              <div className="progress-fill" style={{ width: `${xpPercent}%` }} />
             </div>
           </div>
         </section>

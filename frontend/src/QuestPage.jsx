@@ -7,6 +7,7 @@ export default function QuestPage({
   level,
   acorns,
   onRemoveQuest,
+  onClaimQuest,
   onNavigate
 }) {
   const [activeTab, setActiveTab] = useState('main'); // 'main' | 'sub' | 'bonus'
@@ -40,13 +41,13 @@ export default function QuestPage({
           className={`tab-item ${activeTab === 'main' ? 'active' : ''}`}
           onClick={() => setActiveTab('main')}
         >
-          메인
+          일간
         </span>
         <span 
           className={`tab-item ${activeTab === 'sub' ? 'active' : ''}`}
           onClick={() => setActiveTab('sub')}
         >
-          서브
+          주간
         </span>
         <span 
           className={`tab-item ${activeTab === 'bonus' ? 'active' : ''}`}
@@ -137,6 +138,9 @@ export default function QuestPage({
                   도토리 {q.rewardAcorns}
                 </span>
               </div>
+              {q.status === 'completed' && !q.claimed && (
+                <button type="button" className="quest-claim-button" onClick={() => onClaimQuest(q.id)}>보상 받기</button>
+              )}
 
               {/* Progress Bar (Always visible for unlocked quests) */}
               <div className="quest-progress-section">

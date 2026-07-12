@@ -21,7 +21,7 @@ _HASH_ALGO = "pbkdf2_sha256"
 _ITERATIONS = 200_000
 
 # 조회할 계정 컬럼 (비밀번호 해시는 검증용으로 login 에서만 추가로 가져온다).
-_USER_FIELDS = "id, email, nickname, level, dotori"
+_USER_FIELDS = "id, email, nickname, level, current_xp, dotori"
 
 
 async def register_user(email: str, password: str, nickname: str) -> dict:
@@ -127,6 +127,22 @@ async def refund_dotori(user_id: str, amount: int) -> None:
     await pool.execute("UPDATE users SET dotori = dotori + $1 WHERE id = $2", amount, user_id)
 
 
+async def grant_quest_reward(user_id: str, exp: int, dotori: int) -> dict:
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT level, current_xp FROM users WHERE id = $1", user_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    level, current_xp = int(row["level"]), int(row["current_xp"]) + exp
+    while current_xp >= level * 100:
+        current_xp -= level * 100
+        level += 1
+    updated = await pool.fetchrow(
+        f"UPDATE users SET level = $1, current_xp = $2, dotori = dotori + $3 WHERE id = $4 RETURNING {_USER_FIELDS}",
+        level, current_xp, dotori, user_id,
+    )
+    return _to_user_response(updated)
+
+
 def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _ITERATIONS)
@@ -162,5 +178,6 @@ def _to_user_response(user: asyncpg.Record) -> dict:
         "email": user["email"],
         "nickname": user["nickname"],
         "level": user["level"],
+        "current_xp": user["current_xp"],
         "dotori": user["dotori"],  # 도토리(재화) 점수
     }

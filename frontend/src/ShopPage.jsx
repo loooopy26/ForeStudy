@@ -36,13 +36,13 @@ function ShopPage({ onNavigate, initialSub }) {
   // '커스텀' 탭은 AI로 만든 아이템만, 나머지 탭은 기본 카탈로그만 보여준다.
   const items = tab === CUSTOM_TAB ? customItems : CATALOG.filter(TAB_FILTER[tab])
 
-  const handleBuy = (item) => {
+  const handleBuy = async (item) => {
     // '커스텀' 아이템은 보관 시 이미 보유 처리되므로 구매 동작이 없다.
     if (item.generated || isOwned(item.id)) {
       setToast({ text: '이미 보유한 아이템이에요' })
       return
     }
-    if (buy(item)) {
+    if (await buy(item)) {
       setToast({ text: `${item.name} 구매 완료!` })
     } else {
       setToast({ text: '도토리가 부족해요' })
