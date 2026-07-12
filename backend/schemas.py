@@ -251,8 +251,12 @@ class RoomDecorateRequest(BaseModel):
 
 
 # 아이템 생성: 도토리를 소모해 자연어 설명을 이미지로 변환하고 곧바로 인벤토리에 등록합니다.
+# user_id는 화면별 더미 인벤토리(SQLite, 로그인 없는 MVP)에 쓰는 고정 데모 id.
+# real_user_id가 있으면(로그인한 유저) 도토리는 그 대신 PostgreSQL users.dotori에서 차감한다 —
+# 두 값이 가리키는 "도토리"가 서로 다른 저장소라 하나로 합치지 않고 명시적으로 분리했다.
 class GenerateItemRequest(BaseModel):
     user_id: int = Field(..., example=1)
+    real_user_id: str | None = Field(None, example="c1bc4aa9-7446-4f32-84fd-7a304d3a61e7")
     prompt: str = Field(..., min_length=1, example="포근한 나무 책상")
 
 

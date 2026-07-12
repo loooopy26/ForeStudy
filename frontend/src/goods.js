@@ -1,8 +1,14 @@
 // 상점/내 방/캐릭터 화면이 공유하는 카탈로그와 로컬 상태.
 // 도토리 지갑은 퀘스트 보드(ForestGame)와 같은 키(forestudy_acorns_v4)를 쓴다.
 import { useCallback, useEffect, useState } from 'react'
+import { getCurrentUser, getMyUser } from './api'
+
+// TEMP: 백엔드 서버가 아직 안 떠 있을 때(fetch 자체가 실패) 화면 확인용으로 보여줄 값.
+// 백엔드 세팅 후 이 상수와 아래 catch의 fallback 처리는 제거할 것.
+const DEV_FALLBACK_DOTORI = 2450
 
 const WALLET_KEY = 'forestudy_acorns_v4'
+const WALLET_OWNER_KEY = 'forestudy_acorns_owner_v1'
 const OWNED_KEY = 'forestudy_goods_owned_v1'
 const EQUIPPED_KEY = 'forestudy_equipped_v1'
 const ROOM_KEY = 'forestudy_room_v1'
@@ -111,8 +117,9 @@ export function readEquipped() {
 // Global states stored at the module level to synchronize state across components in real-time
 let globalWallet = (() => {
   const saved = localStorage.getItem(WALLET_KEY)
-  return saved ? parseInt(saved) : 2450
+  return saved ? parseInt(saved) : 0
 })()
+let walletFetchStartedFor = null
 let globalOwned = readJson(OWNED_KEY, [])
 let globalCustomItems = readJson(CUSTOM_ITEMS_KEY, [])
 let globalEquipped = readEquipped()
@@ -174,6 +181,21 @@ export function useGoods() {
     }
   }, [])
 
+  // 로컬에 진행 중인 도토리 값이 없거나, 마지막으로 값을 가져온 유저와 지금 로그인한
+  // 유저가 다르면(=로그인/로그아웃으로 계정이 바뀌면) 백엔드의 실제 보유 도토리로 초기화한다.
+  useEffect(() => {
+    const owner = getCurrentUser()?.id || 'demo'
+    if (walletFetchStartedFor === owner) return
+    if (localStorage.getItem(WALLET_KEY) && localStorage.getItem(WALLET_OWNER_KEY) === owner) return
+    walletFetchStartedFor = owner
+    getMyUser().then((user) => {
+      setGlobalWallet(user.dotori)
+      localStorage.setItem(WALLET_OWNER_KEY, owner)
+    }).catch((err) => {
+      if (err instanceof TypeError) setGlobalWallet(DEV_FALLBACK_DOTORI)
+    })
+  }, [])
+
   const isOwned = useCallback((id) => globalOwned.includes(id), [])
 
   // 구매 성공 시 true. 도토리가 모자라면 false.
@@ -189,6 +211,12 @@ export function useGoods() {
     if (globalWallet < amount) return false
     setGlobalWallet((prev) => prev - amount)
     return true
+  }, [])
+
+  // 로컬에서 임의로 빼고 더하는 대신, 서버가 알려준 실제 잔액으로 그대로 맞출 때 쓴다
+  // (예: 로그인한 유저의 실제 도토리를 차감하는 AI 아이템 생성 이후).
+  const setWallet = useCallback((amount) => {
+    setGlobalWallet(amount)
   }, [])
 
   const addCustomItem = useCallback((item) => {
@@ -257,6 +285,7 @@ export function useGoods() {
     isOwned,
     buy,
     spend,
+    setWallet,
     addCustomItem,
     toggleEquip,
     toggleRoomItem,

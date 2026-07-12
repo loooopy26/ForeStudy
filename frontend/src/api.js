@@ -178,6 +178,18 @@ export async function getDemoUser() {
   return apiRequest('/auth/demo')
 }
 
+export async function getMe(userId) {
+  return apiRequest(`/auth/me/${userId}`)
+}
+
+// 로그인한 유저가 있으면 그 유저의 최신 정보(도토리 등)를, 없으면(로그인 없는 MVP 화면)
+// 데모 유저 정보를 반환한다. 도토리를 보여주는 화면들이 공통으로 사용한다.
+export async function getMyUser() {
+  const current = getCurrentUser()
+  if (current?.id) return getMe(current.id)
+  return getDemoUser()
+}
+
 export async function login(email, password) {
   return apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
 }
@@ -416,51 +428,45 @@ export async function getTodayCurriculumDay(certificationName) {
   }
 }
 
+// 인벤토리 저장(내 방/캐릭터 화면과 공유하는 더미 SQLite 데이터)은 로그인 여부와 무관하게
+// 고정 데모 유저를 쓴다 (Library.jsx의 TIMER_DEMO_USER_ID와 동일한 값). 도토리 차감만
+// 로그인한 유저가 있으면 real_user_id로 실제 계정(PostgreSQL users.dotori)에서 이뤄진다.
+const AI_ITEM_DEMO_USER_ID = 1
+
 export async function generateAiItem(prompt, activeTab = 'wear') {
   const text = prompt.trim()
-  const palette = [
-    ['#7d9c62', '#5f7a43'],
-    ['#e8a4b0', '#d3808f'],
-    ['#9ec1d9', '#7ba3bf'],
-    ['#e9c46a', '#d4a83f'],
-    ['#a9825f', '#8a6647'],
-  ]
-  const [color, trim] = palette[Math.abs(hashText(text)) % palette.length]
   const kindByTab = {
     wear: 'outfit',
     furniture: 'furniture',
     decor: 'decor',
     surface: 'wallpaper',
   }
-  const artByKind = {
-    outfit: 'hoodie',
-    furniture: 'shelf',
-    decor: 'plant',
-    wallpaper: 'wallpaper-forest',
-  }
   const kind = kindByTab[activeTab] || 'outfit'
   const nameBase = text.split(/\s+/).slice(0, 2).join(' ') || 'AI 아이템'
 
+  const realUserId = getCurrentUser()?.id || null
+  const { item, remaining_token } = await apiRequest('/items/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: AI_ITEM_DEMO_USER_ID,
+      real_user_id: realUserId,
+      prompt: text,
+    }),
+  })
+
   return {
-    id: `ai-${crypto.randomUUID()}`,
+    id: `ai-${item.item_id}`,
     name: `${nameBase} 아이템`,
     price: 0,
     kind,
-    art: artByKind[kind] || 'hoodie',
-    color,
-    trim,
+    image: `${API_BASE}${item.image_url}`,
     description: `"${text}" 느낌으로 만든 AI 커스텀 아이템이에요.`,
     tags: text.split(/\s+/).filter(Boolean).slice(0, 3),
     generated: true,
+    // 로그인한 유저는 remaining_token이 실제 차감 후 dotori 잔액이라, 헤더 지갑을 로컬에서
+    // 임의로 빼는 대신 이 값으로 그대로 맞춰야 서버와 어긋나지 않는다.
+    remainingDotori: realUserId ? remaining_token : null,
   }
-}
-
-function hashText(text) {
-  let hash = 0
-  for (let index = 0; index < text.length; index += 1) {
-    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0
-  }
-  return hash
 }
 
 export async function deleteCurriculum(curriculumId) {

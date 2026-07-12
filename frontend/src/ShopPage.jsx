@@ -102,7 +102,7 @@ function ShopPage({ onNavigate }) {
 
 // AI 아이템 공방: 입력 → 생성 중 → 결과. 생성 시 도토리 차감, 보관은 무료.
 function AiCreatePanel({ goods, activeTab, onKept, onToast }) {
-  const { spend, addCustomItem } = goods
+  const { spend, setWallet, addCustomItem } = goods
   const [prompt, setPrompt] = useState('')
   const [phase, setPhase] = useState('idle') // idle | generating | result
   const [result, setResult] = useState(null)
@@ -122,8 +122,12 @@ function AiCreatePanel({ goods, activeTab, onKept, onToast }) {
     setPhase('generating')
     try {
       const item = await generateAiItem(text, activeTab)
-      // 생성 성공 후 차감 (실패하면 도토리를 쓰지 않음)
-      if (!spend(AI_GEN_COST)) {
+      // 로그인한 유저는 서버가 실제 도토리를 이미 차감했으니, 로컬에서 또 빼지 않고
+      // 서버가 알려준 잔액으로 헤더 숫자를 그대로 맞춘다. 로그인 없는 데모 화면만
+      // 기존처럼 로컬 지갑에서 차감한다.
+      if (item.remainingDotori != null) {
+        setWallet(item.remainingDotori)
+      } else if (!spend(AI_GEN_COST)) {
         onToast({ text: '도토리가 부족해요' })
         setPhase(prevPhase)
         return

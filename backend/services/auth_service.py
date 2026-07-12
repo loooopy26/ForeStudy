@@ -98,6 +98,35 @@ async def get_user(user_id: str) -> dict:
     return _to_user_response(row)
 
 
+async def spend_dotori(user_id: str, amount: int) -> int:
+    """로그인한 실제 유저(UUID)의 users.dotori를 원자적으로 차감하고 남은 잔액을 반환한다.
+    AI 아이템 생성처럼 실제 계정 재화를 쓰는 기능에서 사용 — WHERE 절에 잔액 조건을
+    같이 걸어 두 요청이 동시에 들어와도(동시성) 잔액이 음수로 내려가지 않는다."""
+    pool = await get_pool()
+    try:
+        row = await pool.fetchrow(
+            "UPDATE users SET dotori = dotori - $1 WHERE id = $2 AND dotori >= $1 RETURNING dotori",
+            amount,
+            user_id,
+        )
+    except (asyncpg.DataError, ValueError):
+        raise HTTPException(status_code=404, detail="User not found")
+    if row is None:
+        # UPDATE가 0행에 적용됨 = 유저가 없거나 잔액 부족. 어느 쪽인지 구분해 메시지를 정확히 낸다.
+        exists = await pool.fetchval("SELECT 1 FROM users WHERE id = $1", user_id)
+        if not exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        raise ValueError("도토리가 부족합니다.")
+    return row["dotori"]
+
+
+async def refund_dotori(user_id: str, amount: int) -> None:
+    """spend_dotori로 차감한 뒤 이어지는 작업(예: 이미지 생성)이 실패했을 때 되돌려준다.
+    잔액 조건 없이 그냥 더하기만 하면 되므로 spend_dotori보다 단순하다."""
+    pool = await get_pool()
+    await pool.execute("UPDATE users SET dotori = dotori + $1 WHERE id = $2", amount, user_id)
+
+
 def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _ITERATIONS)

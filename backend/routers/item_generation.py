@@ -16,4 +16,6 @@ router = APIRouter(prefix="/items", tags=["item-generation"])
 
 @router.post("/generate", response_model=GeneratedItemResponse)
 async def generate_item(request: GenerateItemRequest, db: Session = Depends(get_db)):
-    return await generate_custom_item(db=db, user_id=request.user_id, prompt=request.prompt)
+    return await generate_custom_item(
+        db=db, user_id=request.user_id, prompt=request.prompt, real_user_id=request.real_user_id
+    )

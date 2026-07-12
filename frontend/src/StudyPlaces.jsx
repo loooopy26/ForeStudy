@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import iconPinBadge from './assets/icon-pin-badge.png'
 import iconLightbulb from './assets/icon-lightbulb.png'
-import iconTransportWalk from './assets/icon-transport-walk.png'
-import iconTransportCar from './assets/icon-transport-car.png'
-import iconTransportBus from './assets/icon-transport-bus.png'
 import { BackIcon, BellIcon } from './icons'
 import { DEFAULT_ORIGIN, fetchNearbyStudyPlaces, getCurrentPositionSafe } from './api'
 import TmapView from './TmapView'
@@ -152,18 +149,6 @@ function StudyPlaces({ onNavigate }) {
         </form>
 
         <div className="sp-chips">
-          <button type="button" className="sp-chip sp-chip-active">
-            <img src={iconTransportWalk} alt="" className="sp-chip-icon" />
-            도보
-          </button>
-          <button type="button" className="sp-chip">
-            <img src={iconTransportCar} alt="" className="sp-chip-icon" />
-            자동차
-          </button>
-          <button type="button" className="sp-chip">
-            <img src={iconTransportBus} alt="" className="sp-chip-icon" />
-            대중교통
-          </button>
           <div className="sp-chip-radius-wrap">
             <button type="button" className="sp-chip sp-chip-radius" onClick={() => setRadiusOpen((v) => !v)}>
               반경 {radius}km

@@ -10,7 +10,7 @@ import {
   deleteMaterial,
   getCertGoal,
   getCurrentCertificates,
-  getDemoUser,
+  getMyUser,
   getStats,
   removeCurrentCertificate,
 } from './api'
@@ -47,7 +47,7 @@ function Profile({ onNavigate }) {
     getStats(TIMER_DEMO_USER_ID).then(setStats).catch((err) => {
       if (err instanceof TypeError) setStats(DEV_FALLBACK_STATS)
     })
-    getDemoUser().then((user) => setDotori(user.dotori)).catch((err) => {
+    getMyUser().then((user) => setDotori(user.dotori)).catch((err) => {
       if (err instanceof TypeError) setDotori(DEV_FALLBACK_DOTORI)
     })
   }, [])

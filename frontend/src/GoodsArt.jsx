@@ -73,7 +73,10 @@ const ASSET = '/assets/'
 function getItemImage(item) {
   if (item.custom) return null
   const image = item.image
-  return image ? `${ASSET}${image}` : null
+  if (!image) return null
+  // AI로 생성된 아이템은 백엔드가 절대 URL(http://.../generated-items/...)을 내려준다.
+  // 카탈로그 아이템은 /assets/ 밑의 로컬 파일명만 갖고 있어 접두사를 붙여야 한다.
+  return /^https?:\/\//.test(image) ? image : `${ASSET}${image}`
 }
 
 function hashText(value = '') {
