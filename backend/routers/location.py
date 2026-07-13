@@ -32,7 +32,7 @@ from schemas import (
     NearbyStudyPlacesRequest,
     PlaceSearchRequest,
 )
-from services import naver, tmap, upstage
+from services import naver, tmap, upstage, web_search
 
 router = APIRouter(prefix="/api/location", tags=["location"])
 logger = logging.getLogger(__name__)
@@ -796,15 +796,33 @@ def _rule_based_exam_guidance(routes: dict, buffer_minutes: int) -> dict:
     }
 
 
+async def _search_preparation_items(certification_name: str) -> str:
+    """준비물은 LLM이 지어내지 않고, 실제 웹 검색 결과에 나온 내용만 반영하도록
+    검색 스니펫을 프롬프트용 텍스트로 만들어 돌려준다. 검색 API 키가 없거나 검색이
+    실패하면 빈 문자열을 돌려주고, 이 경우 프롬프트가 범용 준비물만 적도록 안내한다."""
+    query = f"{certification_name} 시험 준비물"
+    try:
+        results = await asyncio.wait_for(web_search.search(query, max_results=5), timeout=10)
+    except Exception:
+        logger.exception("준비물 웹 검색 실패: %s", query)
+        return ""
+    if not results:
+        return ""
+    return "\n".join(f"- {r['title']}: {r['snippet']}" for r in results if r.get("snippet"))
+
+
 async def _generate_exam_guidance(exam_info: dict, routes: dict, nearby_places: dict, buffer_minutes: int) -> dict:
     """LLM은 거리/시간/출발시각을 계산하지 않는다 — routes/nearby_places는 이미 TMAP과
     백엔드가 계산을 마친 값이고, LLM은 그 값을 입력으로만 받아 추천 이동수단/리스크/행동
-    계획/준비물 문구를 생성한다. LLM이 없거나 실패하면 규칙 기반 안내로 대체한다."""
+    계획 문구를 생성한다. 준비물(preparation_items)은 웹 검색 결과에 실제로 나온 내용만
+    반영하도록 프롬프트에 검색 스니펫을 함께 넣는다. LLM이 없거나 실패하면 규칙 기반
+    안내로 대체한다."""
     fallback = _rule_based_exam_guidance(routes, buffer_minutes)
     if not settings.upstage_api_key:
         return fallback
 
     try:
+        search_snippets = await _search_preparation_items(exam_info["certification_name"])
         route_lines = (
             "\n".join(
                 f"- {_MODE_LABELS.get(mode, mode)}: 거리 {info['distance_meters']}m, "
@@ -822,11 +840,17 @@ async def _generate_exam_guidance(exam_info: dict, routes: dict, nearby_places: 
                 ("프린트", nearby_places.get("print_shops", [])),
             )
         )
+        search_block = (
+            f"[웹 검색 결과 - '{exam_info['certification_name']} 시험 준비물']\n{search_snippets}"
+            if search_snippets
+            else "[웹 검색 결과 없음]"
+        )
         prompt = (
             f"자격증: {exam_info['certification_name']}\n시험장: {exam_info['exam_site_name']}\n"
             f"시험일시: {exam_info['exam_date']} {exam_info['exam_start_time']}\n버퍼 시간: {buffer_minutes}분\n\n"
             f"[이동 수단별 정보 - 이미 계산된 값이니 그대로 인용할 것, 새로 계산하지 말 것]\n{route_lines}\n\n"
             f"[시험장 주변 후보]\n{nearby_lines}\n\n"
+            f"{search_block}\n\n"
             "위 정보만 근거로 시험 당일 안내를 작성해줘. 이동시간/거리/출발시각 숫자는 위에 주어진 값만 "
             "그대로 인용하고, 새로운 숫자를 계산하거나 추측하지 마.\n\n"
             "규칙:\n"
@@ -835,7 +859,10 @@ async def _generate_exam_guidance(exam_info: dict, routes: dict, nearby_places: 
             "- risk_notes는 출발시각을 되풀이하지 말고, 교통 정체·배차 지연·주차·날씨처럼 이동 중 실제로 "
             "생길 수 있는 위험 요소를 설명해.\n"
             "- action_plan은 시험 당일 아침 시간 순서대로 할 일만 적어. 커피/식사 같은 여가 활동은 넣지 마.\n"
-            "- preparation_items의 각 배열 원소에는 준비물 하나만 담아. 쉼표로 여러 개를 한 원소에 묶지 마.\n\n"
+            "- preparation_items는 반드시 위 [웹 검색 결과]에 실제로 언급된 준비물만 적어라. 검색 결과에 "
+            "없는 항목을 추측해서 지어내지 마라. 검색 결과가 없으면 신분증/수험표/필기구처럼 어떤 시험에나 "
+            "해당하는 범용 준비물만 적어라. 각 배열 원소에는 준비물 하나만 담고, 쉼표로 여러 개를 한 원소에 "
+            "묶지 마.\n\n"
             "Return JSON only:\n"
             "{\n"
             '  "recommended_transport_mode": "walk 또는 car 또는 transit 중 하나(정보가 전혀 없으면 null)",\n'

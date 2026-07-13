@@ -174,21 +174,8 @@ function ExamAssistant({ onNavigate }) {
         subtitle: exam.exam_site_address,
       })
     }
-    const nearby = result?.nearby_exam_site_places || {}
-    AMENITY_META.forEach(({ key, tag }) => {
-      ;(nearby[key] || []).forEach((place, index) => {
-        if (place.latitude == null || place.longitude == null) return
-        markers.push({
-          id: `${key}-${place.id ?? index}`,
-          latitude: place.latitude,
-          longitude: place.longitude,
-          label: tag[0],
-          color: '#C77A2E',
-          title: place.name,
-          subtitle: tag,
-        })
-      })
-    })
+    // 카페('카')/식당('식') 마커는 지도에 표시하지 않는다 — 시험장('시') 마커만 노출.
+    // 카페·식당 정보는 지도 아래 amenities 목록(AMENITY_META, L.438)에서 별도로 보여준다.
     return markers
   }, [exam, origin, result, originMode, originLabel])
 
