@@ -1,12 +1,11 @@
-// 캐릭터 아바타 래퍼.
-// 고양이는 CharacterArt(SVG)로 직접 그린다 — 몸과 옷이 같은 좌표계라 항상 정확히 맞는다.
-// 숨쉬기 애니메이션은 이 래퍼(.character-avatar) 한 곳에만 → 파츠가 어긋나지 않음.
-import CatArt from './CharacterArt'
+// 캐릭터 아바타 래퍼. 사용자가 제공한 고양이 원본 이미지를 캐릭터·프로필·레벨업
+// 화면에서 동일하게 사용한다.
+import catMascot from './assets/cat-mascot.png'
 
-function CharacterAvatar({ equipped, getItem, className = "" }) {
+function CharacterAvatar({ className = "" }) {
   return (
     <div className={`character-avatar ${className}`}>
-      <CatArt equipped={equipped} getItem={getItem} />
+      <img className="cat-art" src={catMascot} alt="손을 흔드는 고양이 캐릭터" />
     </div>
   )
 }
