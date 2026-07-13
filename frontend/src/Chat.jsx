@@ -26,7 +26,12 @@ function imageSrc(imageUrl) {
   return imageUrl.startsWith('blob:') ? imageUrl : `${API_BASE}${imageUrl}`
 }
 
-function MessageBubble({ isAI, text, imageUrl }) {
+function isImageAttachment(imageUrl) {
+  return /\.(png|jpe?g|webp)(?:$|\?)/i.test(imageUrl || '')
+}
+
+function MessageBubble({ isAI, text, imageUrl, attachmentIsImage }) {
+  const showImage = attachmentIsImage ?? isImageAttachment(imageUrl)
   return (
     <div className={`msg-row${isAI ? '' : ' mine'}`}>
       {isAI && (
@@ -35,7 +40,11 @@ function MessageBubble({ isAI, text, imageUrl }) {
         </div>
       )}
       <div className={`bubble ${isAI ? 'ai' : 'mine'}`}>
-        {imageUrl && <img className="bubble-image" src={imageSrc(imageUrl)} alt="첨부한 사진" />}
+        {imageUrl && (showImage ? (
+          <img className="bubble-image" src={imageSrc(imageUrl)} alt="첨부한 사진" />
+        ) : (
+          <a className="bubble-attachment" href={imageSrc(imageUrl)} target="_blank" rel="noreferrer">첨부 파일 열기</a>
+        ))}
         {text && (isAI ? <MarkdownText>{text}</MarkdownText> : text)}
       </div>
     </div>
@@ -55,6 +64,8 @@ function Chat({ onNavigate, materialId }) {
   const [streamingReply, setStreamingReply] = useState(null)
   const [attachedImage, setAttachedImage] = useState(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState(null)
+  const [attachedFileName, setAttachedFileName] = useState(null)
+  const [attachedIsImage, setAttachedIsImage] = useState(false)
   const logRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -117,7 +128,15 @@ function Chat({ onNavigate, materialId }) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    const isImage = file.type.startsWith('image/') || isImageAttachment(file.name)
+    const maxMb = isImage ? 20 : 200
+    if (file.size > maxMb * 1024 * 1024) {
+      setMessages((m) => [...m, { isAI: true, text: `첨부 파일은 ${maxMb}MB 이하로 올려 주세요.` }])
+      return
+    }
     setAttachedImage(file)
+    setAttachedFileName(file.name)
+    setAttachedIsImage(isImage)
     setAttachedPreviewUrl(URL.createObjectURL(file))
   }
 
@@ -127,6 +146,8 @@ function Chat({ onNavigate, materialId }) {
       return null
     })
     setAttachedImage(null)
+    setAttachedFileName(null)
+    setAttachedIsImage(false)
   }
 
   const submitText = async (text) => {
@@ -134,10 +155,17 @@ function Chat({ onNavigate, materialId }) {
     const image = attachedImage
     const previewUrl = attachedPreviewUrl
     if ((!trimmed && !image) || !sessionId || thinking) return
-    setMessages((m) => [...m, { isAI: false, text: trimmed, imageUrl: previewUrl || undefined }])
+    setMessages((m) => [...m, {
+      isAI: false,
+      text: trimmed,
+      imageUrl: previewUrl || undefined,
+      attachmentIsImage: attachedIsImage,
+    }])
     setInput('')
     setAttachedImage(null)
     setAttachedPreviewUrl(null)
+    setAttachedFileName(null)
+    setAttachedIsImage(false)
     setThinking(true)
     setStreamingReply('')
     try {
@@ -294,7 +322,11 @@ function Chat({ onNavigate, materialId }) {
 
           {attachedPreviewUrl && (
             <div className="composer-attachment">
-              <img src={attachedPreviewUrl} alt="첨부할 사진 미리보기" />
+              {attachedIsImage ? (
+                <img src={attachedPreviewUrl} alt="첨부할 사진 미리보기" />
+              ) : (
+                <span className="composer-attachment-file">{attachedFileName}</span>
+              )}
               <button
                 type="button"
                 className="composer-attachment-remove"
@@ -309,7 +341,7 @@ function Chat({ onNavigate, materialId }) {
           <div className="composer">
             <input
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg,image/webp,.pdf,.ppt,.pptx,.doc,.docx"
               ref={fileInputRef}
               onChange={handleFileChange}
               style={{ display: 'none' }}
@@ -317,7 +349,7 @@ function Chat({ onNavigate, materialId }) {
             <button
               type="button"
               className="attach-button"
-              aria-label="사진 첨부"
+              aria-label="파일 첨부"
               disabled={!sessionId}
               onClick={() => fileInputRef.current?.click()}
             >

@@ -1367,6 +1367,12 @@ def _build_tutor_messages(history: list[dict], context: str | None, plan_scope: 
         )
     if context:
         system += f"\n\n[Study-material context]\n{context}"
+        system += (
+            "\n\nIf the context contains '[첨부 파일 추출 텍스트]', treat it as text extracted from the "
+            "student's attached image or document. Answer the student's question using that text, including "
+            "tables, code, and numbered choices when present. Do not claim to see colors, diagrams, "
+            "or other visual details that are not represented in the extracted text."
+        )
     return [{"role": "system", "content": system}] + history
 
 

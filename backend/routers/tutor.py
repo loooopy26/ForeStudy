@@ -1,6 +1,8 @@
 """튜터 챗봇 (선생-학생) - 자료 발췌에 근거해 소크라테스식으로 지도."""
 
+import io
 import json
+import logging
 import uuid
 from datetime import date
 from pathlib import Path
@@ -8,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from PIL import Image, UnidentifiedImageError
 
 from config import settings
 from db import get_or_create_demo_user, get_pool
@@ -18,6 +21,15 @@ router = APIRouter(prefix="/api/tutor", tags=["튜터 챗봇"])
 
 _HISTORY_LIMIT = 20  # LLM에 넣을 최근 대화 수
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+_DOCUMENT_EXTENSIONS = {".pdf", ".ppt", ".pptx", ".doc", ".docx"}
+_ATTACHMENT_EXTENSIONS = _IMAGE_EXTENSIONS | _DOCUMENT_EXTENSIONS
+
+
+logger = logging.getLogger(__name__)
+
+_IMAGE_FORMATS = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}
+_MAX_TUTOR_IMAGE_PIXELS = 40_000_000
+_MAX_OCR_CONTEXT_CHARS = 12_000
 
 
 class SessionCreateRequest(BaseModel):
@@ -134,19 +146,19 @@ async def send_message(session_id: str, req: MessageRequest):
 @router.post("/sessions/{session_id}/messages/image")
 async def send_image_message(
     session_id: str,
-    file: UploadFile = File(..., description="첨부할 사진 (png/jpg/webp)"),
+    file: UploadFile = File(..., description="첨부할 파일 (이미지/pdf/ppt/doc)"),
     content: str = Form(""),
 ):
-    """사진을 첨부해 질문한다. Upstage Solar는 채팅에서 이미지 입력을 지원하지 않아
-    (실제 API 호출로 확인: "Image input is not allowed for this model"), 대신 Document
-    Parse(OCR)로 사진 속 텍스트를 먼저 추출해 컨텍스트로 넣어주는 방식으로 구현한다."""
+    """첨부 파일을 파싱해 텍스트를 추출하고, 그 내용에 대해 질문한다."""
     pool = await get_pool()
     session = await _get_session_or_404(pool, session_id)
 
-    ext = _uploaded_image_ext(file.filename)
+    ext = _uploaded_attachment_ext(file.filename)
+    attachment_bytes = await file.read()
+    _validate_tutor_attachment(attachment_bytes, ext)
     saved_name = f"{uuid.uuid4().hex}{ext}"
     saved_path = settings.tutor_chat_images_dir / saved_name
-    saved_path.write_bytes(await file.read())
+    saved_path.write_bytes(attachment_bytes)
     image_url = f"/tutor-chat-images/{saved_name}"
 
     try:
@@ -154,18 +166,31 @@ async def send_image_message(
         ocr_text = "\n".join(
             text for element in ocr_result.get("elements", []) if (text := _element_text(element).strip())
         )
-    except Exception:  # noqa: BLE001 — OCR 실패해도 사진 자체에 대한 질문은 계속 진행한다
-        ocr_text = ""
+    except Exception as exc:  # noqa: BLE001
+        saved_path.unlink(missing_ok=True)
+        logger.exception("Tutor attachment parsing failed: session=%s file=%s", session_id, saved_name)
+        raise HTTPException(
+            502,
+            "첨부 파일에서 텍스트를 읽는 데 실패했습니다. 잠시 후 다시 시도하거나, 파일이 손상되지 않았는지 확인해 주세요.",
+        ) from exc
 
-    user_text = content.strip() or "이 사진에 대해 설명해줘"
+    ocr_text = _trim_ocr_text(ocr_text)
+    if not ocr_text:
+        saved_path.unlink(missing_ok=True)
+        logger.warning("Tutor attachment contained no extractable text: session=%s file=%s", session_id, saved_name)
+        raise HTTPException(
+            422,
+            "첨부 파일에서 읽을 수 있는 텍스트를 찾지 못했습니다. 글자가 선명한 이미지 또는 텍스트가 포함된 문서를 첨부해 주세요.",
+        )
+
+    user_text = content.strip() or "이 첨부 파일의 내용을 설명해줘"
 
     plan_scope = await _load_today_plan_scope(
         pool, str(session["user_id"]), str(session["study_material_id"]) if session["study_material_id"] else None
     )
     context = await _rag_context(session, user_text, plan_scope)
-    if ocr_text:
-        ocr_section = f"[사용자가 첨부한 사진에서 인식된 내용]\n{ocr_text}"
-        context = f"{context}\n\n{ocr_section}" if context else ocr_section
+    ocr_section = f"[첨부 파일 추출 텍스트]\n{ocr_text}"
+    context = f"{context}\n\n{ocr_section}" if context else ocr_section
 
     return await _stream_reply_and_persist(
         pool, session_id, user_content=user_text, context=context, plan_scope=plan_scope, image_url=image_url
@@ -181,11 +206,43 @@ async def _get_session_or_404(pool, session_id: str):
     return session
 
 
-def _uploaded_image_ext(filename: str | None) -> str:
+def _uploaded_attachment_ext(filename: str | None) -> str:
     ext = Path(filename or "").suffix.lower()
-    if ext not in _IMAGE_EXTENSIONS:
-        raise HTTPException(400, "이미지 파일만 첨부할 수 있습니다 (png/jpg/webp)")
+    if ext not in _ATTACHMENT_EXTENSIONS:
+        raise HTTPException(400, "png/jpg/webp/pdf/ppt/pptx/doc/docx 파일만 첨부할 수 있습니다.")
     return ext
+
+
+def _validate_tutor_attachment(attachment_bytes: bytes, ext: str) -> None:
+    if not attachment_bytes:
+        raise HTTPException(400, "비어 있는 첨부 파일입니다.")
+    max_mb = settings.tutor_chat_image_max_mb if ext in _IMAGE_EXTENSIONS else settings.max_upload_mb
+    if len(attachment_bytes) > max_mb * 1024 * 1024:
+        raise HTTPException(400, f"첨부 파일은 최대 {max_mb}MB까지 올릴 수 있습니다.")
+    if ext not in _IMAGE_EXTENSIONS:
+        return
+    try:
+        with Image.open(io.BytesIO(attachment_bytes)) as image:
+            image.verify()
+        with Image.open(io.BytesIO(attachment_bytes)) as image:
+            if image.format != _IMAGE_FORMATS[ext]:
+                raise HTTPException(400, "파일 확장자와 실제 이미지 형식이 일치하지 않습니다.")
+            if image.width * image.height > _MAX_TUTOR_IMAGE_PIXELS:
+                raise HTTPException(400, "사진 해상도가 너무 큽니다. 4천만 화소 이하의 이미지를 첨부해 주세요.")
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(400, "손상되었거나 지원하지 않는 이미지 파일입니다.") from exc
+
+
+def _trim_ocr_text(text: str) -> str:
+    """Keep the useful beginning and end when a dense screenshot exceeds chat context."""
+    normalized = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    if len(normalized) <= _MAX_OCR_CONTEXT_CHARS:
+        return normalized
+    head = normalized[:9_000]
+    tail = normalized[-3_000:]
+    return f"{head}\n\n[첨부 파일 텍스트 일부 생략]\n\n{tail}"
 
 
 async def _rag_context(session, query_text: str, plan_scope: dict | None) -> str | None:

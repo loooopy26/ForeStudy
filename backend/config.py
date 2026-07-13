@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # AI 질문(튜터 챗)에 첨부한 사진 저장 위치. main.py에서 /tutor-chat-images로 정적 서빙해
     # 채팅창에 썸네일로 보여준다.
     tutor_chat_images_dir: Path = BASE_DIR / "uploads" / "tutor_chat_images"
+    tutor_chat_image_max_mb: int = 20
 
     # 청킹: 한국어 기준 대략 2~3자 = 1토큰, 임베딩 8k 컨텍스트 내에서 여유 있게
     chunk_max_chars: int = 1600

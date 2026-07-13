@@ -832,7 +832,16 @@ export async function getTutorHistory(materialId) {
 // 조각이 도착할 때마다 (delta, 지금까지 합친 전체 텍스트)로 호출해준다. 최종적으로는
 // 기존 호출부와 호환되게 { reply: 전체 텍스트 }를 반환한다.
 async function readTutorReplyStream(res, onDelta) {
-  if (!res.ok || !res.body) throw new Error('답변을 받지 못했습니다')
+  if (!res.ok || !res.body) {
+    let message = '답변을 받지 못했습니다'
+    try {
+      const payload = await res.json()
+      message = payload.detail || message
+    } catch {
+      // Keep the generic message when the server did not return JSON.
+    }
+    throw new Error(message)
+  }
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()

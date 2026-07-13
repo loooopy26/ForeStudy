@@ -107,6 +107,21 @@
   margin-bottom: 8px;
 }
 
+.bubble-attachment,
+.composer-attachment-file {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.composer-attachment-file {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .thinking {
   padding: 14px 16px;
   border-radius: 16px 16px 16px 5px;
