@@ -14,30 +14,20 @@ from config import settings
 from database import init_db
 from db import close_pool
 from routers import (
-    achievements,
     auth,
-    character,
     cert_goals,
-    dashboard,
     exam_day,
-    goals,
     goods,
-    growth_reports,
     item_generation,
     learning_plans,
     location,
     materials,
     quest_progress,
-    quests,
     quizzes,
     reports,
-    rewards,
-    room,
-    shop,
     stats,
     timer,
     tutor,
-    village,
 )
 
 
@@ -107,32 +97,23 @@ def register_router(router):
 
 
 # 화면/기능 단위 라우터 등록 구간입니다.
-# AI 도서관/AI 퀴즈/튜터 챗봇/학습 리포트는 Upstage+pgvector로 실제 동작하는
-# materials/quizzes/tutor/reports를 사용하고, 팀원이 만든 library/quiz 더미
-# 라우터는 등록하지 않습니다 (같은 기능의 인메모리 스텁이라 중복).
+# 예전에 팀원이 화면별로 미리 만들어뒀던 더미 라우터(dashboard/village/shop/room/
+# character/quests/rewards/achievements/goals/growth_reports)는 로그인 계정과
+# 무관한 SQLite/인메모리 스텁이었고 프론트에서 한 번도 호출하지 않아 제거했습니다.
+# 같은 기능은 각각 cert_goals/goods/quest_progress/stats가 실제로 담당합니다.
 for api_router in [
     auth.router,
-    goals.router,
-    dashboard.router,
-    village.router,
     materials.router,
     cert_goals.router,
     learning_plans.router,
-    quests.router,
     quest_progress.router,
     timer.router,
     quizzes.router,
     tutor.router,
     reports.router,
-    growth_reports.router,
     stats.router,
-    rewards.router,
-    achievements.router,
-    shop.router,
-    room.router,
     goods.router,
     item_generation.router,
-    character.router,
     location.router,
     exam_day.router,
 ]:

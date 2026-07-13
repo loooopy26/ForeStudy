@@ -1,5 +1,5 @@
 export const API_BASE = import.meta.env.VITE_API_BASE_URL
-  || `${window.location.protocol}//${window.location.hostname}:8000`
+  ?? `${window.location.protocol}//${window.location.hostname}:8000`
 
 export function getMaterialId() {
   return localStorage.getItem('forestudy_material_id') || import.meta.env.VITE_MATERIAL_ID || ''

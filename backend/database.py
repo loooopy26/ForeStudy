@@ -5,13 +5,16 @@ Role: provide SQLAlchemy engine, DB session, and table initialization.
 """
 
 from collections.abc import Generator
+import os
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{(BASE_DIR / 'forestudy.db').as_posix()}"
+sqlite_path = Path(os.getenv("SQLITE_DATABASE_PATH", BASE_DIR / "forestudy.db"))
+sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{sqlite_path.as_posix()}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -34,7 +37,3 @@ def init_db() -> None:
     import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
-    with engine.begin() as connection:
-        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(study_sessions)"))}
-        if "material_id" not in columns:
-            connection.execute(text("ALTER TABLE study_sessions ADD COLUMN material_id VARCHAR(100)"))

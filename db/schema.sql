@@ -227,7 +227,9 @@ CREATE TABLE study_sessions (
     id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id                    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     quest_id                   UUID REFERENCES quests(id) ON DELETE SET NULL,
-    study_material_id          UUID REFERENCES study_materials(id) ON DELETE SET NULL,
+    -- study_materials is defined later in this schema; its foreign key is
+    -- added after both tables exist.
+    study_material_id          UUID,
     started_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at                   TIMESTAMPTZ,
     active_seconds             INT NOT NULL DEFAULT 0,
@@ -424,6 +426,9 @@ ALTER TABLE quiz_attempt_evaluations ADD CONSTRAINT fk_quiz_attempt_evaluations_
 
 ALTER TABLE user_learning_profiles ADD CONSTRAINT fk_user_learning_profiles_study_material
     FOREIGN KEY (study_material_id) REFERENCES study_materials(id) ON DELETE CASCADE;
+
+ALTER TABLE study_sessions ADD CONSTRAINT fk_study_sessions_study_material
+    FOREIGN KEY (study_material_id) REFERENCES study_materials(id) ON DELETE SET NULL;
 
 -- RAG 검색용 청크 + 임베딩 (Document Parse로 파싱한 자료를 섹션/토큰 단위로 분할)
 -- solar-embedding-2-passage/query: 1024차원 (Upstage 콘솔 문서에서 확인)
