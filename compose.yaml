@@ -40,6 +40,9 @@ services:
       target: frontend
       args:
         VITE_API_BASE_URL: ""
+        # TMAP_APP_KEY is used server-side; this separate public browser key is
+        # needed to render the map SDK in the frontend image.
+        VITE_TMAP_APP_KEY: ${VITE_TMAP_APP_KEY:-}
     depends_on:
       - backend
     ports:

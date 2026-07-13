@@ -8,6 +8,8 @@ COPY frontend/ ./
 # Empty means same-origin API calls; Nginx proxies them to the backend service.
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ARG VITE_TMAP_APP_KEY=""
+ENV VITE_TMAP_APP_KEY=$VITE_TMAP_APP_KEY
 RUN npm run build
 
 FROM python:3.11-slim AS backend
