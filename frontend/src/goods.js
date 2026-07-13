@@ -4,7 +4,7 @@
 // 예전에는 여기가 전부 localStorage였어서 기기를 바꾸면 사라졌다. 드래그처럼 매우 잦은 로컬
 // 조작은 여전히 즉시 반영하고, 토글/회전/드래그 종료 같은 "확정" 시점에만 백엔드로 동기화한다.
 import { useCallback, useEffect, useState } from 'react'
-import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getCurrentUser, spendMyDotori } from './api'
+import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getCurrentUser, getMyUser, spendMyDotori } from './api'
 
 const WALLET_KEY = 'forestudy_acorns_v4'
 
@@ -214,8 +214,15 @@ export function useGoods() {
   useEffect(() => {
     const handleUpdate = () => forceUpdate({})
     const syncAccountWallet = () => {
-      const user = getCurrentUser()
-      if (typeof user?.dotori === 'number') setGlobalWallet(user.dotori)
+      const currentUser = getCurrentUser()
+      if (!currentUser?.id) return
+      getMyUser()
+        .then((user) => {
+          if (user?.id === currentUser.id && typeof user.dotori === 'number') {
+            setGlobalWallet(user.dotori)
+          }
+        })
+        .catch(() => {})
     }
     listeners.add(handleUpdate)
     ensureGoodsLoaded()
