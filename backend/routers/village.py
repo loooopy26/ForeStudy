@@ -15,5 +15,5 @@ router = APIRouter(prefix="/village", tags=["village"])
 
 
 @router.get("/{user_id}", response_model=VillageResponse)
-def read_village(user_id: int, db: Session = Depends(get_db)):
-    return get_village(db=db, user_id=user_id)
+async def read_village(user_id: int, db: Session = Depends(get_db)):
+    return await get_village(db=db, user_id=user_id)

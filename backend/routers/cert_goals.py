@@ -59,35 +59,34 @@ async def _resolve_user_id(pool, user_id: str | None) -> str:
 async def list_goals(user_id: str):
     """로그인 계정이 등록한 자격증 목록. 자격증 화면들의 '진행 중인 자격증' 카드에서 쓴다."""
     pool = await get_pool()
+    # 목표 개수만큼 study_materials를 따로 조회하지 않고, 자격증별 최신 자료 id를 서브쿼리
+    # (DISTINCT ON)로 한 번에 조인해서 목표가 몇 개든 쿼리 1번으로 끝낸다.
     rows = await pool.fetch(
         """
-        SELECT g.id AS goal_id, g.certification_id, c.name AS certification_name, g.target_exam_date
+        SELECT g.id AS goal_id, g.target_exam_date, c.name AS certification_name, m.id AS material_id
         FROM user_cert_goals g
         JOIN certifications c ON c.id = g.certification_id
+        LEFT JOIN (
+            SELECT DISTINCT ON (certification_id) certification_id, id
+            FROM study_materials
+            WHERE user_id = $1
+            ORDER BY certification_id, uploaded_at DESC
+        ) m ON m.certification_id = g.certification_id
         WHERE g.user_id = $1 AND g.status = 'active'
         ORDER BY g.created_at
         """,
         user_id,
     )
-    result = []
-    for row in rows:
-        material = await pool.fetchrow(
-            """
-            SELECT id FROM study_materials
-            WHERE user_id = $1 AND certification_id = $2
-            ORDER BY uploaded_at DESC LIMIT 1
-            """,
-            user_id,
-            row["certification_id"],
-        )
-        result.append({
+    return [
+        {
             "id": str(row["goal_id"]),
             "title": row["certification_name"],
-            "materialId": str(material["id"]) if material else None,
+            "materialId": str(row["material_id"]) if row["material_id"] else None,
             "subtitle": "학습 중",
             "targetExamDate": row["target_exam_date"].isoformat() if row["target_exam_date"] else None,
-        })
-    return result
+        }
+        for row in rows
+    ]
 
 
 @router.get("")

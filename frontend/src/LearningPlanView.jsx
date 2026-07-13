@@ -9,6 +9,8 @@ import {
   deleteMaterial,
   getCertGoal,
   getCurrentCertificates,
+  isCertificatesLoaded,
+  onCertificatesUpdated,
   refreshCertificates,
   regenerateCurriculum,
   saveCertGoal,
@@ -27,7 +29,16 @@ function LearningPlanView({ onNavigate, certName, materialId, planData }) {
   // 이미 "확인"까지 눌러서 정식 등록된 자격증을 다시 보러 온 것인지 — 그렇다면 이번엔
   // 나가도 아무것도 지우면 안 된다(이미 확정된 데이터이므로). 아직 등록 전이면(처음 설정
   // 흐름 중이면) 나갈 때 지금까지 만든 걸 전부 되돌리는 기존 동작을 그대로 적용한다.
-  const alreadyRegistered = !!materialId && getCurrentCertificates().some((c) => c.materialId === materialId)
+  // 자격증 목록은 이제 백엔드에서 비동기로 불러오므로, 아직 로드가 안 끝났을 땐 삭제
+  // 쪽(false)이 아니라 안전한 쪽(true = 이미 등록됨)으로 판단해 실수로 지우지 않게 한다.
+  const computeAlreadyRegistered = () => {
+    if (!materialId) return false
+    if (!isCertificatesLoaded()) return true
+    return getCurrentCertificates().some((c) => c.materialId === materialId)
+  }
+  const [alreadyRegistered, setAlreadyRegistered] = useState(computeAlreadyRegistered)
+
+  useEffect(() => onCertificatesUpdated(() => setAlreadyRegistered(computeAlreadyRegistered())), [materialId])
 
   const [phase, setPhase] = useState('idle')
   const [examGoal, setExamGoal] = useState(null)

@@ -163,7 +163,10 @@ function ensureGoodsLoaded() {
 }
 
 // 방 배치처럼 잦은 로컬 조작 뒤, 확정 시점(토글/회전/드래그 종료/저장)에만 백엔드로 밀어 넣는다.
+// ensureGoodsLoaded()를 먼저 기다려야 한다 — 로그인 직후처럼 globalUserId가 아직 안 채워진
+// 시점에 바로 확인하면(그 전 버전) 사용자가 뭔가를 놓아도 조용히 저장이 안 되고 사라졌다.
 async function syncRoomToBackend() {
+  await ensureGoodsLoaded()
   if (!globalUserId) return
   try {
     await apiRequest(`/api/goods/${globalUserId}/room`, {
@@ -253,8 +256,19 @@ export function useGoods() {
       const state = await apiRequest(`/api/goods/${globalUserId}/custom-items/${id}`, { method: 'DELETE' })
       applyGoodsState(state)
     } catch {
+      // 백엔드 호출이 실패해도 로컬에서는 완전히 지운 것처럼 보이게 한다 — 장착/방 배치에
+      // 참조가 남아있으면 더 이상 CATALOG/customItems에서 찾을 수 없는 깨진 아이템으로
+      // 남아 캐릭터/방 화면이 빈 스프라이트를 그리게 된다.
       globalCustomItems = globalCustomItems.filter((saved) => saved.id !== id)
       globalOwned = globalOwned.filter((ownedId) => ownedId !== id)
+      globalEquipped = Object.fromEntries(
+        Object.entries(globalEquipped).map(([slot, equippedId]) => [slot, equippedId === id ? null : equippedId])
+      )
+      globalRoom = {
+        wallpaper: globalRoom.wallpaper === id ? null : globalRoom.wallpaper,
+        floor: globalRoom.floor === id ? null : globalRoom.floor,
+        placed: globalRoom.placed.filter((p) => p.id !== id),
+      }
       notifyAll()
     }
   }, [])
@@ -264,12 +278,13 @@ export function useGoods() {
     const nextItemId = globalEquipped[item.kind] === item.id ? null : item.id
     globalEquipped = { ...globalEquipped, [item.kind]: nextItemId }
     notifyAll()
-    if (globalUserId) {
+    ensureGoodsLoaded().then(() => {
+      if (!globalUserId) return
       apiRequest(`/api/goods/${globalUserId}/equip`, {
         method: 'POST',
         body: JSON.stringify({ slot: item.kind, item_id: nextItemId }),
       }).catch(() => {})
-    }
+    })
   }, [])
 
   // 방 배치 토글: 없으면 기본 위치에 추가, 있으면 제거. 벽지/바닥은 표면 교체.

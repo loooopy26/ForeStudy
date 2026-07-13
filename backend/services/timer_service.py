@@ -51,13 +51,14 @@ async def pause_timer(session_id: str, segment_minutes: int, reason: str) -> dic
         "SELECT COALESCE(SUM(segment_minutes), 0) FROM study_session_interruptions WHERE study_session_id = $1",
         session_id,
     )
+    await pool.execute("UPDATE study_sessions SET status = 'paused' WHERE id = $1", session_id)
     return {
         "session_id": str(session["id"]),
         "user_id": str(session["user_id"]),
         "paused_at": paused_row["paused_at"],
         "segment_minutes": segment_minutes,
         "total_studied_minutes": int(total_studied_minutes),
-        "status": session["status"],
+        "status": "paused",
         "reason": reason,
     }
 

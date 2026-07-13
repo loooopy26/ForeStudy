@@ -288,7 +288,11 @@ export async function apiRequest(path, options = {}) {
     }
     throw new Error(message)
   }
-  return response.json()
+  // 204(No Content) 등 빈 응답에 .json()을 호출하면 "Unexpected end of JSON input"으로
+  // 항상 실패한다 — 성공/실패를 구분할 수 없게 되므로 빈 몸통이면 그냥 null을 반환한다.
+  if (response.status === 204) return null
+  const text = await response.text()
+  return text ? JSON.parse(text) : null
 }
 
 export function normalizeOptions(options) {
@@ -395,6 +399,12 @@ let certificatesLoaded = false
 export function getCurrentCertificates() {
   if (!certificatesLoaded) refreshCertificates()
   return certificatesCache
+}
+
+// 첫 로드가 아직 안 끝난 상태(빈 배열)와 "정말로 등록된 자격증이 없는" 상태를 구분해야
+// 하는 화면(예: 이미 등록된 자격증을 실수로 삭제하면 안 되는 화면)에서 쓴다.
+export function isCertificatesLoaded() {
+  return certificatesLoaded
 }
 
 export async function refreshCertificates() {

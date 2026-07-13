@@ -206,14 +206,18 @@ function ForestGame({ onNavigate, initialSub }) {
   // 확인해 로컬 상태(quests/achievements)의 claimed 플래그를 백엔드 진실과 맞춘다.
   useEffect(() => {
     getClaimedRewards([getDateKey(), getWeekKey(), 'lifetime']).then((claimedIds) => {
-      if (!claimedIds.length) return
       const claimedSet = new Set(claimedIds)
-      setQuests((current) => current.map((quest) => (
-        claimedSet.has(quest.id) ? { ...quest, claimed: true } : quest
-      )))
-      setAchievements((current) => current.map((ach) => (
-        claimedSet.has(ach.id) ? { ...ach, claimed: true } : ach
-      )))
+      // 퀘스트는 매번 백엔드 진실로 완전히 맞춘다(true도, false도) — 공유 기기에서 다른
+      // 계정으로 로그인했을 때, 이전 계정이 localStorage에 남긴 claimed:true가 이번 계정의
+      // 화면에 새어나와 실제로는 받을 수 있는 보상을 "이미 받음"으로 잘못 막지 않도록.
+      setQuests((current) => current.map((quest) => ({ ...quest, claimed: claimedSet.has(quest.id) })))
+      // 업적은 일부가 데모용으로 처음부터 claimed:true인 자리표시자라 무조건 false로 되돌리지
+      // 않는다 — 백엔드가 확인해준 것만 true로 추가 반영한다.
+      if (claimedSet.size) {
+        setAchievements((current) => current.map((ach) => (
+          claimedSet.has(ach.id) ? { ...ach, claimed: true } : ach
+        )))
+      }
     }).catch(() => {})
   }, [])
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BackIcon, SearchIcon, ArrowUpRightIcon, BotIcon } from './icons'
-import { getCurrentCertificates } from './api'
+import { getCurrentCertificates, isCertificatesLoaded, refreshCertificates } from './api'
 import './AddCert.css'
 
 const POPULAR = ['정보처리기사', '정보처리산업기사', 'SQLD', 'ADsP', '컴퓨터활용능력 1급']
@@ -57,13 +57,16 @@ function AddCert({ onNavigate }) {
     setError('')
   }
 
-  const continueCertificateFlow = () => {
+  const continueCertificateFlow = async () => {
     const title = selected.trim()
     if (!title) {
       setError('추가할 자격증을 선택해 주세요.')
       return
     }
-    if (getCurrentCertificates().some((certificate) => certificate.title === title)) {
+    // 자격증 목록이 아직 백엔드에서 로드되기 전이면(첫 방문 등) 확정된 목록으로 다시
+    // 확인해서, 실제로는 이미 등록된 자격증을 중복 검사 없이 통과시키지 않게 한다.
+    const certificates = isCertificatesLoaded() ? getCurrentCertificates() : await refreshCertificates()
+    if (certificates.some((certificate) => certificate.title === title)) {
       setError('이미 진행 중인 자격증입니다.')
       return
     }
