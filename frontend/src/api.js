@@ -1,20 +1,27 @@
 export const API_BASE = import.meta.env.VITE_API_BASE_URL
   ?? `${window.location.protocol}//${window.location.hostname}:8000`
 
+export const ACCOUNT_CHANGED_EVENT = 'forestudy:account-changed'
+
+export function getAccountStorageKey(key) {
+  const userId = getCurrentUser()?.id
+  return userId ? `${key}:${userId}` : `${key}:anonymous`
+}
+
 export function getMaterialId() {
-  return localStorage.getItem('forestudy_material_id') || import.meta.env.VITE_MATERIAL_ID || ''
+  return localStorage.getItem(getAccountStorageKey('forestudy_material_id')) || import.meta.env.VITE_MATERIAL_ID || ''
 }
 
 export function setMaterialId(materialId) {
-  if (materialId) localStorage.setItem('forestudy_material_id', materialId)
+  if (materialId) localStorage.setItem(getAccountStorageKey('forestudy_material_id'), materialId)
 }
 
 export function getLastAttemptId() {
-  return localStorage.getItem('forestudy_last_attempt_id') || ''
+  return localStorage.getItem(getAccountStorageKey('forestudy_last_attempt_id')) || ''
 }
 
 export function setLastAttemptId(attemptId) {
-  if (attemptId) localStorage.setItem('forestudy_last_attempt_id', attemptId)
+  if (attemptId) localStorage.setItem(getAccountStorageKey('forestudy_last_attempt_id'), attemptId)
 }
 
 const QUIZ_PROGRESS_KEY = 'forestudy_quiz_progress'
@@ -35,9 +42,20 @@ function localTodayKey() {
 // 받아온 day-key -> {type: amount} 맵을 메모리 캐시로 들고 그 캐시를 읽는 식으로 동작을 유지한다.
 let questEventsCache = {}
 let questEventsLoaded = false
+let questEventsUserId = null
+
+function resetQuestEventsForCurrentAccount() {
+  const userId = getAuthUserId()
+  if (questEventsUserId !== userId) {
+    questEventsCache = {}
+    questEventsLoaded = false
+    questEventsUserId = userId
+  }
+  return userId
+}
 
 export async function loadQuestEvents() {
-  const userId = getAuthUserId()
+  const userId = resetQuestEventsForCurrentAccount()
   if (!userId) {
     questEventsLoaded = true
     return questEventsCache
@@ -53,6 +71,7 @@ export async function loadQuestEvents() {
 }
 
 export function recordQuestEvent(type, amount = 1) {
+  const userId = resetQuestEventsForCurrentAccount()
   const increment = Number(amount)
   if (!Number.isFinite(increment) || increment <= 0) return
   const today = localTodayKey()
@@ -61,7 +80,6 @@ export function recordQuestEvent(type, amount = 1) {
   questEventsCache = { ...questEventsCache, [today]: events }
   window.dispatchEvent(new Event('forestudy:quest-events'))
 
-  const userId = getAuthUserId()
   if (userId) {
     apiRequest('/api/quest-progress/events', {
       method: 'POST',
@@ -142,7 +160,7 @@ export async function getClaimedRewards(periodKeys) {
 // materialId를 key로 하는 맵으로 바꿔 자격증마다 따로 기억한다.
 function readJsonMap(key) {
   try {
-    const parsed = JSON.parse(localStorage.getItem(key) || 'null')
+    const parsed = JSON.parse(localStorage.getItem(getAccountStorageKey(key)) || 'null')
     return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
     return {}
@@ -164,17 +182,17 @@ export function setQuizProgress(materialId, quiz, answers = {}, idx = 0) {
   if (!materialId) return
   const map = readJsonMap(QUIZ_PROGRESS_KEY)
   map[materialId] = { quiz, answers, idx }
-  localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(QUIZ_PROGRESS_KEY), JSON.stringify(map))
 }
 
 export function clearQuizProgress(materialId) {
   if (!materialId) {
-    localStorage.removeItem(QUIZ_PROGRESS_KEY)
+    localStorage.removeItem(getAccountStorageKey(QUIZ_PROGRESS_KEY))
     return
   }
   const map = readJsonMap(QUIZ_PROGRESS_KEY)
   delete map[materialId]
-  localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(QUIZ_PROGRESS_KEY), JSON.stringify(map))
 }
 
 // 채점까지 끝난 오늘의 AI 퀴즈 결과. 화면을 나갔다 들어와도 다시 생성하지 않고
@@ -186,7 +204,7 @@ export function saveQuizResult(materialId, quiz, result) {
   if (!materialId) return
   const map = readJsonMap(QUIZ_RESULT_KEY)
   map[materialId] = { date: localTodayKey(), quiz, result, dismissed: false }
-  localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(QUIZ_RESULT_KEY), JSON.stringify(map))
 }
 
 export function getQuizResult(materialId) {
@@ -200,25 +218,25 @@ export function dismissQuizResult(materialId) {
   const map = readJsonMap(QUIZ_RESULT_KEY)
   if (map[materialId]) {
     map[materialId] = { ...map[materialId], dismissed: true }
-    localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify(map))
+    localStorage.setItem(getAccountStorageKey(QUIZ_RESULT_KEY), JSON.stringify(map))
   }
 }
 
 export function clearQuizResult(materialId) {
   if (!materialId) {
-    localStorage.removeItem(QUIZ_RESULT_KEY)
+    localStorage.removeItem(getAccountStorageKey(QUIZ_RESULT_KEY))
     return
   }
   const map = readJsonMap(QUIZ_RESULT_KEY)
   delete map[materialId]
-  localStorage.setItem(QUIZ_RESULT_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(QUIZ_RESULT_KEY), JSON.stringify(map))
 }
 
 export function requireDailyQuizCompletion(materialId, planDate = localTodayKey()) {
   if (!materialId) return
   const map = readJsonMap(DAILY_QUIZ_REQUIREMENT_KEY)
   map[materialId] = planDate
-  localStorage.setItem(DAILY_QUIZ_REQUIREMENT_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(DAILY_QUIZ_REQUIREMENT_KEY), JSON.stringify(map))
 }
 
 export function isDailyQuizCompletionRequired(materialId) {
@@ -230,7 +248,7 @@ export function unlockDailyQuiz(materialId, planDate = localTodayKey()) {
   if (!materialId) return
   const map = readJsonMap(DAILY_QUIZ_UNLOCK_KEY)
   map[materialId] = planDate
-  localStorage.setItem(DAILY_QUIZ_UNLOCK_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(DAILY_QUIZ_UNLOCK_KEY), JSON.stringify(map))
 }
 
 export function isDailyQuizUnlocked(materialId) {
@@ -253,14 +271,14 @@ export function markQuizGenerating(materialId) {
   if (!materialId) return
   const map = readJsonMap(QUIZ_GENERATING_KEY)
   map[materialId] = Date.now()
-  localStorage.setItem(QUIZ_GENERATING_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(QUIZ_GENERATING_KEY), JSON.stringify(map))
 }
 
 export function clearQuizGenerating(materialId) {
   if (!materialId) return
   const map = readJsonMap(QUIZ_GENERATING_KEY)
   delete map[materialId]
-  localStorage.setItem(QUIZ_GENERATING_KEY, JSON.stringify(map))
+  localStorage.setItem(getAccountStorageKey(QUIZ_GENERATING_KEY), JSON.stringify(map))
 }
 
 export function isQuizGenerating(materialId) {
@@ -381,11 +399,17 @@ export function getCurrentUser() {
 }
 
 export function setCurrentUser(user) {
+  const previousUserId = getCurrentUser()?.id || null
   localStorage.setItem('forestudy_user', JSON.stringify(user))
+  if (previousUserId !== (user?.id || null)) {
+    window.dispatchEvent(new CustomEvent(ACCOUNT_CHANGED_EVENT, { detail: { userId: user?.id || null } }))
+  }
 }
 
 export function clearCurrentUser() {
+  const previousUserId = getCurrentUser()?.id || null
   localStorage.removeItem('forestudy_user')
+  if (previousUserId) window.dispatchEvent(new CustomEvent(ACCOUNT_CHANGED_EVENT, { detail: { userId: null } }))
 }
 
 // 등록된 자격증 목록은 더 이상 기기(localStorage)가 아니라 로그인 계정 기준으로
@@ -395,8 +419,20 @@ export function clearCurrentUser() {
 const CERT_UPDATED_EVENT = 'forestudy:certificates-updated'
 let certificatesCache = []
 let certificatesLoaded = false
+let certificatesUserId = null
+
+function resetCertificatesForCurrentAccount() {
+  const userId = getAuthUserId()
+  if (certificatesUserId !== userId) {
+    certificatesCache = []
+    certificatesLoaded = false
+    certificatesUserId = userId
+  }
+  return userId
+}
 
 export function getCurrentCertificates() {
+  resetCertificatesForCurrentAccount()
   if (!certificatesLoaded) refreshCertificates()
   return certificatesCache
 }
@@ -404,11 +440,12 @@ export function getCurrentCertificates() {
 // 첫 로드가 아직 안 끝난 상태(빈 배열)와 "정말로 등록된 자격증이 없는" 상태를 구분해야
 // 하는 화면(예: 이미 등록된 자격증을 실수로 삭제하면 안 되는 화면)에서 쓴다.
 export function isCertificatesLoaded() {
+  resetCertificatesForCurrentAccount()
   return certificatesLoaded
 }
 
 export async function refreshCertificates() {
-  const userId = getAuthUserId()
+  const userId = resetCertificatesForCurrentAccount()
   if (!userId) {
     certificatesCache = []
   } else {
@@ -461,7 +498,9 @@ export async function endTimer(sessionId, studiedMinutes, maxUninterruptedMinute
 }
 
 export async function listMaterials() {
-  const res = await fetch(`${API_BASE}/api/materials`)
+  const userId = getAuthUserId()
+  const query = userId ? `?user_id=${encodeURIComponent(userId)}` : ''
+  const res = await fetch(`${API_BASE}/api/materials${query}`)
   if (!res.ok) throw new Error('자료 목록을 불러오지 못했습니다')
   return res.json()
 }

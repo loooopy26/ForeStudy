@@ -4,7 +4,7 @@
 // 예전에는 여기가 전부 localStorage였어서 기기를 바꾸면 사라졌다. 드래그처럼 매우 잦은 로컬
 // 조작은 여전히 즉시 반영하고, 토글/회전/드래그 종료 같은 "확정" 시점에만 백엔드로 동기화한다.
 import { useCallback, useEffect, useState } from 'react'
-import { apiRequest, getMyUser, spendMyDotori } from './api'
+import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getMyUser, spendMyDotori } from './api'
 
 const WALLET_KEY = 'forestudy_acorns_v4'
 
@@ -109,7 +109,7 @@ const DEFAULT_ROOM = { wallpaper: null, floor: null, placed: [] }
 // 상점/내 방/캐릭터 화면 공용 훅. 지갑·보유·착용·방 배치를 백엔드(로그인 계정)와 동기화한다.
 // Global states stored at the module level to synchronize state across components in real-time
 let globalWallet = (() => {
-  const saved = localStorage.getItem(WALLET_KEY)
+  const saved = localStorage.getItem(getAccountStorageKey(WALLET_KEY))
   return saved ? parseInt(saved) : 0
 })()
 let globalOwned = []
@@ -118,6 +118,7 @@ let globalEquipped = { ...DEFAULT_EQUIPPED }
 let globalRoom = { ...DEFAULT_ROOM }
 let globalUserId = null
 let goodsLoaded = false
+let goodsGeneration = 0
 
 const listeners = new Set()
 function notifyAll() {
@@ -126,7 +127,7 @@ function notifyAll() {
 
 function setGlobalWallet(value) {
   globalWallet = typeof value === 'function' ? value(globalWallet) : value
-  localStorage.setItem(WALLET_KEY, globalWallet)
+  localStorage.setItem(getAccountStorageKey(WALLET_KEY), globalWallet)
   notifyAll()
 }
 
@@ -145,12 +146,16 @@ function applyGoodsState(state) {
 }
 
 async function loadGoodsState() {
+  const generation = goodsGeneration
   try {
     const user = await getMyUser()
+    if (generation !== goodsGeneration) return
     globalUserId = user.id
     const state = await apiRequest(`/api/goods/${user.id}`)
+    if (generation !== goodsGeneration || globalUserId !== user.id) return
     applyGoodsState(state)
   } catch {
+    if (generation !== goodsGeneration) return
     goodsLoaded = true
     notifyAll()
   }
@@ -160,6 +165,20 @@ let loadPromise = null
 function ensureGoodsLoaded() {
   if (!loadPromise) loadPromise = loadGoodsState()
   return loadPromise
+}
+
+function resetGoodsForAccount() {
+  goodsGeneration += 1
+  loadPromise = null
+  globalWallet = 0
+  globalOwned = []
+  globalCustomItems = []
+  globalEquipped = { ...DEFAULT_EQUIPPED }
+  globalRoom = { ...DEFAULT_ROOM }
+  globalUserId = null
+  goodsLoaded = false
+  notifyAll()
+  ensureGoodsLoaded()
 }
 
 // 방 배치처럼 잦은 로컬 조작 뒤, 확정 시점(토글/회전/드래그 종료/저장)에만 백엔드로 밀어 넣는다.
@@ -194,9 +213,11 @@ export function useGoods() {
     ensureGoodsLoaded()
     syncAccountWallet()
     window.addEventListener('forestudy:user-updated', syncAccountWallet)
+    window.addEventListener(ACCOUNT_CHANGED_EVENT, resetGoodsForAccount)
     return () => {
       listeners.delete(handleUpdate)
       window.removeEventListener('forestudy:user-updated', syncAccountWallet)
+      window.removeEventListener(ACCOUNT_CHANGED_EVENT, resetGoodsForAccount)
     }
   }, [])
 

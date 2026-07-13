@@ -20,7 +20,7 @@ import StudyMap from './StudyMap'
 import StudyPlaces from './StudyPlaces'
 import ExamAssistant from './ExamAssistant'
 import Auth from './Auth'
-import { getCurrentCertificates, getCurrentUser, getMaterialId, onCertificatesUpdated, setMaterialId as persistMaterialId } from './api'
+import { ACCOUNT_CHANGED_EVENT, getCurrentCertificates, getCurrentUser, getMaterialId, onCertificatesUpdated, setMaterialId as persistMaterialId } from './api'
 import './theme.css'
 import './Shell.css'
 import './App.css'
@@ -82,6 +82,7 @@ function App() {
   const [selectedCert, setSelectedCert] = useState(() => getInitialCertificate()?.title || '')
   const [placementQuiz, setPlacementQuiz] = useState(null)
   const [planData, setPlanData] = useState(null)
+  const [accountVersion, setAccountVersion] = useState(0)
   // 자격증 2개 이상 등록 시 도서관 타이머가 서로 섞이지 않도록 자격증별로 따로 기억한다.
   const [libraryTimers, setLibraryTimers] = useState({})
   const Screen = SCREENS[route.page] || Profile
@@ -111,6 +112,19 @@ function App() {
     setLibraryTimers((timers) => ({ ...timers, [timerKey]: timerState }))
   }, [timerKey])
 
+  useEffect(() => {
+    const resetForAccount = () => {
+      setMaterialId(getMaterialId() || null)
+      setSelectedCert('')
+      setPlacementQuiz(null)
+      setPlanData(null)
+      setLibraryTimers({})
+      setAccountVersion((version) => version + 1)
+    }
+    window.addEventListener(ACCOUNT_CHANGED_EVENT, resetForAccount)
+    return () => window.removeEventListener(ACCOUNT_CHANGED_EVENT, resetForAccount)
+  }, [])
+
   // 자격증 목록은 이제 계정 기준으로 백엔드에서 비동기로 불러온다 — 첫 렌더 시점엔
   // 아직 캐시가 비어 있을 수 있어, 목록이 채워지면 아직 아무 자격증도 선택 안 된
   // 경우(materialId 미지정)에 한해 초기 선택을 다시 계산해준다.
@@ -127,7 +141,7 @@ function App() {
     <div className="app-shell">
       <div className="phone-frame">
         <Screen
-          key={route.page === 'library' ? `library-${timerKey}` : route.page}
+          key={`${route.page}-${accountVersion}-${route.page === 'library' ? timerKey : ''}`}
           onNavigate={navigate}
           materialId={materialId}
           onSelectMaterial={selectMaterial}

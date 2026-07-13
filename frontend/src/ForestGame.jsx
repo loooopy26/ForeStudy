@@ -4,6 +4,7 @@ import AchievementPage from './AchievementPage'
 import {
   claimReward,
   getClaimedRewards,
+  getAccountStorageKey,
   getMyUser,
   getQuestEventConsecutiveDays,
   getQuestEventDayCountThisWeek,
@@ -118,20 +119,20 @@ function getGeneratedQuests() {
 
 function ForestGame({ onNavigate, initialSub }) {
   const [level, setLevel] = useState(() => {
-    const saved = localStorage.getItem('forestudy_level_v4')
+    const saved = localStorage.getItem(getAccountStorageKey('forestudy_level_v4'))
     return saved ? parseInt(saved) : 12
   })
   const [exp, setExp] = useState(() => {
-    const saved = localStorage.getItem('forestudy_exp_v4')
+    const saved = localStorage.getItem(getAccountStorageKey('forestudy_exp_v4'))
     return saved ? parseInt(saved) : 1240
   })
   const [acorns, setAcorns] = useState(() => {
-    const saved = localStorage.getItem('forestudy_acorns_v4')
+    const saved = localStorage.getItem(getAccountStorageKey('forestudy_acorns_v4'))
     return saved ? parseInt(saved) : 2450
   })
   const [quests, setQuests] = useState(() => {
-    const saved = localStorage.getItem('forestudy_quests_v9')
-    const savedSchedule = localStorage.getItem('forestudy_quest_schedule_v9')
+    const saved = localStorage.getItem(getAccountStorageKey('forestudy_quests_v9'))
+    const savedSchedule = localStorage.getItem(getAccountStorageKey('forestudy_quest_schedule_v9'))
     const schedule = getQuestSchedule()
     const generated = getGeneratedQuests()
     try {
@@ -149,7 +150,7 @@ function ForestGame({ onNavigate, initialSub }) {
     return generated.length ? generated : initialQuests
   })
   const [achievements, setAchievements] = useState(() => {
-    const saved = localStorage.getItem('forestudy_achievements_v4')
+    const saved = localStorage.getItem(getAccountStorageKey('forestudy_achievements_v4'))
     return saved ? JSON.parse(saved) : initialAchievements
   })
 
@@ -226,12 +227,12 @@ function ForestGame({ onNavigate, initialSub }) {
 
   // Persist state in localStorage
   useEffect(() => {
-    localStorage.setItem('forestudy_level_v4', level)
-    localStorage.setItem('forestudy_exp_v4', exp)
-    localStorage.setItem('forestudy_acorns_v4', acorns)
-    localStorage.setItem('forestudy_quests_v9', JSON.stringify(quests))
-    localStorage.setItem('forestudy_quest_schedule_v9', JSON.stringify(getQuestSchedule()))
-    localStorage.setItem('forestudy_achievements_v4', JSON.stringify(achievements))
+    localStorage.setItem(getAccountStorageKey('forestudy_level_v4'), level)
+    localStorage.setItem(getAccountStorageKey('forestudy_exp_v4'), exp)
+    localStorage.setItem(getAccountStorageKey('forestudy_acorns_v4'), acorns)
+    localStorage.setItem(getAccountStorageKey('forestudy_quests_v9'), JSON.stringify(quests))
+    localStorage.setItem(getAccountStorageKey('forestudy_quest_schedule_v9'), JSON.stringify(getQuestSchedule()))
+    localStorage.setItem(getAccountStorageKey('forestudy_achievements_v4'), JSON.stringify(achievements))
   }, [level, exp, acorns, quests, achievements])
 
   // 'quests'/'achievements'는 내부 전환, 그 외 키('library' 등)는 상위 앱으로 나감
