@@ -791,10 +791,13 @@ export async function deleteCurriculum(curriculumId) {
 }
 
 export async function createTutorSession(materialId) {
+  // 일별 플랜은 계정별 데이터이므로, 세션을 만들 때 로그인 계정을 함께 전달한다.
+  // 누락하면 백엔드가 데모 계정으로 폴백해 실제 사용자의 오늘 주제를 찾을 수 없다.
+  const userId = getAuthUserId()
   const res = await fetch(`${API_BASE}/api/tutor/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ study_material_id: materialId }),
+    body: JSON.stringify({ study_material_id: materialId, user_id: userId }),
   })
   if (!res.ok) throw new Error('채팅 세션을 시작하지 못했습니다')
   return res.json()
@@ -808,7 +811,9 @@ export async function getTutorMessages(sessionId) {
 
 // 자료 하나에 대해 실제로 대화를 나눈 세션만 일별 학습 주제 단위로 묶어서 반환한다.
 export async function getTutorHistory(materialId) {
-  const res = await fetch(`${API_BASE}/api/tutor/materials/${materialId}/history`)
+  const userId = getAuthUserId()
+  const query = userId ? `?user_id=${encodeURIComponent(userId)}` : ''
+  const res = await fetch(`${API_BASE}/api/tutor/materials/${materialId}/history${query}`)
   if (!res.ok) throw new Error('이전 질문 기록을 불러오지 못했습니다')
   return res.json()
 }
