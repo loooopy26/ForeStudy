@@ -4,7 +4,7 @@
 // 예전에는 여기가 전부 localStorage였어서 기기를 바꾸면 사라졌다. 드래그처럼 매우 잦은 로컬
 // 조작은 여전히 즉시 반영하고, 토글/회전/드래그 종료 같은 "확정" 시점에만 백엔드로 동기화한다.
 import { useCallback, useEffect, useState } from 'react'
-import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getMyUser, spendMyDotori } from './api'
+import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getCurrentUser, spendMyDotori } from './api'
 
 const WALLET_KEY = 'forestudy_acorns_v4'
 
@@ -148,7 +148,8 @@ function applyGoodsState(state) {
 async function loadGoodsState() {
   const generation = goodsGeneration
   try {
-    const user = await getMyUser()
+    const user = getCurrentUser()
+    if (!user?.id) throw new Error('No authenticated user')
     if (generation !== goodsGeneration) return
     globalUserId = user.id
     const state = await apiRequest(`/api/goods/${user.id}`)
@@ -165,6 +166,16 @@ let loadPromise = null
 function ensureGoodsLoaded() {
   if (!loadPromise) loadPromise = loadGoodsState()
   return loadPromise
+}
+
+async function getActiveGoodsUserId() {
+  const user = getCurrentUser()
+  if (!user?.id) return null
+  if (globalUserId !== user.id || !goodsLoaded) {
+    resetGoodsForAccount()
+    await ensureGoodsLoaded()
+  }
+  return globalUserId === user.id ? user.id : null
 }
 
 function resetGoodsForAccount() {
@@ -185,10 +196,10 @@ function resetGoodsForAccount() {
 // ensureGoodsLoaded()를 먼저 기다려야 한다 — 로그인 직후처럼 globalUserId가 아직 안 채워진
 // 시점에 바로 확인하면(그 전 버전) 사용자가 뭔가를 놓아도 조용히 저장이 안 되고 사라졌다.
 async function syncRoomToBackend() {
-  await ensureGoodsLoaded()
-  if (!globalUserId) return
+  const userId = await getActiveGoodsUserId()
+  if (!userId) return
   try {
-    await apiRequest(`/api/goods/${globalUserId}/room`, {
+    await apiRequest(`/api/goods/${userId}/room`, {
       method: 'PUT',
       body: JSON.stringify({ wallpaper: globalRoom.wallpaper, floor: globalRoom.floor, placed: globalRoom.placed }),
     })
@@ -203,11 +214,8 @@ export function useGoods() {
   useEffect(() => {
     const handleUpdate = () => forceUpdate({})
     const syncAccountWallet = () => {
-      getMyUser()
-        .then((user) => {
-          if (typeof user?.dotori === 'number') setGlobalWallet(user.dotori)
-        })
-        .catch(() => {})
+      const user = getCurrentUser()
+      if (typeof user?.dotori === 'number') setGlobalWallet(user.dotori)
     }
     listeners.add(handleUpdate)
     ensureGoodsLoaded()
@@ -225,12 +233,12 @@ export function useGoods() {
 
   // 구매 성공 시 true. 도토리가 모자라면 false.
   const buy = useCallback(async (item) => {
+    const userId = await getActiveGoodsUserId()
+    if (!userId) return false
     if (globalOwned.includes(item.id)) return true
     if (globalWallet < item.price) return false
-    await ensureGoodsLoaded()
-    if (!globalUserId) return false
     try {
-      const result = await apiRequest(`/api/goods/${globalUserId}/buy`, {
+      const result = await apiRequest(`/api/goods/${userId}/buy`, {
         method: 'POST',
         body: JSON.stringify({ item_id: item.id, price: item.price }),
       })
@@ -250,10 +258,10 @@ export function useGoods() {
   }, [])
 
   const addCustomItem = useCallback(async (item) => {
-    await ensureGoodsLoaded()
-    if (!globalUserId) return
+    const userId = await getActiveGoodsUserId()
+    if (!userId) return
     try {
-      const state = await apiRequest(`/api/goods/${globalUserId}/custom-items`, {
+      const state = await apiRequest(`/api/goods/${userId}/custom-items`, {
         method: 'POST',
         body: JSON.stringify({ item }),
       })
@@ -271,10 +279,10 @@ export function useGoods() {
   // 커스텀 아이템 삭제: 커스텀 목록에서 지우고, 보유/착용/방 배치에 남은 참조도 함께 정리한다.
   // (기본 카탈로그 아이템에는 쓰지 않는다 — 되살릴 방법이 있는 구매 아이템과 달리 커스텀은 영구 삭제)
   const removeCustomItem = useCallback(async (id) => {
-    await ensureGoodsLoaded()
-    if (!globalUserId) return
+    const userId = await getActiveGoodsUserId()
+    if (!userId) return
     try {
-      const state = await apiRequest(`/api/goods/${globalUserId}/custom-items/${id}`, { method: 'DELETE' })
+      const state = await apiRequest(`/api/goods/${userId}/custom-items/${id}`, { method: 'DELETE' })
       applyGoodsState(state)
     } catch {
       // 백엔드 호출이 실패해도 로컬에서는 완전히 지운 것처럼 보이게 한다 — 장착/방 배치에
