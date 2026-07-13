@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import logging
 import re
 from datetime import date
 
@@ -14,6 +15,7 @@ from db import get_pool
 from services import rag, study_agent
 
 router = APIRouter(prefix="/api", tags=["AI quiz"])
+logger = logging.getLogger(__name__)
 
 # 오답노트 유사 문제 생성 진행률. attempt_id별로 하나씩만 동시에 생성한다고 가정하고
 # 메모리에만 들고 있는다(재시작하면 사라져도 무방 — 진행 중 상태를 잠깐 보여주는 용도).
@@ -194,6 +196,7 @@ async def _create_material_quiz(
             plan_scope=today_plan,
         )
     except RuntimeError as exc:
+        logger.warning("Quiz generation failed for material %s: %s", material_id, exc)
         raise HTTPException(502, str(exc)) from exc
     if len(questions) < forced_num_questions:
         raise HTTPException(

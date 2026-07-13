@@ -17,6 +17,11 @@ _SYSTEM = (
     "study-material context as evidence, and do not invent facts outside it."
 )
 
+# A 25-question review quiz is split into eight model calls. Sending all of
+# them at once can exceed the upstream API's burst limit, after which immediate
+# retries fail too. Keep a small parallelism level for stable generation.
+_QUIZ_BATCH_CONCURRENCY = 1
+
 
 async def summarize(material_title: str, sample_text: str) -> dict:
     prompt = f"""Analyze the study material titled "{material_title}".
@@ -130,18 +135,21 @@ async def generate_quiz(
                 batch_requests.append((question_type, min(batch_size, remaining), None))
                 remaining -= batch_size
 
+    batch_semaphore = asyncio.Semaphore(_QUIZ_BATCH_CONCURRENCY)
+
     async def _tracked_batch(question_type: str, batch_count: int, target_difficulty: str | None) -> list[dict]:
-        result = await _generate_quiz_batch(
-            context,
-            question_type=question_type,
-            count=batch_count,
-            difficulty=difficulty,
-            target_difficulty=target_difficulty,
-            weak_topics=weak_topics,
-            quiz_kind=quiz_kind,
-            learner_profile=learner_profile,
-            plan_scope=plan_scope,
-        )
+        async with batch_semaphore:
+            result = await _generate_quiz_batch(
+                context,
+                question_type=question_type,
+                count=batch_count,
+                difficulty=difficulty,
+                target_difficulty=target_difficulty,
+                weak_topics=weak_topics,
+                quiz_kind=quiz_kind,
+                learner_profile=learner_profile,
+                plan_scope=plan_scope,
+            )
         # 배치 하나(최대 5문제)가 끝날 때마다 바로 알려준다 — 전체가 끝날 때까지 기다렸다가
         # 한번에 알리면 진행률 표시 의미가 없다. gather는 순서를 기다리지 않고 각 배치가
         # 끝나는 즉시 이 콜백을 호출한다.
@@ -386,7 +394,7 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
     messages = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}]
     current_messages = messages
 
-    max_attempts = 8
+    max_attempts = 4
     last_normalized: list[dict] = []
     for attempt in range(max_attempts):
         try:
@@ -398,6 +406,8 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
             # 실패와 동일하게 재시도 대상으로 취급한다(메시지는 그대로 유지 — 모델이 준
             # 응답이 없으니 "이전 응답 피드백"을 만들 수 없다).
             if attempt < max_attempts - 1:
+                # Do not retry into the same upstream rate-limit window.
+                await asyncio.sleep(2**attempt)
                 continue
             raise RuntimeError(
                 f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 응답을 "
