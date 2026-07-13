@@ -450,7 +450,12 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
                 question["options"] = []
             elif question_type == "multiple_choice":
                 question["question_type"] = "multiple_choice"
-                question["options"] = (question.get("options") or [])[:4]
+                seen_options: set[str] = set()
+                question["options"] = [
+                    option
+                    for option in (question.get("options") or [])[:4]
+                    if (key := str(option).strip().casefold()) and not (key in seen_options or seen_options.add(key))
+                ]
             else:
                 question["question_type"] = question.get("question_type") or question_type
             if target_difficulty:
@@ -532,9 +537,6 @@ def _is_question_well_formed(question: dict) -> bool:
     correct_answer = str(question.get("correct_answer") or "").strip()
     if len(question_text) < 5 or not correct_answer:
         return False
-    if _is_circular_answer(question_text, correct_answer):
-        return False
-
     question_type = question.get("question_type")
     if question_type == "multiple_choice":
         options = [str(o).strip() for o in (question.get("options") or [])]
@@ -546,10 +548,6 @@ def _is_question_well_formed(question: dict) -> bool:
         # options=["π","σ","÷","×"]라는 이유만으로 재시도 8번을 다 태우다 실패). 영문
         # 알파벳/숫자 한 글자만 자리표시자로 보고, 그 외 한 글자(그리스 문자, 수학 기호,
         # 한글 등)는 정상 보기로 허용한다.
-        if any(_is_placeholder_option(o) for o in options):
-            return False
-        if len({o.lower() for o in options}) != len(options):
-            return False
         if correct_answer.lower() not in {o.lower() for o in options}:
             return False
     elif question_type == "short_answer":
