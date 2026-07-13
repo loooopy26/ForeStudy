@@ -225,6 +225,7 @@
 
 .quest-rewards {
   display: flex;
+  align-items: center;
   gap: 12px;
   font-size: 12px;
   font-weight: 700;
@@ -241,6 +242,32 @@
   align-items: center;
   gap: 4px;
   color: #a9853f;
+}
+
+/* 보상 받기 버튼 — 도토리/EXP 수령 액션이라 리워드 골드 톤에 맞춘다.
+   rewards 행 안에서 margin-left:auto로 오른쪽 끝(도토리 옆)에 붙는다. */
+.quest-claim-button {
+  margin-left: auto;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 10px;
+  background-color: var(--color-accent);
+  color: #5a4828;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(240, 192, 74, 0.35);
+  transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+
+.quest-claim-button:hover {
+  background-color: #f6cf6a;
+  box-shadow: 0 3px 10px rgba(240, 192, 74, 0.45);
+}
+
+.quest-claim-button:active {
+  transform: scale(0.97);
 }
 
 /* Interactive Controls and Buttons */

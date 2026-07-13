@@ -137,10 +137,10 @@ export default function QuestPage({
                   <AcornIcon size={15} />
                   도토리 {q.rewardAcorns}
                 </span>
+                {q.status === 'completed' && !q.claimed && (
+                  <button type="button" className="quest-claim-button" onClick={() => onClaimQuest(q.id)}>보상 받기</button>
+                )}
               </div>
-              {q.status === 'completed' && !q.claimed && (
-                <button type="button" className="quest-claim-button" onClick={() => onClaimQuest(q.id)}>보상 받기</button>
-              )}
 
               {/* Progress Bar (Always visible for unlocked quests) */}
               <div className="quest-progress-section">
