@@ -313,12 +313,22 @@ export async function apiRequest(path, options = {}) {
   return text ? JSON.parse(text) : null
 }
 
+// 보기의 A/B/C/D 표시는 각 퀴즈 화면이 공통으로 담당한다. 예전 AI 생성 결과나
+// 기출 기반 결과에 "1. 보기"/"A) 보기"가 저장돼도 화면에서 다시 A.를 붙이므로,
+// 여기서 본문의 중복 번호만 제거한다. 실제 숫자 값(1.0 등)은 공백이 있는 번호 표기만
+// 대상으로 해 보존한다.
+const OPTION_MARKER_RE = /^\s*(?:(?:[A-Da-d]|[1-4])\s*[.)\]:：、-]\s+|[①②③④]\s*)/
+
+function cleanOptionText(option) {
+  return String(option ?? '').replace(OPTION_MARKER_RE, '').trim()
+}
+
 export function normalizeOptions(options) {
   if (!options) return []
-  if (Array.isArray(options)) return options
+  if (Array.isArray(options)) return options.map(cleanOptionText)
   try {
     const parsed = JSON.parse(options)
-    return Array.isArray(parsed) ? parsed : []
+    return Array.isArray(parsed) ? parsed.map(cleanOptionText) : []
   } catch {
     return []
   }

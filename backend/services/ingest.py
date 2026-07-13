@@ -10,7 +10,7 @@ import httpx
 
 from agents import graph as agent_graph
 from db import get_pool, vector_literal
-from services import upstage
+from services import rag, study_agent, upstage
 from services.chunking import build_chunks
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,16 @@ _SUMMARY_INPUT_CHARS = 12000
 async def ingest_material(study_material_id: str, file_path: Path, title: str) -> None:
     pool = await get_pool()
     try:
+        material = await pool.fetchrow(
+            """
+            SELECT certification_id, is_reference_material
+            FROM study_materials
+            WHERE id = $1
+            """,
+            study_material_id,
+        )
+        if material is None:
+            raise ValueError("저장된 학습 자료를 찾을 수 없습니다")
         await pool.execute(
             """
             UPDATE study_materials
@@ -82,16 +92,28 @@ async def ingest_material(study_material_id: str, file_path: Path, title: str) -
             sample += c.content + "\n"
         summary_result = await _summarize_with_retry(title, sample)
 
+        # 사용자 자료를 같은 자격증의 출제기준/기출 해설과 비교해 일별 플랜과 퀴즈에
+        # 반영할 보완 주제를 저장한다. 공통 자료 자체에는 다시 비교를 적용하지 않는다.
+        reference_alignment = None
+        if material["certification_id"] and not material["is_reference_material"]:
+            reference_alignment = await _build_reference_alignment(
+                certification_id=str(material["certification_id"]),
+                title=title,
+                summary=summary_result.get("summary") or "",
+            )
+
         await _set_stage(pool, study_material_id, "saving_summary")
         await pool.execute(
             """
             UPDATE study_materials
-            SET processed_status = 'ready', ai_summary = $2, key_concepts = $3::jsonb, processing_stage = NULL
+            SET processed_status = 'ready', ai_summary = $2, key_concepts = $3::jsonb,
+                reference_alignment = $4::jsonb, processing_stage = NULL
             WHERE id = $1
             """,
             study_material_id,
             summary_result.get("summary"),
             json.dumps(summary_result.get("key_concepts", []), ensure_ascii=False),
+            json.dumps(reference_alignment, ensure_ascii=False) if reference_alignment else None,
         )
         logger.info("ingest 완료: material=%s chunks=%d", study_material_id, len(chunks))
 
@@ -120,6 +142,30 @@ async def _summarize_with_retry(title: str, sample: str) -> dict:
     except (httpx.ReadTimeout, httpx.PoolTimeout, json.JSONDecodeError) as exc:
         logger.warning("summarize 실패(%s), 입력을 절반으로 줄여 재시도: title=%s", type(exc).__name__, title)
         return await agent_graph.run_summarize(title, sample[: len(sample) // 2])
+
+
+async def _build_reference_alignment(
+    *, certification_id: str, title: str, summary: str
+) -> dict | None:
+    """공통 자료가 아직 없거나 보조 분석이 실패해도 업로드 처리를 막지 않는다."""
+    if not summary:
+        return None
+    try:
+        reference_chunks = await rag.retrieve_reference_chunks(
+            certification_id,
+            f"{title}\n{summary[:4000]}",
+            top_k=8,
+        )
+        if not reference_chunks:
+            return None
+        return await study_agent.analyze_material_alignment(
+            title,
+            summary,
+            rag.format_context(reference_chunks),
+        )
+    except Exception:
+        logger.exception("공통 RAG 비교 분석 실패: title=%s", title)
+        return None
 
 
 def _describe_ingest_error(exc: Exception) -> str:

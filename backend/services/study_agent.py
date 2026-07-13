@@ -86,6 +86,44 @@ Extract 5~10 key concepts."""
         max_tokens=8000,
     )
 
+
+async def analyze_material_alignment(
+    material_title: str,
+    material_summary: str,
+    reference_context: str,
+) -> dict:
+    """사용자 자료와 자격증 공통 RAG 자료의 학습 범위 연결점을 만든다.
+
+    출제 범위를 단정하거나 없는 내용을 보충하지 않고, 제공된 발췌 안에서만
+    우선 학습 주제와 보완 포인트를 제안한다. 업로드 파이프라인의 보조 결과라
+    실패해도 원래 요약/검색은 계속 사용할 수 있다.
+    """
+    prompt = f"""다음은 사용자가 업로드한 학습 자료의 요약과, 같은 자격증의 출제 기준 또는 기출 해설 발췌입니다.
+
+사용자 자료 제목: {material_title}
+
+[사용자 자료 요약]
+{material_summary}
+
+[자격증 공통 참고 발췌]
+{reference_context}
+
+두 자료를 비교하여 학습 우선순위를 제안하세요. 반드시 제공된 내용만 근거로 쓰고,
+참고 발췌에 없는 출제 경향이나 누락 범위를 추측하지 마세요. "누락"은 전체 출제범위의
+누락이 아니라, 이번 사용자 자료 요약에서 확인되지 않는 참고 발췌 주제라는 뜻으로만 표현하세요.
+
+한국어 JSON만 반환:
+{{
+  "coverage_summary": "사용자 자료가 공통 참고 내용과 만나는 지점을 2~4문장으로 요약",
+  "missing_or_weak_topics": ["사용자 자료 요약에서 확인되지 않거나 약하게 보이는 참고 발췌 주제, 최대 5개"],
+  "recommended_focus_topics": ["일별 플랜/복습 퀴즈에 우선 반영할 구체적 주제, 최대 5개"],
+  "comparison_note": "이 비교의 근거와 한계(발췌 기반임)를 한 문장으로 명시"
+}}"""
+    return await upstage.chat_json(
+        [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": prompt}],
+        max_tokens=1800,
+    )
+
 async def generate_quiz(
     context: str,
     *,
@@ -271,6 +309,7 @@ async def _generate_quiz_batch(
     plan_scope: dict | None,
     target_difficulty: str | None = None,
     avoid_topics: list[str] | None = None,
+    allow_individual_repair: bool = True,
 ) -> list[dict]:
     weak_hint = (
         f"\nPrioritize these weak topics when relevant: {', '.join(weak_topics)}."
@@ -316,6 +355,8 @@ async def _generate_quiz_batch(
             "Provide exactly 4 options and set correct_answer to the exact option text. "
             "Each option must be a distinct, substantive answer choice written out in full — "
             "never a bare letter like \"A\"/\"B\"/\"C\"/\"D\", never a placeholder, and never "
+            "prefix an option with an answer marker such as \"A.\", \"(B)\", \"1.\", \"2)\", or \"①\"; "
+            "the UI adds A/B/C/D labels itself, so options must contain only their answer text. "
             "duplicated or reworded from another option in the same question. Every option "
             "(including the correct one) must name a specific, concrete concept, term, or value — "
             f"never a vague paraphrase of the question's own topic. {circular_answer_warning}"
@@ -367,6 +408,16 @@ Overall requested difficulty: {difficulty}.{weak_hint}{avoid_hint}
 {plan_instruction}
 
 {context}
+
+Source-use rules for this quiz:
+- Blocks marked "공식 출제기준" define the official scope and priority only.
+- Blocks marked "공통 기출/참고 자료" are past-exam explanations. Use them as the primary model for
+  the concept selection, question style, difficulty, and plausible distractors. Write a NEW question
+  in Korean; never copy a past question, answer, or explanation verbatim.
+- Blocks marked "사용자 자료" supply the learner's own study content and terminology.
+- Never invent or label an exam as "정보처리기사 필기", "정보처리기사 실기", "필기/실기", or
+  "필기·실기". Do not ask about an exam division unless that exact division is explicitly needed by
+  the supplied source content. The question itself must test a concrete concept, not the exam format.
 
 {type_instruction}
 
@@ -475,7 +526,8 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
         if attempt < max_attempts - 1 and broken:
             broken_examples = "\n".join(
                 f"- question_text: \"{q.get('question_text', '')}\" / "
-                f"correct_answer: \"{q.get('correct_answer', '')}\""
+                f"correct_answer: \"{q.get('correct_answer', '')}\" / "
+                f"issues: {', '.join(_question_validation_issues(q))}"
                 for q in broken[:3]
             )
             current_messages = messages + [
@@ -493,6 +545,34 @@ copy context headers, excerpts, citations, source labels, pages, or markers such
                     ),
                 },
             ]
+
+    # 한 배치의 대부분이 정상인데 한두 문항의 보기/정답만 계속 불완전한 경우, 배치 전체를
+    # 네 번씩 다시 생성하면 정상 문항까지 계속 바뀌며 결국 502가 될 수 있다. 이미 통과한
+    # 문항은 유지하고 실패한 자리만 1문항 요청으로 다시 채운다. 재귀 호출에는 이 폴백을
+    # 끄므로, 단일 문항도 계속 실패할 때 무한 재시도하지 않는다.
+    valid_questions = [q for q in last_normalized if _is_question_well_formed(q)]
+    if allow_individual_repair and len(valid_questions) < count:
+        repaired = list(valid_questions)
+        try:
+            while len(repaired) < count:
+                replacement = await _generate_quiz_batch(
+                    context,
+                    question_type=question_type,
+                    count=1,
+                    difficulty=difficulty,
+                    target_difficulty=target_difficulty,
+                    weak_topics=weak_topics,
+                    quiz_kind=quiz_kind,
+                    learner_profile=learner_profile,
+                    plan_scope=plan_scope,
+                    avoid_topics=avoid_topics,
+                    allow_individual_repair=False,
+                )
+                repaired.extend(replacement)
+            return repaired[:count]
+        except RuntimeError:
+            # 아래의 기존 오류 메시지로 통일한다. 원인이 되는 배치 형식 정보는 유지된다.
+            pass
     raise RuntimeError(
         f"AI가 {count}개의 {question_type} 문제를 {max_attempts}번 시도해도 유효하게 만들지 못했습니다 "
         "(중복되거나 비어있는 보기 포함)."
@@ -517,6 +597,25 @@ def _is_circular_answer(question_text: str, answer: str) -> bool:
     return len(normalized_answer) >= 4 and normalized_answer in normalized_question
 
 
+_OPTION_MARKER_RE = re.compile(
+    r"^\s*(?:(?:[A-Da-d]|[1-4])\s*[.)\]:：、-]\s+|[①②③④]\s*)"
+)
+
+
+def _strip_option_marker(value: object) -> str:
+    """AI가 보기 본문 앞에 붙인 A./1./① 같은 표시를 제거한다.
+
+    화면이 A~D를 별도로 표시하므로 이 표기가 남아 있으면 `A. 1. 보기`처럼
+    이중 번호가 된다. 구분 기호 뒤에 공백이 있는 경우만 제거해 `1.0` 같은
+    실제 값은 보존한다.
+    """
+    return _OPTION_MARKER_RE.sub("", str(value or "")).strip()
+
+
+def _has_option_marker(value: str) -> bool:
+    return bool(_OPTION_MARKER_RE.match(value))
+
+
 def _is_placeholder_option(option: str) -> bool:
     """빈 문자열이거나, "A"/"B"/"1" 같은 영문 알파벳/숫자 한 글자 자리표시자면 True.
     "σ", "π", "÷", "×", "칸반" 같은 정상적인 한 글자·짧은 보기는 걸러지지 않는다."""
@@ -537,10 +636,17 @@ def _is_question_well_formed(question: dict) -> bool:
     correct_answer = str(question.get("correct_answer") or "").strip()
     if len(question_text) < 5 or not correct_answer:
         return False
+    # 기출 자료의 제목/메타데이터를 모델이 문제 주제로 오인해 "정보처리기사 필기 실기"
+    # 같은 근거 없는 시험 구분을 출력하는 것을 막는다. 실제 개념을 묻는 문제로 다시
+    # 생성시키며, 출제기준은 범위 판단에만 사용한다.
+    if _contains_invalid_exam_format_label(question):
+        return False
     question_type = question.get("question_type")
     if question_type == "multiple_choice":
         options = [str(o).strip() for o in (question.get("options") or [])]
-        if len(options) < 2:
+        if len(options) != 4 or any(_is_placeholder_option(option) for option in options):
+            return False
+        if any(_has_option_marker(option) for option in options):
             return False
         # 자리표시자("A"/"B"/"1" 같은 한 글자)만 걸러내는 게 목적이었는데, 길이 기준
         # (< 2, < 3)만으로는 "σ"/"π"/"÷"/"×" 같은 정상적인 한 글자 기호 정답까지 매번
@@ -548,16 +654,82 @@ def _is_question_well_formed(question: dict) -> bool:
         # options=["π","σ","÷","×"]라는 이유만으로 재시도 8번을 다 태우다 실패). 영문
         # 알파벳/숫자 한 글자만 자리표시자로 보고, 그 외 한 글자(그리스 문자, 수학 기호,
         # 한글 등)는 정상 보기로 허용한다.
-        if correct_answer.lower() not in {o.lower() for o in options}:
+        if len({option.casefold() for option in options}) != 4:
+            return False
+        if correct_answer not in options:
+            return False
+        if _is_circular_answer(question_text, correct_answer):
             return False
     elif question_type == "short_answer":
         if len(correct_answer) < 2:
             return False
+        if _is_circular_answer(question_text, correct_answer):
+            return False
     else:
         options = [str(o).strip() for o in (question.get("options") or [])]
-        if options and correct_answer not in options:
+        if options != ["O", "X"] or correct_answer not in options:
             return False
     return True
+
+
+def _question_validation_issues(question: dict) -> list[str]:
+    """재시도 프롬프트에 모델이 고쳐야 할 지점을 구체적으로 전달한다."""
+    issues: list[str] = []
+    question_text = str(question.get("question_text") or "").strip()
+    correct_answer = str(question.get("correct_answer") or "").strip()
+    question_type = question.get("question_type")
+    if len(question_text) < 5:
+        issues.append("question_text is too short")
+    if not correct_answer:
+        issues.append("correct_answer is empty")
+    if _contains_invalid_exam_format_label(question):
+        issues.append("invalid invented exam-format label")
+    if question_type == "multiple_choice":
+        options = [str(option).strip() for option in (question.get("options") or [])]
+        if len(options) != 4:
+            issues.append("must have exactly 4 options")
+        if any(_is_placeholder_option(option) for option in options):
+            issues.append("options include empty or placeholder text")
+        if len({option.casefold() for option in options}) != len(options):
+            issues.append("options are duplicated")
+        if correct_answer not in options:
+            issues.append("correct_answer must exactly match one option")
+    elif question_type == "short_answer":
+        if len(correct_answer) < 2:
+            issues.append("short answer is too short")
+    else:
+        if list(question.get("options") or []) != ["O", "X"]:
+            issues.append("OX options must be exactly ['O', 'X']")
+    if correct_answer and _is_circular_answer(question_text, correct_answer):
+        issues.append("answer repeats the question text")
+    return issues or ["question format is invalid"]
+
+
+def _contains_invalid_exam_format_label(question: dict) -> bool:
+    fields = [
+        question.get("question_text"),
+        question.get("topic_tag"),
+        question.get("explanation"),
+        question.get("correct_answer"),
+        *(question.get("options") or []),
+    ]
+    text = " ".join(str(field) for field in fields if field)
+    normalized = re.sub(r"\s+", "", text)
+    return any(
+        label in normalized
+        for label in (
+            "정보처리기사필기",
+            "정보처리기사실기",
+            "필기실기",
+            "실기필기",
+            "필기/실기",
+            "실기/필기",
+            "필기·실기",
+            "실기·필기",
+            "필기및실기",
+            "실기및필기",
+        )
+    )
 
 
 async def grade_short_answer(question: str, correct_answer: str, user_answer: str) -> bool:
@@ -1214,7 +1386,10 @@ def _normalize_question(question: dict) -> dict:
         question["options"] = question.get("options") or ["O", "X"]
     else:
         question["question_type"] = "multiple_choice"
-        question["options"] = (question.get("options") or [])[:4]
+        question["options"] = [
+            _strip_option_marker(option) for option in (question.get("options") or [])[:4]
+        ]
+        question["correct_answer"] = _strip_option_marker(question.get("correct_answer"))
     if question.get("question_difficulty") not in ("easy", "normal", "hard"):
         question["question_difficulty"] = "normal"
     try:

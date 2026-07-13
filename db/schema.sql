@@ -414,8 +414,16 @@ CREATE TABLE study_materials (
     processed_status  TEXT NOT NULL DEFAULT 'pending' CHECK (processed_status IN ('pending','processing','ready','failed')),
     processing_stage  TEXT,        -- 진행 중 세부 단계 (parsing/embedding/summarizing), 완료/실패 시 NULL
     processing_error  TEXT,
+    -- 운영자가 등록한 자격증 공통 기준/기출 자료인지 여부. 사용자 자료와는 분리해 보관하되,
+    -- 같은 certification_id를 가진 자료를 RAG로 검색할 때만 보조 근거로 사용한다.
+    is_reference_material BOOLEAN NOT NULL DEFAULT FALSE,
+    reference_kind    TEXT CHECK (reference_kind IN ('exam_standard','past_exam')),
+    reference_alignment JSONB,
     uploaded_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_study_materials_reference_certification
+    ON study_materials (certification_id)
+    WHERE is_reference_material = TRUE;
 
 -- quizzes.study_material_id FK (study_materials가 quizzes보다 뒤에 정의되므로 여기서 연결)
 ALTER TABLE quizzes ADD CONSTRAINT fk_quizzes_study_material

@@ -41,6 +41,21 @@ async def _run_startup_migrations(pool: asyncpg.Pool) -> None:
     await pool.execute(
         "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS processing_stage text"
     )
+    # 자격증 공통 RAG 자료(출제기준/기출 해설)와 사용자 자료를 구분한다. 공통 자료는
+    # 같은 자격증에 연결된 사용자 자료를 검색할 때만 보조 근거로 합쳐진다.
+    await pool.execute(
+        "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS is_reference_material BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    await pool.execute(
+        "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS reference_kind TEXT"
+    )
+    await pool.execute(
+        "ALTER TABLE study_materials ADD COLUMN IF NOT EXISTS reference_alignment JSONB"
+    )
+    await pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_study_materials_reference_certification "
+        "ON study_materials (certification_id) WHERE is_reference_material = TRUE"
+    )
     await pool.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_certifications_name ON certifications (name)"
     )

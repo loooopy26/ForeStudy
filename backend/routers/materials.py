@@ -35,14 +35,17 @@ async def list_materials(user_id: str | None = Query(None, description="필터�
     if user_id:
         rows = await pool.fetch(
             """
-            SELECT id, title, file_type, processed_status, uploaded_at
+            SELECT id, title, file_type, processed_status, is_reference_material, reference_kind, uploaded_at
             FROM study_materials WHERE user_id = $1 ORDER BY uploaded_at DESC
             """,
             user_id,
         )
     else:
         rows = await pool.fetch(
-            "SELECT id, title, file_type, processed_status, uploaded_at FROM study_materials ORDER BY uploaded_at DESC"
+            """
+            SELECT id, title, file_type, processed_status, is_reference_material, reference_kind, uploaded_at
+            FROM study_materials ORDER BY uploaded_at DESC
+            """
         )
     return [dict(row) for row in rows]
 
@@ -119,7 +122,8 @@ async def get_material(
     row = await pool.fetchrow(
         """
         SELECT m.id, m.title, m.file_type, m.processed_status, m.processing_stage, m.ai_summary,
-               m.key_concepts, m.uploaded_at, m.processing_error,
+               m.key_concepts, m.reference_alignment, m.is_reference_material, m.reference_kind,
+               m.uploaded_at, m.processing_error,
                (SELECT count(*) FROM document_chunks c WHERE c.study_material_id = m.id) AS chunk_count
         FROM study_materials m WHERE m.id = $1
         """,
@@ -130,6 +134,8 @@ async def get_material(
     result = dict(row)
     if result["key_concepts"]:
         result["key_concepts"] = json.loads(result["key_concepts"])
+    if result["reference_alignment"]:
+        result["reference_alignment"] = json.loads(result["reference_alignment"])
     return result
 
 

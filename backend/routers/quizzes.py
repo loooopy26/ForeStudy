@@ -21,6 +21,38 @@ logger = logging.getLogger(__name__)
 # 메모리에만 들고 있는다(재시작하면 사라져도 무방 — 진행 중 상태를 잠깐 보여주는 용도).
 _similar_quiz_progress: dict[str, dict[str, int]] = {}
 
+# 화면은 A/B/C/D를 자체적으로 붙인다. 과거에 저장된 보기 중 "1. 내용"처럼
+# 번호가 본문에 남은 경우에도 화면에서 번호를 제거해 보낼 수 있으므로, 채점은
+# 표시용 접두사를 무시하고 비교한다. `1.0` 같은 실제 숫자 값은 공백 조건으로 보존한다.
+_CHOICE_MARKER_RE = re.compile(
+    r"^\s*(?:(?:[A-Da-d]|[1-4])\s*[.)\]:：、-]\s+|[①②③④]\s*)"
+)
+
+
+def _normalize_choice_answer(value: str | None) -> str:
+    return _CHOICE_MARKER_RE.sub("", (value or "")).strip().casefold()
+
+
+def _choice_answers_match(user_answer: str | None, correct_answer: str | None) -> bool:
+    return _normalize_choice_answer(user_answer) == _normalize_choice_answer(correct_answer)
+
+
+async def _record_plan_completion_events(conn, *, user_id: str, event_date: date) -> None:
+    """일별 플랜이 처음 완료된 순간에만 퀘스트 진행률을 함께 남긴다.
+
+    호출하는 쪽의 UPDATE가 `not completed -> completed` 전환일 때만 이 함수를 부르므로,
+    같은 유사문제를 다시 제출해도 일/주간 플랜 횟수가 중복 증가하지 않는다.
+    """
+    await conn.executemany(
+        """
+        INSERT INTO quest_events (user_id, event_type, event_date, amount)
+        VALUES ($1, $2, $3, 1)
+        ON CONFLICT (user_id, event_type, event_date)
+        DO UPDATE SET amount = quest_events.amount + EXCLUDED.amount
+        """,
+        [(user_id, "daily-plan", event_date), (user_id, "weekly-plan", event_date)],
+    )
+
 # 배치고사/AI 퀴즈 난이도별 고정 문항 수 — AI가 알아서 배분하지 않고 항상 이 개수를 강제한다.
 # {난이도: {문제유형: 개수}} 형태.
 PLACEMENT_DIFFICULTY_MIX = {
@@ -174,7 +206,7 @@ async def _create_material_quiz(
     # 3개밖에 안 잡혀 소재가 금방 바닥나 보기가 억지로 중복/부실해지는 경향이 있었다
     # (top_k=20이면 9개 섹션) — 문제 수에 맞춰 review는 더 넓게 가져온다.
     top_k = 20 if forced_num_questions > 10 else 12
-    chunks = await rag.retrieve_chunks(material_id, query, top_k=top_k)
+    chunks = await rag.retrieve_quiz_chunks(material_id, query, top_k=top_k)
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
@@ -389,7 +421,7 @@ async def create_similar_quiz(attempt_id: str, req: QuizCreateRequest):
     user_id = req.user_id or str(attempt["user_id"])
     num_questions = len(source_notes)
     query = " ".join(weak_topics)
-    chunks = await rag.retrieve_chunks(material_id, query, top_k=8)
+    chunks = await rag.retrieve_quiz_chunks(material_id, query, top_k=8)
     if not chunks:
         raise HTTPException(409, "검색 가능한 학습 자료 청크가 없습니다")
 
@@ -521,7 +553,7 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                 question["question_text"], question["correct_answer"], user_answer
             )
         else:
-            is_correct = user_answer.strip().lower() == question["correct_answer"].strip().lower()
+            is_correct = _choice_answers_match(user_answer, question["correct_answer"])
 
         results.append(
             {
@@ -622,16 +654,28 @@ async def submit_quiz(quiz_id: str, req: QuizSubmitRequest):
                 )
                 if remaining:
                     continue
-                await conn.execute(
+                completed_day = await conn.fetchrow(
                     """
                     UPDATE curriculum_days cd
                     SET progress_status = 'completed'
                     FROM quiz_attempts a
                     JOIN quizzes q ON q.id = a.quiz_id
-                    WHERE a.id = $1 AND q.curriculum_day_id = cd.id
+                    WHERE a.id = $1
+                      AND q.curriculum_day_id = cd.id
+                      AND cd.progress_status <> 'completed'
+                    RETURNING cd.id, cd.day_date
                     """,
                     source_attempt_id,
                 )
+                if completed_day:
+                    # 유사문제로 원래 오답을 모두 극복해 플랜이 완료된 경우에도, 일반
+                    # AI 퀴즈와 동일하게 퀘스트 진행률을 서버에서 기록한다. 프론트의
+                    # localStorage/화면 상태와 무관하게 캘린더·퀘스트가 함께 갱신된다.
+                    await _record_plan_completion_events(
+                        conn,
+                        user_id=str(quiz["user_id"]),
+                        event_date=completed_day["day_date"],
+                    )
 
             if quiz["quiz_type"] != "placement":
                 for result in results:
@@ -1082,7 +1126,7 @@ async def submit_wrong_answer_review_item(session_id: str, item_id: str, req: Re
             row["question_text"], row["correct_answer"], req.answer
         )
     else:
-        is_correct = req.answer.strip().lower() == row["correct_answer"].strip().lower()
+        is_correct = _choice_answers_match(req.answer, row["correct_answer"])
     is_correct = bool(is_correct and not timed_out)
     note_status = "mastered" if is_correct else "reviewing"
 
