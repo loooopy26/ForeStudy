@@ -60,9 +60,6 @@
   font-size: 12px;
   font-weight: 800;
   color: var(--color-text-dark);
-  background-color: rgba(0, 0, 0, 0.03);
-  padding: 6px 12px;
-  border-radius: 12px;
 }
 
 .hud-lvl {

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { CoinIcon, ItemArt } from './GoodsArt'
 
-export function GoodsHeader({ title, wallet, onBack, rightSlot }) {
+export function GoodsHeader({ title, wallet, level = null, onBack, rightSlot }) {
   return (
     <div className="goods-header">
       <button type="button" className="goods-back-btn" onClick={onBack} aria-label="뒤로가기">
@@ -13,8 +13,12 @@ export function GoodsHeader({ title, wallet, onBack, rightSlot }) {
       <span className="goods-title">{title}</span>
       {rightSlot ?? (
         <div className="goods-coin-badge">
-          <CoinIcon size={17} />
-          <span>{wallet.toLocaleString()}</span>
+          <span className="goods-level-chip">Lv.{level ?? '-'}</span>
+          <span className="goods-coin-divider" aria-hidden="true" />
+          <span className="goods-coin-wrap">
+            <CoinIcon size={17} />
+            <span>{wallet.toLocaleString()}</span>
+          </span>
         </div>
       )}
     </div>

@@ -1,10 +1,11 @@
 // 상점 화면: 의상/가구/아이템/꾸미기 탭별 아이템을 도토리로 구매한다.
 // 'AI로 직접 만들어요' 버튼으로 AI 공방에 진입해 자연어로 아이템을 만들면,
 // 만든 아이템은 기본 카탈로그에 섞이지 않고 '커스텀' 탭에 따로 모인다.
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CATALOG, WEARABLE_KINDS, useGoods } from './goods'
 import { GoodsHeader, GoodsTabs, GoodsToast, ItemCard } from './GoodsUI'
 import { AiCreatePanel, AiFab } from './AiWorkshop'
+import { getMyUser } from './api'
 import './Goods.css'
 
 const CUSTOM_TAB = 'custom'
@@ -27,11 +28,20 @@ const TAB_FILTER = {
 function ShopPage({ onNavigate, initialSub }) {
   const goods = useGoods()
   const { wallet, isOwned, buy, customItems, removeCustomItem } = goods
+  const [level, setLevel] = useState(null)
   const [tab, setTab] = useState('wear')
   const isFromRoom = initialSub === 'ai-from-room'
   const [showAi, setShowAi] = useState(initialSub === 'ai' || isFromRoom)
   const [toast, setToast] = useState(null)
   const entrySourceRef = useRef(isFromRoom ? 'room' : 'shop')
+
+  useEffect(() => {
+    getMyUser()
+      .then((user) => {
+        if (typeof user?.level === 'number') setLevel(user.level)
+      })
+      .catch(() => {})
+  }, [])
 
   // '커스텀' 탭은 AI로 만든 아이템만, 나머지 탭은 기본 카탈로그만 보여준다.
   const items = tab === CUSTOM_TAB ? customItems : CATALOG.filter(TAB_FILTER[tab])
@@ -73,6 +83,7 @@ function ShopPage({ onNavigate, initialSub }) {
       <GoodsHeader
         title={showAi ? 'AI 아이템 공방' : '상점'}
         wallet={wallet}
+        level={level}
         onBack={
           showAi
             ? () => {

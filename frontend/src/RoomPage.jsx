@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CATALOG, useGoods } from './goods'
 import { ItemArt } from './GoodsArt'
 import { GoodsHeader, GoodsTabs, GoodsToast, ItemCard } from './GoodsUI'
+import { getMyUser } from './api'
 import './Goods.css'
 
 const CUSTOM_TAB = 'custom'
@@ -157,6 +158,7 @@ const FLOOR_STYLE = {
 
 function RoomPage({ onNavigate }) {
   const { wallet, isOwned, buy, room, customItems, toggleRoomItem, moveRoomItem, transformRoomItem, saveRoom } = useGoods()
+  const [level, setLevel] = useState(null)
   const [tab, setTab] = useState('furniture')
   const [toast, setToast] = useState(null)
   const [draggingId, setDraggingId] = useState(null)
@@ -165,6 +167,14 @@ function RoomPage({ onNavigate }) {
   const previewRef = useRef(null)
   const timerRef = useRef(null)
   const pointerStartRef = useRef({ x: 0, y: 0 })
+
+  useEffect(() => {
+    getMyUser()
+      .then((user) => {
+        if (typeof user?.level === 'number') setLevel(user.level)
+      })
+      .catch(() => {})
+  }, [])
 
   // 말풍선이 활성화되어 있을 때 화면 바깥(빈 공간, 상점 탭, 헤더 등) 어디든 터치 시 자동 닫기
   useEffect(() => {
@@ -319,7 +329,7 @@ function RoomPage({ onNavigate }) {
 
   return (
     <div className="goods-page room-page">
-      <GoodsHeader title="내 방" wallet={wallet} onBack={() => onNavigate('village')} />
+      <GoodsHeader title="내 방" wallet={wallet} level={level} onBack={() => onNavigate('village')} />
 
       <div className="room-preview-wrapper" style={{ position: 'relative' }}>
         <div
