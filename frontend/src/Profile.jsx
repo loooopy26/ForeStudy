@@ -175,7 +175,6 @@ function Profile({ onNavigate, materialId, certName, onSelectCertificate }) {
             <div className="forest-character-avatar-wrapper">
               <CharacterAvatar equipped={equipped} getItem={getItem} className="profile-character-avatar" />
             </div>
-            <span className="forest-character-hint" aria-hidden="true">꾸미기</span>
           </button>
 
           <div className="profile-info hero-copy">
