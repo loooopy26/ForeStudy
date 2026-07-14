@@ -1,5 +1,5 @@
 <img width="1772" height="410" alt="Image" src="https://github.com/user-attachments/assets/49e49565-509a-4d69-aac5-6b86dc9a0b35" />
-# Forestudy
+## Forestudy
 
 Forestudy는 PDF 학습 자료와 AI 학습 도구, 게임형 성장 요소를 결합한 학습 지원 웹 애플리케이션입니다. 학습 자료를 바탕으로 문제를 만들고 채점·오답 분석·학습 계획을 지원하며, 시험 당일에는 출발지와 시험장을 기준으로 이동 계획을 안내합니다.
 
