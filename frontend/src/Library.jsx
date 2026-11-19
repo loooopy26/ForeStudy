@@ -115,9 +115,9 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   const videoRef = useRef(null)
   const camera = useStudyCamera(videoRef)
   const [cameraEnabled, setCameraEnabled] = useState(true)
-  const [cameraFacing, setCameraFacing] = useState('auto')
+  const [cameraFacing, setCameraFacing] = useState('user')
   const previewVisible = camera.status === 'live'
-  const focus = useStudyFocus(videoRef, previewVisible, cameraFacing, running)
+  const focus = useStudyFocus(videoRef, camera.stream, running)
   const [durationModalOpen, setDurationModalOpen] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -363,6 +363,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
     if (!runningRef.current) {
       studyAlert.enable()
       focus.resetMotion()
+      if (focus.motionPermission === 'pending') void focus.requestMotion()
       if (cameraEnabled) void camera.start(cameraFacing)
       if (!timerSession.current) {
         const pending = getMyUser().then(user => startTimer(user.id, materialId))
@@ -590,8 +591,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
               <span>집중 감지 설정</span>
               <span className="study-settings-summary">
                 {cameraEnabled && focus.faceEnabled
-                  ? focus.motionPermission === 'granted' ? '얼굴 · 움직임' : '얼굴'
-                  : focus.motionPermission === 'granted' ? '움직임' : cameraEnabled ? '카메라 사용' : '감지 꺼짐'}
+                  ? focus.motionEnabled ? '얼굴 · 움직임' : '얼굴'
+                  : focus.motionEnabled ? '움직임' : cameraEnabled ? '카메라 사용' : '감지 꺼짐'}
               </span>
             </summary>
             <div className="study-camera-controls">
@@ -623,11 +624,12 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
                 얼굴 방향으로 집중 확인
               </label>}
               <button type="button" onClick={focus.toggleMotion} disabled={focus.motionPermission === 'asking'}
-                aria-pressed={focus.motionPermission === 'granted'}>
-                {focus.motionPermission === 'granted' ? '움직임 감지 끄기' : '움직임 감지 켜기'}
+                aria-pressed={focus.motionEnabled}>
+                {focus.motionEnabled ? '움직임 감지 끄기' : '움직임 감지 켜기'}
               </button>
             </div>
           </details>
+          {focus.motionPermission === 'asking' && <span role="status">Safari의 움직임 접근 요청을 확인해 주세요.</span>}
           {focus.motionPermission === 'denied' && <span role="status">Safari에서 움직임 권한이 거부됐어요.</span>}
           {focus.motionPermission === 'unavailable' && <span role="status">이 브라우저에서 움직임 감지를 사용할 수 없어요.</span>}
           {focus.motionPermission === 'granted' && <span role="status">
@@ -636,6 +638,20 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
           <div className={previewVisible ? `study-camera-preview${camera.mirror ? ' is-mirrored' : ''}` : undefined} hidden={!cameraEnabled}>
             <video ref={videoRef} muted autoPlay playsInline hidden={!previewVisible}
               aria-label="카메라 미리보기" />
+            {previewVisible && focus.detection && (
+              <div className="study-face-overlay" aria-hidden="true">
+                <div className="study-face-box" style={{
+                  left: `${focus.detection.box.x * 100}%`,
+                  top: `${focus.detection.box.y * 100}%`,
+                  width: `${focus.detection.box.width * 100}%`,
+                  height: `${focus.detection.box.height * 100}%`,
+                }} />
+                {[...focus.detection.eyes, focus.detection.nose].map((point, index) => (
+                  <span key={index} className={index === 2 ? 'study-face-point is-nose' : 'study-face-point'}
+                    style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }} />
+                ))}
+              </div>
+            )}
             {(!previewVisible || focus.faceEnabled) && <span className="study-camera-status" role={previewVisible ? undefined : 'status'}>
               {previewVisible ? FACE_FOCUS_MESSAGES[focus.faceStatus] : camera.message}
             </span>}

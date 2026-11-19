@@ -15,6 +15,7 @@ export default function useStudyCamera(videoRef) {
   const active = useRef(null)
   const [status, setStatus] = useState('idle')
   const [mirror, setMirror] = useState(false)
+  const [stream, setStream] = useState(null)
   const release = useCallback(() => {
     const session = active.current
     active.current = null
@@ -29,6 +30,7 @@ export default function useStudyCamera(videoRef) {
 
   const stop = useCallback((reason = 'idle') => {
     release()
+    setStream(null)
     setStatus(reason)
   }, [release])
 
@@ -48,6 +50,7 @@ export default function useStudyCamera(videoRef) {
     if (!videoRef.current || active.current?.facing === facing) return
     // Release the old track before Safari is asked to open the other camera.
     release()
+    setStream(null)
     if (!window.isSecureContext) return setStatus('insecure')
     if (!navigator.mediaDevices?.getUserMedia) return setStatus('unavailable')
     if (facing !== 'auto' && !navigator.mediaDevices.getSupportedConstraints?.().facingMode) {
@@ -77,6 +80,7 @@ export default function useStudyCamera(videoRef) {
       setMirror((track.getSettings?.().facingMode || facing) === 'user')
       track.onended = () => fail('interrupted')
       video.srcObject = stream
+      setStream(stream)
       setStatus('live')
       await video.play()
     } catch (error) {
@@ -85,5 +89,5 @@ export default function useStudyCamera(videoRef) {
         : error.name === 'NotFoundError' ? 'unavailable' : 'error')
     }
   }
-  return { start, stop, status, message: messages[status], mirror }
+  return { start, stop, status, message: messages[status], mirror, stream }
 }

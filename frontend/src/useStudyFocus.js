@@ -10,15 +10,18 @@ function magnitude(x, y, z) {
   return axes.length ? Math.hypot(...axes) : null
 }
 
-export default function useStudyFocus(videoRef, cameraActive, facing, running) {
-  const [faceEnabled, setFaceEnabled] = useState(false)
+export default function useStudyFocus(videoRef, stream, running) {
+  const [faceEnabled, setFaceEnabled] = useState(true)
   const [faceStatus, setFaceStatus] = useState('loading')
+  const [faceResult, setFaceResult] = useState(null)
   const [calibration, setCalibration] = useState(0)
-  const [motionPermission, setMotionPermission] = useState('off')
+  const [motionPermission, setMotionPermission] = useState('pending')
+  const motionEnabled = ['pending', 'asking', 'granted'].includes(motionPermission)
   const [motionStatus, setMotionStatus] = useState('waiting')
   const resetMotion = () => setMotionStatus('waiting')
 
   function resetFace() {
+    setFaceResult(null)
     setFaceStatus('loading')
     setCalibration(value => value + 1)
   }
@@ -28,11 +31,7 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
     setFaceEnabled(enabled => !enabled)
   }
 
-  async function toggleMotion() {
-    if (motionPermission === 'granted') {
-      setMotionPermission('off')
-      return
-    }
+  async function requestMotion() {
     const api = window.DeviceMotionEvent
     if (!api || !window.isSecureContext) {
       setMotionPermission('unavailable')
@@ -49,8 +48,13 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
     }
   }
 
+  function toggleMotion() {
+    if (motionEnabled) setMotionPermission('off')
+    else void requestMotion()
+  }
+
   useEffect(() => {
-    if (!cameraActive || !faceEnabled) return
+    if (!stream || !faceEnabled) return
     const video = videoRef.current
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = faceSize
@@ -62,6 +66,7 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
     let timeout
     let baseline
     let samples = []
+    let calibrationStarted = 0
     let suspectSince = 0
     let lastResult = 0
 
@@ -69,6 +74,7 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
       clearInterval(interval)
       clearTimeout(timeout)
       worker?.terminate()
+      setFaceResult(null)
       setFaceStatus('error')
     }
 
@@ -85,8 +91,9 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
           return
         }
         if (samples.length && Math.abs(samples[0] - direction) > 0.10) samples = []
+        if (!samples.length) calibrationStarted = now
         samples.push(direction)
-        if (samples.length < 4) return
+        if (samples.length < 4 || now - calibrationStarted < 1500) return
         baseline = samples.reduce((sum, value) => sum + value, 0) / samples.length
         setFaceStatus('focused')
         return
@@ -127,9 +134,10 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
         if (data.type === 'ready') {
           clearTimeout(timeout)
           setFaceStatus('calibrate')
-          interval = setInterval(capture, 500)
+          interval = setInterval(capture, 200)
         } else if (data.type === 'result') {
           busy = false
+          setFaceResult(data.detection ? { stream, detection: data.detection } : null)
           update(data.direction, performance.now())
         } else fail()
       }
@@ -144,7 +152,7 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
       clearTimeout(timeout)
       worker?.terminate()
     }
-  }, [cameraActive, videoRef, faceEnabled, facing, calibration])
+  }, [stream, videoRef, faceEnabled, calibration])
 
   useEffect(() => {
     if (!running || motionPermission !== 'granted') return
@@ -203,5 +211,7 @@ export default function useStudyFocus(videoRef, cameraActive, facing, running) {
     }
   }, [running, motionPermission])
 
-  return { faceEnabled, faceStatus, toggleFace, resetFace, motionPermission, motionStatus, toggleMotion, resetMotion }
+  const detection = faceEnabled && faceResult?.stream === stream ? faceResult.detection : null
+  return { faceEnabled, faceStatus, detection, toggleFace, resetFace,
+    motionEnabled, motionPermission, motionStatus, requestMotion, toggleMotion, resetMotion }
 }

@@ -110,7 +110,32 @@
   height: 100%;
   object-fit: cover;
 }
-.study-camera-preview.is-mirrored video { transform: scaleX(-1); }
+.study-camera-preview.is-mirrored video,
+.study-camera-preview.is-mirrored .study-face-overlay { transform: scaleX(-1); }
+
+.study-face-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.study-face-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #86f3b5;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgb(16 24 19 / 80%);
+}
+.study-face-point {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #18201b;
+  border-radius: 50%;
+  background: #86f3b5;
+  transform: translate(-50%, -50%);
+}
+.study-face-point.is-nose { background: #ffd285; }
 .study-camera-preview .study-camera-status {
   position: absolute;
   top: 10px;
