@@ -1,0 +1,6 @@
+BlazeFace short-range face detector, Google MediaPipe.
+Copyright Google LLC. Licensed under the Apache License, Version 2.0 (see BlazeFace-LICENSE.txt).
+Model card: https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20(Short%20Range).pdf
+Model: https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
+Documentation: https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector
+Model architecture: https://arxiv.org/abs/1907.05047

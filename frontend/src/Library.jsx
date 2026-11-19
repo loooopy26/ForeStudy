@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import Header from './Header'
 import BottomNav from './BottomNav'
 import StudyIllustration from './StudyIllustration'
+import useStudyCamera from './useStudyCamera'
+import useStudyFocus from './useStudyFocus'
+import useStudyAlert from './useStudyAlert'
 import CertSelect from './CertSelect'
 import { LibraryIcon, FocusIcon, ClockIcon, DocIcon, UploadIcon } from './icons'
 import { clearQuizGenerating, endTimer, getActiveCurriculum, getCertGoal, getCurrentCertificates, getMyUser, getQuizProgress, getTodayCurriculumDay, isQuizGenerating, listMaterials, markQuizGenerating, onCertificatesUpdated, pauseTimer, prepareReviewQuiz, recordQuestEvent, requireDailyQuizCompletion, setQuizProgress, startTimer, unlockDailyQuiz, updateCurriculumDay, uploadMaterial } from './api'
@@ -11,6 +14,23 @@ const DEFAULT_DURATION_MIN = 40
 const MIN_DURATION_MIN = 1
 const MAX_DURATION_MIN = 180
 const RING_LENGTH = 653.45
+
+const FACE_FOCUS_MESSAGES = {
+  loading: '얼굴 감지 모델을 준비하고 있어요.',
+  calibrate: '얼굴이 보이게 앉고 평소 공부하는 방향을 잠시 봐 주세요.',
+  focused: '공부 중 추정 · 기준 얼굴 방향',
+  checking: '얼굴 방향을 다시 확인하고 있어요.',
+  away: '집중 이탈 의심 · 고개가 다른 방향을 향해요.',
+  missing: '집중 이탈 의심 · 얼굴이 한동안 보이지 않아요.',
+  error: '얼굴을 감지할 수 없어요. 다시 기준을 잡아 주세요.',
+}
+
+const MOTION_FOCUS_MESSAGES = {
+  waiting: '움직임 신호를 기다리고 있어요.',
+  steady: '기기 움직임 감지 중',
+  moving: '집중 이탈 의심 · 아이폰이 크게 움직였어요.',
+  unavailable: '이 기기에서 움직임 신호를 받지 못했어요.',
+}
 
 const STATUS_LABEL = {
   pending: '대기 중',
@@ -88,6 +108,16 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   const [remaining, setRemaining] = useState(restoredTimer.remaining)
   const [studySec, setStudySec] = useState(restoredTimer.studySec)
   const [running, setRunning] = useState(restoredTimer.running)
+  const [focusPaused, setFocusPaused] = useState(false)
+  const counting = running && !focusPaused
+  const focusPausedRef = useRef(false)
+  const studyAlert = useStudyAlert()
+  const videoRef = useRef(null)
+  const camera = useStudyCamera(videoRef)
+  const [cameraEnabled, setCameraEnabled] = useState(true)
+  const [cameraFacing, setCameraFacing] = useState('auto')
+  const previewVisible = camera.status === 'live'
+  const focus = useStudyFocus(videoRef, previewVisible, cameraFacing, running)
   const [durationModalOpen, setDurationModalOpen] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -104,7 +134,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   useEffect(() => onCertificatesUpdated(() => forceCertRerender((n) => n + 1)), [])
 
   // 타이머 세션 상태는 렌더링과 무관해서 ref로 관리한다.
-  const sessionIdRef = useRef(restoredTimer.sessionId || null)
+  // The snapshot lives in App memory and can also carry a pending server session.
+  const timerSession = useRef(restoredTimer.session || (restoredTimer.sessionId ? Promise.resolve(restoredTimer.sessionId) : null))
   const segmentStartRef = useRef(restoredTimer.segmentStartAt || (restoredTimer.running ? restoredTimer.updatedAt : null))
   const maxUninterruptedMinRef = useRef(restoredTimer.maxUninterruptedMin || 0)
   const endedRef = useRef(false)
@@ -114,14 +145,14 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
       durationMin,
       remaining,
       studySec,
-      running,
-      sessionId: sessionIdRef.current,
+      running: counting,
+      session: timerSession.current,
       segmentStartAt: segmentStartRef.current,
       maxUninterruptedMin: maxUninterruptedMinRef.current,
       updatedAt: Date.now(),
       date: toDateKey(new Date()),
     })
-  }, [durationMin, remaining, studySec, running, onTimerStateChange])
+  }, [durationMin, remaining, studySec, counting, onTimerStateChange])
 
   const [materials, setMaterials] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -233,6 +264,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   }
 
   const finishSession = () => {
+    camera.stop()
     if (endedRef.current) return
     endedRef.current = true
     const segmentMin = segmentStartRef.current ? Math.round((Date.now() - segmentStartRef.current) / 60000) : 0
@@ -241,21 +273,24 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
     if (maxMin >= 20) recordQuestEvent('daily-focus')
     // 보너스 퀘스트의 누적/연속 학습 조건은 실제 타이머로 기록된 시간만 사용한다.
     recordQuestEvent('bonus-study-minutes', studiedMin)
-    if (sessionIdRef.current) endTimer(sessionIdRef.current, studiedMin, maxMin).catch(() => {})
+    timerSession.current?.then(id => id && endTimer(id, studiedMin, maxMin)).catch(() => {})
+  }
+
+  const closeTimerSegment = (reason) => {
+    if (segmentStartRef.current == null) return
+    const segmentMin = Math.round((Date.now() - segmentStartRef.current) / 60000)
+    maxUninterruptedMinRef.current = Math.max(maxUninterruptedMinRef.current, segmentMin)
+    segmentStartRef.current = null
+    timerSession.current?.then(id => id && pauseTimer(id, segmentMin, reason)).catch(() => {})
   }
 
   const pauseRunningTimer = (reason) => {
+    camera.stop()
     if (!runningRef.current) return
-
-    // Update the ref immediately so closely-spaced visibility/unmount events
-    // cannot create duplicate interruption records.
     runningRef.current = false
-    const segmentMin = segmentStartRef.current
-      ? Math.round((Date.now() - segmentStartRef.current) / 60000)
-      : 0
-
-    maxUninterruptedMinRef.current = Math.max(maxUninterruptedMinRef.current, segmentMin)
-    segmentStartRef.current = null
+    closeTimerSegment(reason)
+    focusPausedRef.current = false
+    setFocusPaused(false)
     setRunning(false)
 
     onTimerStateChange({
@@ -263,21 +298,41 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
       remaining,
       studySec,
       running: false,
-      sessionId: sessionIdRef.current,
+      session: timerSession.current,
       segmentStartAt: null,
       maxUninterruptedMin: maxUninterruptedMinRef.current,
       updatedAt: Date.now(),
       date: toDateKey(new Date()),
     })
-
-    if (sessionIdRef.current) {
-      pauseTimer(sessionIdRef.current, segmentMin, reason).catch(() => {})
-    }
   }
 
+  const faceAway = focus.faceEnabled && previewVisible && ['away', 'missing'].includes(focus.faceStatus)
+  const motionAlert = focus.motionPermission === 'granted' && focus.motionStatus === 'moving'
+  const faceReady = !focus.faceEnabled || !cameraEnabled || (previewVisible && focus.faceStatus === 'focused')
+  const syncFocusPause = useEffectEvent(() => {
+    if (!runningRef.current) return
+    if (faceAway || motionAlert) {
+      if (focusPausedRef.current) return
+      focusPausedRef.current = true
+      closeTimerSegment(faceAway ? 'focus_away' : 'device_motion')
+      setFocusPaused(true)
+      studyAlert.play(false)
+    } else if (focusPausedRef.current && faceReady) {
+      segmentStartRef.current = Date.now()
+      focusPausedRef.current = false
+      setFocusPaused(false)
+      studyAlert.play(true)
+    }
+  })
+
   useEffect(() => {
+    syncFocusPause()
+  }, [running, faceAway, motionAlert, faceReady])
+
+  useEffect(() => {
+    if (!counting) return
     const id = setInterval(() => {
-      if (!runningRef.current) return
+      if (!runningRef.current || focusPausedRef.current) return
       setRemaining((r) => {
         if (r <= 1) {
           runningRef.current = false
@@ -302,18 +357,20 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
       })
     }, 1000)
     return () => clearInterval(id)
-  }, [])
+  }, [counting])
 
-  const handleTimerToggle = async () => {
-    if (!running) {
-      if (!sessionIdRef.current) {
-        try {
-          const user = await getMyUser()
-          const { session_id } = await startTimer(user.id, materialId)
-          sessionIdRef.current = session_id
-        } catch {
-          // 세션 생성에 실패해도 로컬 타이머는 그대로 진행한다.
-        }
+  const handleTimerToggle = () => {
+    if (!runningRef.current) {
+      studyAlert.enable()
+      focus.resetMotion()
+      if (cameraEnabled) void camera.start(cameraFacing)
+      if (!timerSession.current) {
+        const pending = getMyUser().then(user => startTimer(user.id, materialId))
+          .then(result => result.session_id).catch(() => {
+            if (timerSession.current === pending) timerSession.current = null
+            return null
+          })
+        timerSession.current = pending
         startBackgroundQuizPreparation()
       }
       segmentStartRef.current = Date.now()
@@ -323,7 +380,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
         remaining,
         studySec,
         running: true,
-        sessionId: sessionIdRef.current,
+        session: timerSession.current,
         segmentStartAt: segmentStartRef.current,
         maxUninterruptedMin: maxUninterruptedMinRef.current,
         updatedAt: Date.now(),
@@ -338,7 +395,8 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   const handleTimerReset = () => {
     finishSession()
     runningRef.current = false
-    sessionIdRef.current = null
+    focusPausedRef.current = false
+    timerSession.current = null
     segmentStartRef.current = null
     maxUninterruptedMinRef.current = 0
     endedRef.current = false
@@ -346,6 +404,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
     setRemaining(durationMin * 60)
     setStudySec(0)
     setRunning(false)
+    setFocusPaused(false)
     setTimerCompleted(false)
     onTimerStateChange(null)
     setResetConfirmOpen(false)
@@ -421,6 +480,19 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
   }
 
   const timerStarted = running || studySec > 0
+  const cameraCanRetry = cameraEnabled && running &&
+    ['idle', 'denied', 'interrupted', 'error', 'insecure', 'unavailable', 'facingUnavailable'].includes(camera.status)
+  const canRetryFromTimer = focusPaused && focus.faceEnabled && cameraCanRetry
+  let timerStatus = ''
+  if (focusPaused) {
+    timerStatus = canRetryFromTimer ? '카메라를 다시 켜면 자동 재개를 확인할 수 있어요.'
+      : motionAlert ? '기기 움직임 감지 · 자동 재개 대기'
+      : faceAway && focus.faceStatus === 'missing' ? '얼굴이 화면에 보이면 자동 재개'
+      : faceAway ? '얼굴 방향 이탈 · 자동 재개 대기' : '일시정지 · 기준 방향으로 돌아오면 재개'
+  } else if (cameraEnabled && focus.faceEnabled && running && previewVisible &&
+    ['loading', 'calibrate'].includes(focus.faceStatus)) {
+    timerStatus = '얼굴이 보이게 앉고 평소 공부 방향을 봐 주세요.'
+  }
   const offset = RING_LENGTH * ((totalSec - remaining) / totalSec)
   const certificates = getCurrentCertificates()
   const handleBack = () => {
@@ -451,25 +523,25 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
             <CertSelect certificates={certificates} value={certName} onChange={onSelectCertificate} />
           </div>
         )}
-        <button type="button" className="focus-pill" onClick={() => setFocusMode((value) => !value)}>
-          <FocusIcon />
-          <span>{focusMode ? '기본 모드로 전환' : '집중 모드'}</span>
-        </button>
-
         <div className="study-goal">
-          <p className="goal-label">오늘의 공부 목표</p>
-          <h1 className="goal-title">{todayPlanDay?.focus_topic || '오늘의 학습 플랜을 확인해 주세요'}</h1>
-          <div className="goal-meta">
-            <ClockIcon />
-            <span>{durationMin}분</span>
-            {!timerStarted && <span className="duration-hint">가운데 타이머를 눌러 변경</span>}
+          <div className="study-goal-heading">
+            <p className="goal-label">오늘의 공부 목표</p>
+            <button type="button" className="focus-pill" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>
+              <FocusIcon />
+              <span>{focusMode ? '집중 모드 종료' : '집중 모드'}</span>
+            </button>
           </div>
+          <h1 className="goal-title">{todayPlanDay?.focus_topic || '오늘의 학습 플랜을 확인해 주세요'}</h1>
         </div>
 
-        <div className="stage-panel">
+        <section className="stage-panel" aria-label="공부 타이머">
           <div className="timer-overlay">
-            <div className="ring-wrap">
-              <svg width="232" height="232" viewBox="0 0 232 232">
+            <div className="study-timer-heading">
+              <span><span aria-hidden="true"><ClockIcon /></span> 목표 {durationMin}분</span>
+              <span>누적 {fmt(studySec)}</span>
+            </div>
+            <div className={remaining >= 6000 ? 'ring-wrap has-three-digit-minutes' : 'ring-wrap'}>
+              <svg viewBox="0 0 232 232" aria-hidden="true">
                 <circle cx="116" cy="116" r="104" fill="none" stroke="oklch(0.88 0.02 82 / 0.85)" strokeWidth="14" />
                 <circle
                   cx="116"
@@ -483,32 +555,97 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
                   strokeDashoffset={offset}
                 />
               </svg>
-              <button
-                type="button"
-                className="ring-face"
-                onClick={openDurationModal}
-                disabled={timerStarted}
-                aria-label={timerStarted ? `남은 시간 ${fmt(remaining)}` : `남은 시간 ${fmt(remaining)}, 목표 시간 변경`}
-              >
-                <span>{fmt(remaining)}</span>
-                {!timerStarted && <small>눌러서 시간 설정</small>}
-              </button>
-            </div>
-            <div className="study-pill">
-              <span>총 공부시간 {fmt(studySec)}</span>
+              {timerStarted ? (
+                <div className="ring-face" role="timer" aria-label={`남은 시간 ${fmt(remaining)}`}>
+                  <span>{fmt(remaining)}</span>
+                </div>
+              ) : (
+                <button type="button" className="ring-face" onClick={openDurationModal}
+                  aria-label={`남은 시간 ${fmt(remaining)}, 목표 시간 변경`}>
+                  <span>{fmt(remaining)}</span>
+                  <small>눌러서 시간 설정</small>
+                </button>
+              )}
             </div>
             <button type="button" className="timer-button" onClick={timerCompleted ? () => onNavigate('quiz') : handleTimerToggle}>
-              {timerCompleted ? 'AI 퀴즈 풀기' : running ? '일시정지' : '공부 시작'}
+              {timerCompleted ? 'AI 퀴즈 풀기' : focusPaused ? '수동 일시정지' : running ? '일시정지' : '공부 시작'}
             </button>
+            <div className="study-timer-status" data-paused={focusPaused} role="status">{timerStatus}</div>
+            {canRetryFromTimer && (
+              <button type="button" className="timer-reset-button" onClick={() => void camera.start(cameraFacing)}>
+                카메라 다시 켜기
+              </button>
+            )}
             {!focusMode && (
               <button type="button" className="timer-reset-button" onClick={() => setResetConfirmOpen(true)}>
                 타이머 초기화
               </button>
             )}
           </div>
+        </section>
 
-        
-        </div>
+        <section className="study-camera" aria-label="집중 확인">
+          <details className="study-camera-settings">
+            <summary>
+              <span>집중 감지 설정</span>
+              <span className="study-settings-summary">
+                {cameraEnabled && focus.faceEnabled
+                  ? focus.motionPermission === 'granted' ? '얼굴 · 움직임' : '얼굴'
+                  : focus.motionPermission === 'granted' ? '움직임' : cameraEnabled ? '카메라 사용' : '감지 꺼짐'}
+              </span>
+            </summary>
+            <div className="study-camera-controls">
+              <label>
+                <input type="checkbox" checked={cameraEnabled} onChange={event => {
+                  const enabled = event.target.checked
+                  setCameraEnabled(enabled)
+                  if (!enabled) camera.stop()
+                  else if (running) void camera.start(cameraFacing)
+                }} />
+                카메라 미리보기 켜기
+              </label>
+              {cameraEnabled && (
+                <label>
+                  카메라 선택
+                  <select value={cameraFacing} onChange={event => {
+                    const facing = event.target.value
+                    setCameraFacing(facing)
+                    if (running) void camera.start(facing)
+                  }}>
+                    <option value="auto">자동 (후면 우선)</option>
+                    <option value="user">전면 카메라</option>
+                    <option value="environment">후면 카메라</option>
+                  </select>
+                </label>
+              )}
+              {cameraEnabled && <label>
+                <input type="checkbox" checked={focus.faceEnabled} onChange={focus.toggleFace} />
+                얼굴 방향으로 집중 확인
+              </label>}
+              <button type="button" onClick={focus.toggleMotion} disabled={focus.motionPermission === 'asking'}
+                aria-pressed={focus.motionPermission === 'granted'}>
+                {focus.motionPermission === 'granted' ? '움직임 감지 끄기' : '움직임 감지 켜기'}
+              </button>
+            </div>
+          </details>
+          {focus.motionPermission === 'denied' && <span role="status">Safari에서 움직임 권한이 거부됐어요.</span>}
+          {focus.motionPermission === 'unavailable' && <span role="status">이 브라우저에서 움직임 감지를 사용할 수 없어요.</span>}
+          {focus.motionPermission === 'granted' && <span role="status">
+            {running ? MOTION_FOCUS_MESSAGES[focus.motionStatus] : '공부 시작을 누르면 움직임 감지가 시작돼요.'}
+          </span>}
+          <div className={previewVisible ? `study-camera-preview${camera.mirror ? ' is-mirrored' : ''}` : undefined} hidden={!cameraEnabled}>
+            <video ref={videoRef} muted autoPlay playsInline hidden={!previewVisible}
+              aria-label="카메라 미리보기" />
+            {(!previewVisible || focus.faceEnabled) && <span className="study-camera-status" role={previewVisible ? undefined : 'status'}>
+              {previewVisible ? FACE_FOCUS_MESSAGES[focus.faceStatus] : camera.message}
+            </span>}
+          </div>
+          {previewVisible && focus.faceEnabled &&
+            <button type="button" onClick={focus.resetFace}>얼굴 기준 다시 잡기</button>
+          }
+          {cameraCanRetry && !canRetryFromTimer &&
+            <button type="button" onClick={() => void camera.start(cameraFacing)}>카메라 다시 켜기</button>}
+        </section>
       </div>
 
       {durationModalOpen && (
@@ -520,6 +657,7 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
               <label className="duration-modal-input">
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={MIN_DURATION_MIN}
                   max={MAX_DURATION_MIN}
                   step="1"
