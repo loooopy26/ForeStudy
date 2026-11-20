@@ -82,6 +82,7 @@ class QuizCreateRequest(BaseModel):
     focus_query: str | None = None
     user_id: str | None = None
     adapt_to_user: bool = True
+    reuse_pending: bool = False
 
 
 class AnswerItem(BaseModel):
@@ -195,6 +196,21 @@ async def _create_material_quiz(
         if quiz_kind == "study_review"
         else None
     )
+    if quiz_kind == "study_review" and req.reuse_pending and not req.focus_query:
+        saved = await _get_pending_review_quiz(
+            pool, user_id, material_id, today_plan["day_id"] if today_plan else None,
+            requested_difficulty, forced_num_questions,
+        )
+        if saved:
+            return {
+                **saved,
+                "quiz_kind": quiz_kind,
+                "difficulty": requested_difficulty,
+                "adapted_from_profile": bool(learner_profile),
+                "learner_profile": learner_profile,
+                "question_mix": question_mix,
+                "plan_scope": today_plan,
+            }
     if not req.focus_query:
         query = _plan_query(today_plan) or query
     # top_k=8이면 분량이 큰 자료에서 가장 눈에 띄는 주제(예: SQLD 자료의 "관계대수") 근처
@@ -261,6 +277,37 @@ async def _create_material_quiz(
         "plan_scope": today_plan,
         "questions": persisted["questions"],
     }
+
+
+async def _get_pending_review_quiz(pool, user_id, material_id, day_id, difficulty, question_count):
+    rows = await pool.fetch(
+        """
+        SELECT q.id AS quiz_id, qq.id AS question_id, qq.question_order, qq.question_text,
+               qq.question_type, qq.options, qq.question_difficulty, qq.difficulty_score
+        FROM quiz_questions qq
+        JOIN quizzes q ON q.id = qq.quiz_id
+        WHERE q.id = (
+            SELECT id FROM quizzes
+            WHERE user_id = $1 AND study_material_id = $2 AND quiz_type = 'study_review'
+              AND status = 'pending' AND quiz_date = $3 AND difficulty = $4
+              AND curriculum_day_id IS NOT DISTINCT FROM $5::uuid
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        )
+        ORDER BY qq.question_order
+        """,
+        user_id, material_id, date.today(), difficulty, day_id,
+    )
+    if len(rows) != question_count:
+        return None
+    questions = []
+    for row in rows:
+        question = dict(row)
+        question.pop("quiz_id")
+        question["question_id"] = str(question["question_id"])
+        question["options"] = json.loads(question["options"]) if question["options"] is not None else None
+        questions.append(question)
+    return {"quiz_id": str(rows[0]["quiz_id"]), "questions": questions}
 
 
 async def _load_today_plan_scope(pool, user_id: str, material_id: str) -> dict | None:

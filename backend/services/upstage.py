@@ -1,6 +1,6 @@
 """Upstage API 클라이언트 (Chat / Embeddings / Document Parse).
 
-- Chat:      POST {base}/chat/completions   (OpenAI 호환, solar-pro2)
+- Chat:      POST {base}/chat/completions   (OpenAI 호환)
 - Embedding: POST {base}/embeddings         (solar-embedding-2-*, 1024차원, 배치 최대 100개)
 - Parse:     POST {base}/document-digitization (동기, 최대 50MB) 또는
              POST {base}/document-digitization/async (비동기, 최대 200MB, 폴링 필요)

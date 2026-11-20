@@ -250,9 +250,12 @@ function Summary({ onNavigate, materialId, certName }) {
               </div>
             )}
 
-           
-
-           
+            {focusedSummary && (
+              <div className="summary-section">
+                <p className="summary-section-label">{todayPlanDay ? '관련 자료 요약' : '전체 요약'}</p>
+                <SummaryBody text={focusedSummary} />
+              </div>
+            )}
           </>
         )}
       </div>

@@ -40,13 +40,13 @@ function Quiz({ onNavigate }) {
   const [error, setError] = useState('')
   const quizLocked = isDailyQuizCompletionRequired(materialId) && !isDailyQuizUnlocked(materialId)
 
-  const fetchQuiz = async () => {
+  const fetchQuiz = async (reusePending = true) => {
     if (!materialId) {
       throw new Error('자격증을 먼저 설정해주세요.')
     }
     return apiRequest(`/api/materials/${materialId}/review-quiz`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ reuse_pending: reusePending }),
     })
   }
 
@@ -61,7 +61,7 @@ function Quiz({ onNavigate }) {
     setLoading(true)
     setError('')
     try {
-      const data = await fetchQuiz()
+      const data = await fetchQuiz(!quiz)
       setQuiz(data)
       setQuizProgress(materialId, data, {}, 0)
     } catch (err) {

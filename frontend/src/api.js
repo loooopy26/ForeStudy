@@ -599,7 +599,7 @@ export async function deleteCertGoal(certificationName) {
 export function prepareReviewQuiz(materialId) {
   return apiRequest(`/api/materials/${materialId}/review-quiz`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify({ reuse_pending: true }),
   })
 }
 

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     naver_client_secret: str | None = None
 
     upstage_base_url: str = "https://api.upstage.ai/v1"
-    upstage_chat_model: str = "solar-pro3"
+    upstage_chat_model: str = "solar-pro4"
     upstage_embedding_passage_model: str = "solar-embedding-2-passage"
     upstage_embedding_query_model: str = "solar-embedding-2-query"
     upstage_doc_parse_model: str = "document-parse"
