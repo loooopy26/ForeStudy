@@ -14,6 +14,7 @@ import Chat from './Chat'
 import ForestGame from './ForestGame'
 import ShopPage from './ShopPage'
 import RoomPage from './RoomPage'
+import SpeedQuizRoom from './SpeedQuizRoom'
 import CharacterPage from './CharacterPage'
 import LevelUpPage from './LevelUpPage'
 import StudyMap from './StudyMap'
@@ -40,7 +41,8 @@ const SCREENS = {
   chat: Chat,
   forest: ForestGame,
   shop: ShopPage,
-  room: RoomPage,
+  room: SpeedQuizRoom,
+  'room-decor': RoomPage,
   character: CharacterPage,
   levelup: LevelUpPage,
   studymap: StudyMap,

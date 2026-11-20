@@ -330,7 +330,7 @@ function RoomPage({ onNavigate }) {
 
   return (
     <div className="goods-page room-page">
-      <GoodsHeader title="내 방" wallet={wallet} level={level} onBack={() => onNavigate('village')} />
+      <GoodsHeader title="방 꾸미기" wallet={wallet} level={level} onBack={() => onNavigate('room')} />
 
       <div className="room-preview-wrapper" style={{ position: 'relative' }}>
         <div

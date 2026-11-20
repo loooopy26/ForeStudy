@@ -70,7 +70,7 @@ function ShopPage({ onNavigate, initialSub }) {
     setToast({ text: `${item.name} 보관 완료!` })
     if (entrySourceRef.current === 'room') {
       setTimeout(() => {
-        onNavigate('room')
+        onNavigate('room-decor')
       }, 800)
     } else {
       setTab(CUSTOM_TAB) // 만든 아이템은 '커스텀' 탭에 모인다
@@ -88,7 +88,7 @@ function ShopPage({ onNavigate, initialSub }) {
           showAi
             ? () => {
                 if (entrySourceRef.current === 'room') {
-                  onNavigate('room')
+                  onNavigate('room-decor')
                 } else {
                   setShowAi(false)
                 }

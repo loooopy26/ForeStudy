@@ -1,0 +1,80 @@
+export const SPEED_QUIZ_QUESTIONS = [
+  {
+    prompt: 'HTTP의 기본 포트 번호는 무엇일까요?',
+    answer: '80',
+    distractors: ['21', '443', '8080'],
+    explanation: 'HTTP의 기본 포트는 80번이고, HTTPS의 기본 포트는 443번입니다.',
+  },
+  {
+    prompt: '릴레이션에서 각 행을 유일하게 식별하도록 선택한 키는?',
+    answer: '기본 키',
+    distractors: ['외래 키', '대체 키', '슈퍼 키'],
+    explanation: '후보 키 중에서 대표로 선택해 각 행을 식별하는 키가 기본 키입니다.',
+  },
+  {
+    prompt: 'SELECT에서 그룹으로 묶은 결과에 조건을 적용하는 절은?',
+    answer: 'HAVING',
+    distractors: ['FROM', 'WHERE', 'GROUP BY'],
+    explanation: 'WHERE는 그룹화 전의 행을, HAVING은 GROUP BY로 묶은 그룹을 필터링합니다.',
+  },
+  {
+    prompt: '복합 키에 대한 부분 함수 종속을 제거해 도달하는 정규형은?',
+    answer: '제2정규형',
+    distractors: ['제1정규형', '제3정규형', '제4정규형'],
+    explanation: '제2정규형은 제1정규형을 만족하며 비주요 속성의 부분 함수 종속을 제거한 상태입니다.',
+  },
+  {
+    prompt: '트랜잭션의 연산이 모두 수행되거나 모두 취소되는 성질은?',
+    answer: '원자성',
+    distractors: ['일관성', '격리성', '지속성'],
+    explanation: '원자성은 트랜잭션의 연산이 하나의 단위로 처리되는 성질입니다.',
+  },
+  {
+    prompt: '가장 나중에 넣은 데이터를 가장 먼저 꺼내는 자료구조는?',
+    answer: '스택',
+    distractors: ['큐', '해시표', '탐색 트리'],
+    explanation: '스택은 LIFO(후입선출) 구조입니다.',
+  },
+  {
+    prompt: '정렬된 배열을 이진 탐색할 때 최악 시간 복잡도는?',
+    answer: 'O(log n)',
+    distractors: ['O(n²)', 'O(n)', 'O(1)'],
+    explanation: '비교할 때마다 검색 범위가 절반으로 줄어들어 로그 시간에 탐색합니다.',
+  },
+  {
+    prompt: '호환되지 않는 두 인터페이스를 연결하는 디자인 패턴은?',
+    answer: '어댑터',
+    distractors: ['옵서버', '싱글턴', '전략'],
+    explanation: '어댑터는 기존 인터페이스를 호출자가 기대하는 형태로 변환합니다.',
+  },
+  {
+    prompt: '객체 상태가 바뀌면 구독 객체에 알려주는 디자인 패턴은?',
+    answer: '옵서버',
+    distractors: ['빌더', '팩토리', '퍼사드'],
+    explanation: '옵서버 패턴에서는 관찰 대상의 상태 변화가 등록된 구독자에게 전달됩니다.',
+  },
+  {
+    prompt: '도메인 이름을 IP 주소로 조회할 때 사용하는 서비스는?',
+    answer: 'DNS',
+    distractors: ['FTP', 'SMTP', 'ARP'],
+    explanation: 'DNS는 도메인 이름의 A·AAAA 레코드를 조회해 IP 주소를 찾을 수 있게 합니다.',
+  },
+  {
+    prompt: '연결을 맺은 뒤 순서 보장과 재전송을 제공하는 전송 프로토콜은?',
+    answer: 'TCP',
+    distractors: ['UDP', 'ICMP', 'IP'],
+    explanation: 'TCP는 연결 지향 전송 프로토콜이며 순서 번호와 재전송으로 신뢰성을 확보합니다.',
+  },
+  {
+    prompt: 'CPU를 고정된 시간만큼 써서 다음 프로세스로 넘기는 방식은?',
+    answer: '라운드 로빈',
+    distractors: ['선입선출', '최단 작업', '우선순위'],
+    explanation: '라운드 로빈은 타임 퀀텀 단위로 준비 큐의 프로세스에 CPU를 번갈아 배정합니다.',
+  },
+  {
+    prompt: '암호화와 복호화에 같은 비밀 키를 사용하는 방식은?',
+    answer: '대칭 키',
+    distractors: ['공개 키', '전자서명', '해시'],
+    explanation: '대칭 키 암호화는 양쪽에서 같은 비밀 키를 사용합니다. AES가 대표적입니다.',
+  },
+]
