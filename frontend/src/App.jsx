@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import Profile from './Profile'
 import Village from './Village'
 import AddCert from './AddCert'
@@ -53,6 +53,25 @@ const SCREENS = {
   auth: Auth,
 }
 
+// Match the visible upper edge of each illustrated screen. Standard screens
+// use the same solid background as the phone frame.
+const SCREEN_TOP_COLORS = {
+  profile: '#fffaec',
+  village: '#f9e3c1',
+  addcert: '#f0e7d6',
+  certUpload: '#f0e7d6',
+  library: '#fffaf1',
+  forest: '#fffaea',
+  shop: '#fbf7ee',
+  room: '#fbf3e6',
+  'room-decor': '#fbf7ee',
+  dotori: '#feeed8',
+  character: '#fbf7ee',
+  levelup: '#eef2e2',
+  studymap: '#fbf2e6',
+  auth: '#fef8ed',
+}
+
 // 실제 화면 키(SCREENS) 외에 URL로 바로 들어갈 수 있는 별칭들.
 // quest/achievement는 둘 다 forest 화면으로 들어가되 내부 서브탭만 다르게 연다.
 const PATH_ALIASES = {
@@ -91,6 +110,14 @@ function App() {
   const [libraryTimers, setLibraryTimers] = useState({})
   const Screen = SCREENS[route.page] || Profile
   const timerKey = selectedCert || '__default__'
+
+  useLayoutEffect(() => {
+    const topColor = route.page === 'forest' && route.sub === 'achievements'
+      ? '#fbf7ee'
+      : SCREEN_TOP_COLORS[route.page] ?? '#fbf3e7'
+    document.documentElement.style.setProperty('--screen-top-color', topColor)
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', topColor)
+  }, [route.page, route.sub])
 
   const navigate = (page, payload) => {
     if (payload?.cert) setSelectedCert(payload.cert)
