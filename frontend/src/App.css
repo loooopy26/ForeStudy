@@ -28,9 +28,15 @@
    phone-frame이 화면을 꽉 채우게 한다. 상단/하단은 노치·홈 인디케이터를 피해
    safe-area만큼 각 화면 헤더/네비에서 띄운다. */
 @media (display-mode: standalone), (display-mode: fullscreen), (max-width: 480px) {
-  html, body {
+  html:root, body {
     height: 100%;
     overflow: hidden;
+    background-color: #faf3e7;
+    color-scheme: only light;
+  }
+
+  #root {
+    border-inline: 0;
   }
 
   .app-shell {
