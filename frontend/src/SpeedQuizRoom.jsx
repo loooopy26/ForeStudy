@@ -1,7 +1,8 @@
 import { useEffect, useReducer } from 'react'
 import forest from './assets/speed-quiz-forest.webp'
 import squirrel from './assets/speed-quiz-catcher.webp'
-import { BackIcon, ChevronRightIcon, MedalIcon } from './icons'
+import { AcornIcon, BackIcon, ChevronRightIcon, MedalIcon } from './icons'
+import { useGoods } from './goods'
 import { SPEED_QUIZ_QUESTIONS } from './speedQuizQuestions'
 import './SpeedQuizRoom.css'
 
@@ -13,8 +14,8 @@ const FEEDBACK_MS = 1000
 const LANES = [14, 38, 62, 86]
 const DROP_DELAYS = [900, 0, 1500, 450]
 const WAVE_END_MS = FALL_MS + Math.max(...DROP_DELAYS) + CATCH_WINDOW_MS
-const BEST_KEY = 'forestudy:speed-quiz:drops-best'
 const ART = { '--speed-forest': `url(${forest})` }
+const LOBBY = { phase: 'lobby' }
 
 function shuffled(items) {
   const copy = [...items]
@@ -52,7 +53,7 @@ function recordCatch(game, choice, elapsed) {
 }
 
 function gameReducer(game, action) {
-  if (action.type === 'lobby') return { phase: 'lobby', best: game.best }
+  if (action.type === 'lobby') return LOBBY
   if (action.type === 'start') {
     return {
       phase: 'playing',
@@ -67,7 +68,6 @@ function gameReducer(game, action) {
       paused: false,
       attempts: [],
       feedback: null,
-      best: game.best,
     }
   }
   if (game.phase !== 'playing') return game
@@ -85,7 +85,7 @@ function gameReducer(game, action) {
   if (game.feedback) {
     if (elapsed < game.feedback.until) return updated
     if (!game.hearts || game.attempts.length === game.deck.length) {
-      return { ...updated, phase: 'result', best: Math.max(game.best, game.score) }
+      return { ...updated, phase: 'result' }
     }
     return { ...updated, index: game.index + 1, elapsed: 0, feedback: null }
   }
@@ -96,15 +96,6 @@ function gameReducer(game, action) {
   }
   if (elapsed >= WAVE_END_MS) return recordCatch(updated, null, elapsed)
   return updated
-}
-
-function readBest() {
-  try {
-    const score = Number(localStorage.getItem(BEST_KEY))
-    return Number.isFinite(score) && score > 0 ? score : 0
-  } catch {
-    return 0
-  }
 }
 
 function formatScore(score) {
@@ -243,9 +234,11 @@ function QuizResult({ game, onReplay, onLobby }) {
 }
 
 export default function SpeedQuizRoom({ onNavigate }) {
-  const [game, dispatch] = useReducer(gameReducer, undefined, () => ({ phase: 'lobby', best: readBest() }))
+  const { wallet } = useGoods()
+  const [game, dispatch] = useReducer(gameReducer, LOBBY)
   const playing = game.phase === 'playing'
-  const { paused, best } = game
+  const { paused } = game
+  const dotori = formatScore(wallet)
 
   useEffect(() => {
     if (!playing || paused) return
@@ -282,15 +275,6 @@ export default function SpeedQuizRoom({ onNavigate }) {
     }
   }, [playing, paused])
 
-  useEffect(() => {
-    if (best <= readBest()) return
-    try {
-      localStorage.setItem(BEST_KEY, String(best))
-    } catch {
-      // The game is playable when browser storage is unavailable.
-    }
-  }, [best])
-
   const startRound = () => dispatch({ type: 'start', deck: createDeck(), now: performance.now() })
   const goToLobby = () => dispatch({ type: 'lobby' })
   const goBack = () => playing ? dispatch({ type: 'pause' }) : onNavigate('village')
@@ -312,8 +296,8 @@ export default function SpeedQuizRoom({ onNavigate }) {
         ) : (
           <>
             <span className="speed-header-title">내 방</span>
-            <span className="speed-best" aria-label={`최고 기록 ${formatScore(best)}점`}>
-              <MedalIcon size={16} /> <strong>{formatScore(best)}</strong>
+            <span className="speed-dotori" role="group" aria-label={`도토리 ${dotori}개`}>
+              <AcornIcon size={16} /> <strong>{dotori}</strong>
             </span>
           </>
         )}

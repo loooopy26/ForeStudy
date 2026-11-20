@@ -50,7 +50,7 @@
 .speed-room .speed-icon-button,
 .speed-hearts,
 .speed-score,
-.speed-best {
+.speed-dotori {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -85,7 +85,7 @@
 }
 .speed-heart.is-empty { color: #dfd4ba; text-shadow: none; }
 .speed-score,
-.speed-best {
+.speed-dotori {
   gap: 5px;
   padding: 1px 9px;
   font-size: 12px;
@@ -94,7 +94,7 @@
   white-space: nowrap;
 }
 .speed-score strong,
-.speed-best strong { font-size: 15px; font-weight: 950; }
+.speed-dotori strong { font-size: 15px; font-weight: 950; }
 
 .speed-body {
   flex: 1;
