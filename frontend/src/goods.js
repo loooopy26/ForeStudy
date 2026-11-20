@@ -10,6 +10,8 @@ const WALLET_KEY = 'forestudy_acorns_v4'
 
 export const WEARABLE_KINDS = ['outfit', 'hat', 'pants', 'bag', 'accessory']
 
+const FREE_CHARACTER_ITEM_IDS = new Set()
+
 // art: GoodsArt.jsx의 ItemArt가 그림을 고를 때 쓰는 키.
 // 아이템별 자연스러운 기본 배치 위치 — 정면 뷰 구도(벽/바닥 경계 y: 57%).
 // 레퍼런스 일러스트처럼: 침대는 우측, 책장·선반은 좌측, 러그·강아지는 중앙 바닥.
@@ -33,57 +35,49 @@ export const DEFAULT_POS = {
   'wall-lamp': { x: 10, y: 26 },    // 뒷벽 좌측 조명
   'green-rug': { x: 45, y: 76 },    // 중앙 바닥 러그
   'blue-rug': { x: 45, y: 76 },
+  'forest-rug': { x: 45, y: 76 },
+  'gingham-rug': { x: 45, y: 76 },
+  'flower-rug': { x: 45, y: 76 },
+  'green-leaf-rug': { x: 45, y: 76 },
+  'blue-cloud-rug': { x: 45, y: 76 },
   'dog-friend': { x: 43, y: 78 },   // 러그 위 강아지
 }
 
 export const CATALOG = [
-  // 의상 (outfit)
-  { id: 'bear-hood', name: '곰 후드', price: 800, kind: 'outfit', art: 'hoodie', color: '#a9825f', trim: '#8a6647' },
-  { id: 'animal-sweater', name: '동물 스웨터', price: 700, kind: 'outfit', art: 'sweater', color: '#f3e6cf', trim: '#c9a97e' },
-  { id: 'green-jacket', name: '초록 재킷', price: 800, kind: 'outfit', art: 'jacket', color: '#7d9c62', trim: '#5f7a43' },
-  { id: 'navy-hoodie', name: '네이비 후드', price: 700, kind: 'outfit', art: 'hoodie', color: '#4f6178', trim: '#3c4b5e' },
-  { id: 'pink-hoodie', name: '분홍 후드', price: 900, kind: 'outfit', art: 'hoodie', color: '#e8b4bc', trim: '#d391a0' },
-  { id: 'yellow-raincoat', name: '노란 우비', price: 1000, kind: 'outfit', art: 'jacket', color: '#e9c46a', trim: '#d4a83f' },
-  // 바지 (pants)
-  { id: 'blue-jeans', name: '청바지', price: 600, kind: 'pants', art: 'pants', color: '#4a6b8c', trim: '#3b5670' },
-  { id: 'brown-slacks', name: '갈색 바지', price: 500, kind: 'pants', art: 'pants', color: '#8c6c53', trim: '#705642' },
-  { id: 'green-shorts', name: '초록 반바지', price: 400, kind: 'pants', art: 'pants', color: '#6b8c5e', trim: '#56704b' },
-  // 모자 (hat)
-  { id: 'leaf-hat', name: '나뭇잎 모자', price: 500, kind: 'hat', art: 'leaf-hat', color: '#8bb069', trim: '#5f7a43' },
-  { id: 'straw-hat', name: '밀짚모자', price: 600, kind: 'hat', art: 'straw-hat', color: '#e3c983', trim: '#c9a75a' },
-  { id: 'acorn-beret', name: '도토리 베레모', price: 700, kind: 'hat', art: 'beret', color: '#a9825f', trim: '#8a6647' },
-  // 가방 (bag)
-  { id: 'green-backpack', name: '초록 배낭', price: 800, kind: 'bag', art: 'backpack', color: '#7d9c62', trim: '#5f7a43' },
-  { id: 'brown-satchel', name: '갈색 가방', price: 700, kind: 'bag', art: 'satchel', color: '#b08a5f', trim: '#8a6647' },
-  // 악세사리 (accessory)
-  { id: 'red-scarf', name: '빨간 목도리', price: 400, kind: 'accessory', art: 'scarf', color: '#c96f5e', trim: '#a95243' },
-  { id: 'round-glasses', name: '동그란 안경', price: 500, kind: 'accessory', art: 'glasses', color: '#6b5b45', trim: '#4a4436' },
-  { id: 'ribbon', name: '리본', price: 300, kind: 'accessory', art: 'ribbon', color: '#e8a4b0', trim: '#d3808f' },
-  // 가구 (furniture) — 내 방에 배치
-  { id: 'wood-desk', name: '나무 책상', price: 500, kind: 'furniture', art: 'desk' },
-  { id: 'mushroom-chair', name: '버섯 의자', price: 300, kind: 'furniture', art: 'mushroom-chair' },
-  { id: 'wood-shelf', name: '나무 선반', price: 450, kind: 'furniture', art: 'shelf' },
-  { id: 'cozy-bed', name: '아늑한 침대', price: 1200, kind: 'furniture', art: 'bed' },
-  { id: 'pink-bed', name: '분홍 침대', price: 1400, kind: 'furniture', art: 'bed', color: '#eeb7c2', trim: '#c98d9d' },
-  { id: 'bookshelf', name: '책장', price: 1300, kind: 'furniture', art: 'bookshelf' },
-  { id: 'wood-lamp', name: '램프', price: 600, kind: 'furniture', art: 'lamp' },
-  { id: 'nightstand', name: '협탁', price: 550, kind: 'furniture', art: 'nightstand' },
-  { id: 'wood-chest', name: '나무 수납함', price: 500, kind: 'furniture', art: 'chest' },
-  // 아이템 (decor) — 내 방 장식
-  { id: 'plant-pot', name: '화분', price: 200, kind: 'decor', art: 'plant' },
-  { id: 'book-pile', name: '책 더미', price: 250, kind: 'decor', art: 'books' },
-  { id: 'acorn-basket', name: '도토리 바구니', price: 350, kind: 'decor', art: 'basket' },
-  { id: 'picture-frame', name: '그림 액자', price: 400, kind: 'decor', art: 'frame' },
-  { id: 'window', name: '창문', price: 600, kind: 'decor', art: 'window' },
-  { id: 'green-rug', name: '초록 러그', price: 400, kind: 'decor', art: 'rug' },
-  { id: 'blue-rug', name: '파란 러그', price: 450, kind: 'decor', art: 'rug', color: '#9cc3d6', trim: '#6f9cb4' },
-  { id: 'wall-lamp', name: '벽 조명', price: 450, kind: 'decor', art: 'wall-lamp' },
-  { id: 'dog-friend', name: '강아지 친구', price: 900, kind: 'decor', art: 'dog' },
-  // 꾸미기 — 벽지/바닥 (방 표면 교체)
-  { id: 'forest-wallpaper', name: '숲 벽지', price: 400, kind: 'wallpaper', art: 'wallpaper-forest' },
-  { id: 'stripe-wallpaper', name: '줄무늬 벽지', price: 350, kind: 'wallpaper', art: 'wallpaper-stripe' },
-  { id: 'wood-floor', name: '원목 바닥', price: 450, kind: 'floor', art: 'floor-wood' },
-  { id: 'grass-floor', name: '잔디 바닥', price: 500, kind: 'floor', art: 'floor-grass' },
+  { id: 'bear-hood', name: '곰 후드', price: 50, kind: 'outfit', art: 'hoodie', image: 'shop/bear-hood.png', layer: 'bear-hood.png', color: '#a9825f', trim: '#8a6647' },
+  { id: 'animal-sweater', name: '동물 스웨터', price: 50, kind: 'outfit', art: 'sweater', image: 'shop/animal-sweater.png', layer: 'animal-sweater.png', color: '#f3e6cf', trim: '#c9a97e' },
+  { id: 'green-jacket', name: '초록 재킷', price: 50, kind: 'outfit', art: 'jacket', image: 'shop/green-jacket.png', layer: 'green-jacket.png', color: '#7d9c62', trim: '#5f7a43' },
+  { id: 'navy-hoodie', name: '네이비 후드', price: 50, kind: 'outfit', art: 'hoodie', image: 'shop/navy-hoodie.png', layer: 'navy-hoodie.png', color: '#4f6178', trim: '#3c4b5e' },
+  { id: 'pink-hoodie', name: '분홍 후드', price: 50, kind: 'outfit', art: 'hoodie', image: 'shop/pink-hoodie.png', layer: 'pink-hoodie.png', color: '#e8b4bc', trim: '#d391a0' },
+  { id: 'yellow-raincoat', name: '노란 우비', price: 50, kind: 'outfit', art: 'jacket', image: 'shop/yellow-raincoat.png', layer: 'yellow-raincoat.png', color: '#e9c46a', trim: '#d4a83f' },
+  { id: 'blue-jeans', name: '청바지', price: 50, kind: 'pants', art: 'pants', image: 'shop/blue-jeans.png', layer: 'blue-jeans.png', color: '#4a6b8c', trim: '#3b5670' },
+  { id: 'brown-slacks', name: '갈색 바지', price: 50, kind: 'pants', art: 'pants', image: 'shop/brown-slacks.png', layer: 'brown-slacks.png', color: '#8c6c53', trim: '#705642' },
+  { id: 'green-shorts', name: '초록 반바지', price: 50, kind: 'pants', art: 'pants', image: 'shop/green-shorts.png', layer: 'green-shorts.png', color: '#6b8c5e', trim: '#56704b' },
+  { id: 'leaf-hat', name: '나뭇잎 모자', price: 50, kind: 'hat', art: 'leaf-hat', image: 'shop/leaf-hat.png', layer: 'leaf-hat.png', color: '#8bb069', trim: '#5f7a43' },
+  { id: 'straw-hat', name: '밀짚모자', price: 50, kind: 'hat', art: 'straw-hat', image: 'shop/straw-hat.png', layer: 'straw-hat.png', color: '#e3c983', trim: '#c9a75a' },
+  { id: 'acorn-beret', name: '도토리 베레모', price: 50, kind: 'hat', art: 'beret', image: 'shop/acorn-beret.png', layer: 'acorn-beret.png', color: '#a9825f', trim: '#8a6647' },
+  { id: 'wood-desk', name: '나무 책상', price: 500, kind: 'furniture', art: 'desk', image: 'shop/wood-desk.png' },
+  { id: 'mushroom-chair', name: '버섯 의자', price: 300, kind: 'furniture', art: 'mushroom-chair', image: 'shop/mushroom-chair.png' },
+  { id: 'wood-shelf', name: '나무 선반', price: 450, kind: 'furniture', art: 'shelf', image: 'shop/wood-shelf.png' },
+  { id: 'cozy-bed', name: '파란 침대', price: 1200, kind: 'furniture', art: 'bed', image: 'shop/cozy-bed.png' },
+  { id: 'pink-bed', name: '분홍 침대', price: 1400, kind: 'furniture', art: 'bed', image: 'shop/pink-bed.png', color: '#eeb7c2', trim: '#c98d9d' },
+  { id: 'bookshelf', name: '책장', price: 1300, kind: 'furniture', art: 'bookshelf', image: 'shop/bookshelf.png' },
+  { id: 'wood-lamp', name: '램프', price: 600, kind: 'furniture', art: 'lamp', image: 'shop/wood-lamp.png' },
+  { id: 'nightstand', name: '협탁', price: 550, kind: 'furniture', art: 'nightstand', image: 'shop/nightstand.png' },
+  { id: 'wood-chest', name: '나무 수납함', price: 500, kind: 'furniture', art: 'chest', image: 'shop/wood-chest.png' },
+  { id: 'forest-rug', name: '숲 러그', price: 400, kind: 'decor', art: 'rug', image: 'shop/forest-rug.png' },
+  { id: 'gingham-rug', name: '깅엄 러그', price: 450, kind: 'decor', art: 'rug', image: 'shop/gingham-rug.png', color: '#f4d995', trim: '#d7b66d' },
+  { id: 'wood-floor', name: '원목 바닥', price: 450, kind: 'floor', art: 'floor-wood', image: 'shop/wood-floor.png' },
+  { id: 'flower-rug', name: '꽃 러그', price: 450, kind: 'decor', art: 'rug', image: 'shop/flower-rug.png' },
+  { id: 'plant-pot', name: '화분', price: 200, kind: 'decor', art: 'plant', image: 'shop/plant-pot.png' },
+  { id: 'book-pile', name: '책 더미', price: 250, kind: 'decor', art: 'books', image: 'shop/book-pile.png' },
+  { id: 'acorn-basket', name: '도토리 바구니', price: 350, kind: 'decor', art: 'basket', image: 'shop/acorn-basket.png' },
+  { id: 'picture-frame', name: '그림 액자', price: 400, kind: 'decor', art: 'frame', image: 'shop/picture-frame.png' },
+  { id: 'window', name: '창문', price: 600, kind: 'decor', art: 'window', image: 'shop/window.png' },
+  { id: 'green-leaf-rug', name: '초록 잎 러그', price: 400, kind: 'decor', art: 'rug', image: 'shop/green-leaf-rug.png' },
+  { id: 'blue-cloud-rug', name: '파란 구름 러그', price: 450, kind: 'decor', art: 'rug', image: 'shop/blue-cloud-rug.png', color: '#9cc3d6', trim: '#6f9cb4' },
+  { id: 'wall-lamp', name: '벽 조명', price: 450, kind: 'decor', art: 'wall-lamp', image: 'shop/wall-lamp.png' },
+  { id: 'dog-friend', name: '잠자는 고양이', price: 900, kind: 'decor', art: 'dog', image: 'shop/dog-friend.png' },
 ]
 
 // AI로 만든 커스텀 아이템(전체 객체) 목록. 방 화면에서도 이 목록으로 아이템을 찾는다.
@@ -236,7 +230,7 @@ export function useGoods() {
     }
   }, [])
 
-  const isOwned = useCallback((id) => globalOwned.includes(id), [])
+  const isOwned = useCallback((id) => FREE_CHARACTER_ITEM_IDS.has(id) || globalOwned.includes(id), [])
 
   // 구매 성공 시 true. 도토리가 모자라면 false.
   const buy = useCallback(async (item) => {

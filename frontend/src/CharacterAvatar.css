@@ -1,0 +1,55 @@
+.character-avatar-base,
+.character-avatar-layer {
+  position: absolute;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.character-avatar-base {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+  z-index: 0;
+  filter: contrast(1.08) brightness(1.04) drop-shadow(0 8px 10px rgba(102, 83, 42, 0.16));
+}
+
+.character-avatar-layer {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: translate(var(--layer-x, 0), var(--layer-y, 0)) scale(var(--layer-scale, 1));
+  transform-origin: center center;
+  z-index: 10;
+  filter: drop-shadow(0 4px 5px rgba(102, 83, 42, 0.16));
+}
+
+.character-layer-pants {
+  z-index: 8;
+}
+
+.character-layer-outfit {
+  z-index: 10;
+}
+
+.character-layer-hat {
+  z-index: 20;
+}
+
+.character-layer-animal-sweater { --layer-y: 1px; }
+.character-layer-green-jacket { --layer-y: -1px; }
+.character-layer-blue-jeans { --layer-scale: 1.01; }
+.character-layer-brown-slacks { --layer-x: 1px; }
+.character-layer-green-shorts { --layer-y: 1px; }
+.character-layer-leaf-hat { --layer-y: -1px; }
+.character-layer-straw-hat { --layer-scale: 1.01; }
+.character-layer-acorn-beret { --layer-x: -1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .character-avatar-base,
+  .character-avatar-layer {
+    transition: none;
+  }
+}

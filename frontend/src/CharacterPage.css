@@ -48,8 +48,8 @@
   position: absolute;
   left: 50%;
   bottom: 19px;
-  width: 151px;
-  height: 184px;
+  width: 115px;
+  height: 140px;
   z-index: 3;
   /* [동기화] 숨쉬기 애니메이션은 파츠가 아니라 이 래퍼 하나에만 → 전 파츠가 함께 움직여 안 어긋남.
      이동(translateY) 없이, 발끝을 바닥에 고정한 채 몸이 부풀었다 가라앉는 스쿼시로 숨쉰다. */
@@ -131,12 +131,13 @@
 
 /* 바닥 그림자 */
 .character-shadow {
+  display: none;
   position: absolute;
   left: 50%;
   bottom: 17px;
   transform: translateX(-50%);
-  width: 104px;
-  height: 17px;
+  width: 82px;
+  height: 14px;
   border-radius: 50%;
   background: radial-gradient(closest-side, rgba(120, 95, 55, 0.3), rgba(120, 95, 55, 0));
   z-index: 2;

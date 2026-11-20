@@ -135,8 +135,8 @@
 }
 
 .forest-character-avatar-wrapper {
-  width: 178px;
-  height: 204px;
+  width: 128px;
+  height: 148px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -155,8 +155,8 @@
   left: 0 !important;
   bottom: 0 !important;
   transform: none !important;
-  width: 178px !important;
-  height: 204px !important;
+  width: 128px !important;
+  height: 148px !important;
   transform-origin: bottom center;
   animation: profile-character-breathe 3.4s ease-in-out infinite !important;
   z-index: 1 !important;
@@ -169,8 +169,8 @@
 
 .forest-character-floating {
   position: absolute;
-  left: -16px;
-  bottom: -16px;
+  left: 0;
+  bottom: 14px;
   z-index: 1;
 }
 
@@ -933,13 +933,13 @@
   }
 
   .forest-character-avatar-wrapper {
-    width: 158px;
-    height: 181px;
+    width: 116px;
+    height: 133px;
   }
 
   .profile-character-avatar {
-    width: 158px !important;
-    height: 181px !important;
+    width: 116px !important;
+    height: 133px !important;
   }
 
   .status-label {

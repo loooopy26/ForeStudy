@@ -735,6 +735,16 @@
   box-shadow: inset 0 -24px 34px rgba(121, 82, 44, 0.08), 0 8px 18px rgba(82, 67, 42, 0.1);
 }
 
+.room-empty-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
 /* 정면 뷰 구도: 뒷벽(위 57%) + 바닥(아래 43%) 수평 분할. 가구는 기울임 없이 정면으로 놓인다. */
 .room-wall-left-3d {
   display: none; /* 정면 뷰에서는 좌측 벽 없음 */
@@ -744,6 +754,7 @@
 .room-wall-right-3d {
   position: absolute;
   inset: 0;
+  z-index: 1;
   clip-path: polygon(0 0, 100% 0, 100% 57%, 0 57%);
   transition: background 0.2s ease;
   pointer-events: none;
@@ -757,6 +768,7 @@
 .room-floor-3d {
   position: absolute;
   inset: 0;
+  z-index: 1;
   clip-path: polygon(0 57%, 100% 57%, 100% 100%, 0 100%);
   transition: background 0.2s ease;
   pointer-events: none;
@@ -777,10 +789,7 @@
 
 /* 걸레받이 (Baseboard) — 벽/바닥 경계의 수평 몰딩 */
 .room-baseboard-right-3d {
-  position: absolute;
-  inset: 0;
-  clip-path: polygon(0 54.5%, 100% 54.5%, 100% 57%, 0 57%);
-  background: linear-gradient(180deg, #cbb08e, #b19676);
+  display: none;
   pointer-events: none;
 }
 

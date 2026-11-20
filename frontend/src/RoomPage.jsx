@@ -5,6 +5,7 @@ import { CATALOG, useGoods } from './goods'
 import { ItemArt } from './GoodsArt'
 import { GoodsHeader, GoodsTabs, GoodsToast, ItemCard } from './GoodsUI'
 import { getMyUser } from './api'
+import roomEmptyBackground from './assets/room-empty-bg.png'
 import './Goods.css'
 
 const CUSTOM_TAB = 'custom'
@@ -346,9 +347,23 @@ function RoomPage({ onNavigate }) {
           }}
         >
           {/* CSS 3D 방 구성: 왼쪽 벽을 좁히고 오른쪽 벽을 대폭 확장 (코너 X좌표: 25%) */}
-          <div className="room-wall-left-3d" style={surfaceStyle(room.wallpaper, 'wallpaper', customItems)} />
-          <div className="room-wall-right-3d" style={surfaceStyle(room.wallpaper, 'wallpaper', customItems)} />
-          <div className="room-floor-3d" style={surfaceStyle(room.floor, 'floor', customItems)} />
+          <div
+            className="room-empty-background"
+            style={{ backgroundImage: `url(${roomEmptyBackground})` }}
+            aria-hidden="true"
+          />
+          <div
+            className="room-wall-left-3d"
+            style={{ ...surfaceStyle(room.wallpaper, 'wallpaper', customItems), opacity: room.wallpaper ? 1 : 0 }}
+          />
+          <div
+            className="room-wall-right-3d"
+            style={{ ...surfaceStyle(room.wallpaper, 'wallpaper', customItems), opacity: room.wallpaper ? 1 : 0 }}
+          />
+          <div
+            className="room-floor-3d"
+            style={{ ...surfaceStyle(room.floor, 'floor', customItems), opacity: room.floor ? 1 : 0 }}
+          />
           <div className="room-baseboard-left-3d" />
           <div className="room-baseboard-right-3d" />
           <div className="room-corner-3d" />

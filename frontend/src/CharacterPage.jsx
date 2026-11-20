@@ -3,7 +3,7 @@
 // 도토리로 구매하고, 보유 아이템은 착용/해제(toggleEquip)가 즉시 캐릭터에 반영된다.
 // 기본 상태(아무것도 착용 안 함)에서는 홈 화면과 같은 기본 복장 고양이가 보인다.
 import { useState } from 'react'
-import { CATALOG, WEARABLE_KINDS, getItem, useGoods } from './goods'
+import { CATALOG, getItem, useGoods } from './goods'
 import { GoodsHeader, GoodsTabs, GoodsToast, ItemCard } from './GoodsUI'
 import { CoinIcon } from './GoodsArt'
 import CharacterAvatar from './CharacterAvatar'
@@ -13,11 +13,11 @@ import './CharacterPage.css'
 
 const TABS = [
   { key: 'outfit', label: '의상' },
-  { key: 'hat', label: '모자' },
   { key: 'pants', label: '바지' },
-  { key: 'bag', label: '가방' },
-  { key: 'accessory', label: '액세서리' },
+  { key: 'hat', label: '모자' },
 ]
+
+const CHARACTER_SLOTS = TABS.map(({ key }) => key)
 
 function ResetIcon({ size = 18 }) {
   return (
@@ -29,16 +29,16 @@ function ResetIcon({ size = 18 }) {
 }
 
 function CharacterPage({ onNavigate }) {
-  const { wallet, isOwned, buy, equipped, toggleEquip, customItems } = useGoods()
+  const { wallet, buy, isOwned, equipped, toggleEquip, customItems } = useGoods()
   const [tab, setTab] = useState('outfit')
   const [toast, setToast] = useState(null)
 
   // 현재 탭의 아이템(기본 카탈로그 + AI 커스텀) 중 착용류만.
   const items = [...CATALOG, ...customItems].filter(
-    (item) => item.kind === tab && WEARABLE_KINDS.includes(item.kind),
+    (item) => item.kind === tab && CHARACTER_SLOTS.includes(item.kind),
   )
 
-  const anyEquipped = WEARABLE_KINDS.some((kind) => equipped[kind])
+  const anyEquipped = CHARACTER_SLOTS.some((kind) => equipped[kind])
 
   const handleCardClick = async (item) => {
     if (!isOwned(item.id)) {
@@ -60,7 +60,7 @@ function CharacterPage({ onNavigate }) {
       setToast({ text: '이미 기본 복장이에요' })
       return
     }
-    WEARABLE_KINDS.forEach((kind) => {
+    CHARACTER_SLOTS.forEach((kind) => {
       if (equipped[kind]) toggleEquip(getItem(equipped[kind]))
     })
     setToast({ text: '기본 복장으로 되돌렸어요' })
