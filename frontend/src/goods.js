@@ -10,7 +10,7 @@ const WALLET_KEY = 'forestudy_acorns_v4'
 
 export const WEARABLE_KINDS = ['outfit', 'hat', 'pants', 'bag', 'accessory']
 
-const FREE_CHARACTER_ITEM_IDS = new Set()
+const FREE_CHARACTER_ITEM_IDS = new Set(['animal-sweater'])
 
 // art: GoodsArt.jsx의 ItemArt가 그림을 고를 때 쓰는 키.
 // 아이템별 자연스러운 기본 배치 위치 — 정면 뷰 구도(벽/바닥 경계 y: 57%).
