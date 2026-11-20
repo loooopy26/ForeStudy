@@ -15,6 +15,7 @@ import ForestGame from './ForestGame'
 import ShopPage from './ShopPage'
 import RoomPage from './RoomPage'
 import SpeedQuizRoom from './SpeedQuizRoom'
+import DotoriLeague from './DotoriLeague'
 import CharacterPage from './CharacterPage'
 import LevelUpPage from './LevelUpPage'
 import StudyMap from './StudyMap'
@@ -43,6 +44,7 @@ const SCREENS = {
   shop: ShopPage,
   room: SpeedQuizRoom,
   'room-decor': RoomPage,
+  dotori: DotoriLeague,
   character: CharacterPage,
   levelup: LevelUpPage,
   studymap: StudyMap,

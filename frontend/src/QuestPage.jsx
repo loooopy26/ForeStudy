@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AcornIcon } from './icons';
+import QuestHeader from './QuestHeader';
 import './QuestPage.css';
 
 export default function QuestPage({
@@ -16,24 +17,7 @@ export default function QuestPage({
 
   return (
     <div className="quest-page">
-      {/* Header */}
-      <div className="quest-header">
-        <button className="header-icon-btn" onClick={() => onNavigate('village')}>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8a8272" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 18l-6-6 6-6"></path>
-          </svg>
-        </button>
-        <span className="header-title">퀘스트 게시판</span>
-        
-        {/* Top Header HUD replacing the old grid button */}
-        <div className="header-hud">
-          <span className="hud-lvl">Lv.{level}</span>
-          <div className="hud-acorn">
-            <AcornIcon size={14} />
-            <span>{acorns.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
+      <QuestHeader title="퀘스트 게시판" level={level} acorns={acorns} onBack={() => onNavigate('village')} />
 
       {/* Tabs */}
       <div className="quest-tabs">

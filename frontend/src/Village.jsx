@@ -42,14 +42,44 @@ const PLACES = [
     hotspot: { top: '71%', left: '18%', width: '32%', height: '21%' },
   },
   {
-    key: 'room',
-    label: '내 방',
+    key: 'dotori',
+    label: '도토리그',
     top: '57%',
     left: '75%',
-    target: 'room',
+    target: 'dotori',
     hotspot: { top: '69%', left: '76%', width: '36%', height: '23%' },
   },
 ]
+
+export function VillagePins({ onNavigate, active }) {
+  return (
+    <>
+      {PLACES.map(({ key, label, target, hotspot }) => (
+        <button
+          key={key}
+          type="button"
+          className="house-hotspot"
+          aria-label={label}
+          tabIndex={-1}
+          style={hotspot}
+          onClick={() => onNavigate(target)}
+        />
+      ))}
+      {PLACES.map(({ key, label, target, top, left }) => (
+        <button
+          key={key}
+          type="button"
+          className="place-pin"
+          style={{ top, left }}
+          aria-current={active === target ? 'page' : undefined}
+          onClick={() => onNavigate(target)}
+        >
+          {label}
+        </button>
+      ))}
+    </>
+  )
+}
 
 function Village({ onNavigate, certName, onSelectCertificate }) {
   const { wallet } = useGoods()
@@ -60,10 +90,11 @@ function Village({ onNavigate, certName, onSelectCertificate }) {
   const [progress, setProgress] = useState({ progress: 0, remainingDays: null })
   const [level, setLevel] = useState(1)
   const activeCertificate = certificates.find((certificate) => certificate.title === certName) || certificates[0]
+  const activeTitle = activeCertificate?.title
 
   useEffect(() => {
-    if (activeCertificate) getCertificateProgress(activeCertificate.title).then(setProgress).catch(() => {})
-  }, [activeCertificate?.title])
+    if (activeTitle) getCertificateProgress(activeTitle).then(setProgress).catch(() => {})
+  }, [activeTitle])
 
   useEffect(() => {
     const syncAccount = () => {
@@ -96,33 +127,7 @@ function Village({ onNavigate, certName, onSelectCertificate }) {
       </header>
 
       <div className="village-map">
-        {PLACES.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            className="house-hotspot"
-            aria-label={p.label}
-            style={{
-              top: p.hotspot.top,
-              left: p.hotspot.left,
-              width: p.hotspot.width,
-              height: p.hotspot.height,
-            }}
-            onClick={p.target ? () => onNavigate(p.target) : undefined}
-          />
-        ))}
-
-        {PLACES.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            className="place-pin"
-            style={{ top: p.top, left: p.left }}
-            onClick={p.target ? () => onNavigate(p.target) : undefined}
-          >
-            {p.label}
-          </button>
-        ))}
+        <VillagePins onNavigate={onNavigate} />
       </div>
 
       {showOngoing && (

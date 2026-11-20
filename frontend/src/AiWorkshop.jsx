@@ -16,8 +16,8 @@ export function AiFab({ onClick }) {
         <span className="ai-fab-star">✦</span>
       </span>
       <span className="ai-fab-text">
-        <strong>원하는 게 없나요?</strong>
-        AI로 직접 만들어요
+        <strong>AI 아이템 공방</strong>
+        원하는 아이템을 직접 만들어요
       </span>
       <span className="ai-fab-arrow" aria-hidden="true">›</span>
     </button>
@@ -30,6 +30,7 @@ export function AiCreatePanel({ goods, onKept, onToast }) {
   const [prompt, setPrompt] = useState('')
   const [phase, setPhase] = useState('idle') // idle | generating | result
   const [result, setResult] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   const runGenerate = async () => {
     if (phase === 'generating') return // 중복 클릭으로 이중 생성/차감 방지
@@ -60,9 +61,18 @@ export function AiCreatePanel({ goods, onKept, onToast }) {
     }
   }
 
-  const keepItem = () => {
-    addCustomItem(result)
-    onKept(result)
+  const keepItem = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      if (await addCustomItem(result)) {
+        onKept(result)
+      } else {
+        onToast({ text: '아이템을 보관하지 못했어요. 로그인 상태를 확인해 주세요.' })
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   const appendChip = (word) => {
@@ -99,11 +109,11 @@ export function AiCreatePanel({ goods, onKept, onToast }) {
           <div className="ai-result-desc">{result.description}</div>
         </div>
         <div className="ai-actions">
-          <button type="button" className="ai-btn retry" onClick={runGenerate}>
+          <button type="button" className="ai-btn retry" onClick={runGenerate} disabled={saving}>
             <CoinIcon size={13} /> 다시 만들기 · {AI_GEN_COST}
           </button>
-          <button type="button" className="ai-btn keep" onClick={keepItem}>
-            내 보관함에 담기 <span className="ai-free">무료</span>
+          <button type="button" className="ai-btn keep" onClick={keepItem} disabled={saving}>
+            {saving ? '보관 중…' : <>내 보관함에 담기 <span className="ai-free">무료</span></>}
           </button>
         </div>
         <p className="ai-note">생성할 때 도토리를 냈으니 보관은 무료예요 · '커스텀' 탭에 담겨요</p>

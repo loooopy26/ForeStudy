@@ -108,14 +108,14 @@ export function DocIcon({ size = 18 }) {
   )
 }
 
-export function BotIcon({ size = 16 }) {
+export function BotIcon({ size = 16, color = 'white' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="5" y="8" width="14" height="11" rx="3" stroke="white" strokeWidth="1.8" />
-      <path d="M12 5V8" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="12" cy="4" r="1.4" fill="white" />
-      <circle cx="9.5" cy="13" r="1.2" fill="white" />
-      <circle cx="14.5" cy="13" r="1.2" fill="white" />
+      <rect x="5" y="8" width="14" height="11" rx="3" stroke={color} strokeWidth="1.8" />
+      <path d="M12 5V8" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="4" r="1.4" fill={color} />
+      <circle cx="9.5" cy="13" r="1.2" fill={color} />
+      <circle cx="14.5" cy="13" r="1.2" fill={color} />
     </svg>
   )
 }

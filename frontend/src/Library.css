@@ -1,4 +1,5 @@
 .library-page {
+  --library-panel-bg: #fbf5e8;
   position: relative;
   display: flex;
   flex: 1;
@@ -51,9 +52,9 @@
   display: grid;
   gap: 10px;
   padding: 0 12px 12px;
-  border: 1px solid var(--card-border);
+  border: 1px solid #dfd0b6;
   border-radius: 18px;
-  background: var(--card-bg);
+  background: var(--library-panel-bg);
   color: #364a38;
   font-size: .85rem;
 }
@@ -201,13 +202,13 @@
 }
 
 .focus-pill {
-  min-height: 44px;
+  min-height: 35px;
   display: flex;
   align-items: center;
   gap: 7px;
   border: none;
   background: var(--green-tint);
-  padding: 7px 14px;
+  padding: 4px 12px;
   border-radius: 100px;
   color: var(--green-text);
   font-family: inherit;
@@ -240,15 +241,16 @@
   font-size: 22px;
   font-weight: 700;
   color: var(--ink);
-  margin: 2px 0 0;
+  margin: 15px 0 0;
   text-wrap: balance;
 }
 
 .stage-panel {
-  border: 1px solid var(--card-border);
-  border-radius: 22px;
-  background: oklch(0.99 0.012 82 / 0.95);
-  box-shadow: 0 12px 32px -24px oklch(0.36 0.06 110 / 0.45);
+  margin-top: 12px;
+  border: 1px solid #dfd0b6;
+  border-radius: 20px;
+  background: var(--library-panel-bg);
+  box-shadow: 0 12px 32px -24px #67543463;
 }
 
 .study-illustration {
@@ -275,10 +277,11 @@
 }
 
 .timer-overlay {
+  --timer-row-gap: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--timer-row-gap);
   padding: 14px;
 }
 
@@ -309,11 +312,14 @@
   color: var(--ink-soft);
 }
 .study-timer-status[data-paused='true'] { background: #fce9ce; color: #683a10; font-weight: 750; }
+.study-timer-status:empty { min-height: 0; padding: 0; }
+.study-timer-status:empty + .timer-reset-button { margin-top: calc(5px - 2 * var(--timer-row-gap)); }
 
 .ring-wrap {
   position: relative;
-  width: 158px;
-  height: 158px;
+  width: 170px;
+  height: 170px;
+  margin-top: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -330,11 +336,11 @@
 .ring-face {
   position: relative;
   z-index: 1;
-  width: 124px;
-  height: 124px;
+  width: 134px;
+  height: 134px;
   border-radius: 100px;
   border: none;
-  background: oklch(0.99 0.012 82 / 0.92);
+  background: #fffaf0ed;
   box-shadow: 0 14px 36px -24px oklch(0.42 0.03 80 / 0.45);
   display: flex;
   flex-direction: column;
@@ -357,13 +363,13 @@ button.ring-face:hover {
 }
 
 .ring-face span {
-  font-size: 38px;
+  font-size: 40px;
   font-weight: 900;
   color: var(--ink);
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
-.has-three-digit-minutes .ring-face span { font-size: 31px; }
+.has-three-digit-minutes .ring-face span { font-size: 33px; }
 
 .ring-face small {
   color: var(--green-text);
@@ -448,9 +454,9 @@ button.ring-face:hover {
 }
 
 .duration-modal-actions button {
-  min-height: 44px;
+  min-height: 60px;
   border: none;
-  border-radius: 12px;
+  border-radius: 15px;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -472,7 +478,8 @@ button.ring-face:hover {
   border: none;
   border-radius: 14px;
   width: 100%;
-  min-height: 48px;
+  min-height: 45px;
+  margin-top: 27px;
   padding: 10px 12px;
   font-size: 16px;
   font-weight: 700;

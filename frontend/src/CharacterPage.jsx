@@ -3,7 +3,7 @@
 // 도토리로 구매하고, 보유 아이템은 착용/해제(toggleEquip)가 즉시 캐릭터에 반영된다.
 // 기본 상태(아무것도 착용 안 함)에서는 홈 화면과 같은 기본 복장 고양이가 보인다.
 import { useState } from 'react'
-import { CATALOG, getItem, useGoods } from './goods'
+import { CATALOG, getItem, useGoods, WEARABLE_KINDS } from './goods'
 import { GoodsHeader, GoodsTabs, GoodsToast, ItemCard } from './GoodsUI'
 import { CoinIcon } from './GoodsArt'
 import CharacterAvatar from './CharacterAvatar'
@@ -18,6 +18,7 @@ const TABS = [
 ]
 
 const CHARACTER_SLOTS = TABS.map(({ key }) => key)
+const SHOP_TABS = [...TABS, { key: 'custom', label: '커스텀' }]
 
 function ResetIcon({ size = 18 }) {
   return (
@@ -28,54 +29,60 @@ function ResetIcon({ size = 18 }) {
   )
 }
 
-function CharacterPage({ onNavigate }) {
-  const { wallet, buy, isOwned, equipped, toggleEquip, customItems } = useGoods()
-  const [tab, setTab] = useState('outfit')
-  const [toast, setToast] = useState(null)
-
-  // 현재 탭의 아이템(기본 카탈로그 + AI 커스텀) 중 착용류만.
-  const items = [...CATALOG, ...customItems].filter(
-    (item) => item.kind === tab && CHARACTER_SLOTS.includes(item.kind),
-  )
+export function CharacterCatalog({ goods, level, tab, onTabChange, onBack, onToast, toast, onDeleteCustom, actions }) {
+  const { wallet, buy, isOwned, equipped, toggleEquip, customItems, goodsLoaded } = goods
+  const isShop = level !== undefined
+  const tabs = isShop ? SHOP_TABS : TABS
+  const standardItems = isShop ? CATALOG : [...CATALOG, ...customItems]
+  const items = tab === 'custom' ? customItems : standardItems.filter((item) => item.kind === tab)
 
   const anyEquipped = CHARACTER_SLOTS.some((kind) => equipped[kind])
 
   const handleCardClick = async (item) => {
+    if (!WEARABLE_KINDS.includes(item.kind)) {
+      onToast({ text: '방 꾸미기에서 사용할 수 있는 아이템이에요' })
+      return
+    }
     if (!isOwned(item.id)) {
       if (await buy(item)) {
         toggleEquip(item)
-        setToast({ text: `${item.name} 구매 후 착용했어요!` })
+        onToast({ text: `${item.name} 구매 후 착용했어요!` })
       } else {
-        setToast({ text: '도토리가 부족해요' })
+        onToast({ text: '도토리가 부족해요' })
       }
       return
     }
     const wasEquipped = equipped[item.kind] === item.id
     toggleEquip(item)
-    setToast({ text: wasEquipped ? `${item.name} 벗었어요` : `${item.name} 착용했어요` })
+    onToast({ text: wasEquipped ? `${item.name} 벗었어요` : `${item.name} 착용했어요` })
   }
 
   const handleReset = () => {
     if (!anyEquipped) {
-      setToast({ text: '이미 기본 복장이에요' })
+      onToast({ text: '이미 기본 복장이에요' })
       return
     }
     CHARACTER_SLOTS.forEach((kind) => {
-      if (equipped[kind]) toggleEquip(getItem(equipped[kind]))
+      const item = equipped[kind] && getItem(equipped[kind])
+      if (item) toggleEquip(item)
     })
-    setToast({ text: '기본 복장으로 되돌렸어요' })
+    onToast({ text: '기본 복장으로 되돌렸어요' })
   }
+
+  const resetButton = (
+    <button type="button" className="character-edit-btn" onClick={handleReset} aria-label="기본 복장으로 되돌리기">
+      <ResetIcon />
+    </button>
+  )
 
   return (
     <div className="goods-page character-page">
       <GoodsHeader
-        title="캐릭터"
-        onBack={() => onNavigate('profile')}
-        rightSlot={
-          <button type="button" className="character-edit-btn" onClick={handleReset} aria-label="기본 복장으로 되돌리기">
-            <ResetIcon />
-          </button>
-        }
+        title="상점"
+        wallet={wallet}
+        level={level}
+        onBack={onBack}
+        rightSlot={isShop ? undefined : resetButton}
       />
 
       {/* 캐릭터 미리보기 무대: 방 배경 위에 고양이(+착용 아이템)가 선다.
@@ -83,21 +90,27 @@ function CharacterPage({ onNavigate }) {
       <div className="character-stage" style={{ backgroundImage: `url(${roomBackground})` }}>
         <CharacterAvatar equipped={equipped} getItem={getItem} />
 
+        {isShop && resetButton}
         <div className="character-shadow" aria-hidden="true" />
       </div>
 
-      {/* 재화 요약 바 */}
-      <div className="character-stats">
-        <div className="character-stat coin">
-          <CoinIcon size={18} />
-          <span>{wallet.toLocaleString()}</span>
+      {!isShop && (
+        <div className="character-stats">
+          <div className="character-stat coin">
+            <CoinIcon size={18} />
+            <span>{wallet.toLocaleString()}</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      <GoodsTabs tabs={TABS} active={tab} onChange={setTab} />
+      <GoodsTabs tabs={tabs} active={tab} onChange={onTabChange} />
 
       <div className="goods-grid cols-4 character-grid">
-        {items.length === 0 && <p className="goods-empty">이 분류의 아이템이 아직 없어요</p>}
+        {items.length === 0 && <p className="goods-empty">
+          {tab === 'custom'
+            ? goodsLoaded ? '공방에서 만든 아이템이 여기에 모여요.' : '커스텀 아이템을 불러오는 중이에요.'
+            : '이 분류의 아이템이 아직 없어요'}
+        </p>}
         {items.map((item) => (
           <ItemCard
             key={item.id}
@@ -106,13 +119,23 @@ function CharacterPage({ onNavigate }) {
             active={equipped[item.kind] === item.id}
             onClick={handleCardClick}
             artSize={44}
+            onDelete={tab === 'custom' ? onDeleteCustom : undefined}
           />
         ))}
       </div>
 
+      {actions}
       <GoodsToast message={toast} />
     </div>
   )
+}
+
+function CharacterPage({ onNavigate }) {
+  const goods = useGoods()
+  const [tab, setTab] = useState('outfit')
+  const [toast, setToast] = useState(null)
+
+  return <CharacterCatalog goods={goods} tab={tab} onTabChange={setTab} onBack={() => onNavigate('profile')} toast={toast} onToast={setToast} />
 }
 
 export default CharacterPage

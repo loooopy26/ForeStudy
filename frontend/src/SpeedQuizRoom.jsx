@@ -1,7 +1,9 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import forest from './assets/speed-quiz-forest.webp'
 import squirrel from './assets/speed-quiz-catcher.webp'
-import { AcornIcon, BackIcon, ChevronRightIcon, MedalIcon } from './icons'
+import quizStart from './assets/speed-quiz-start.webp'
+import { AcornIcon, BackIcon, BellIcon, ChevronRightIcon } from './icons'
+import Header from './Header'
 import { generateSpeedQuiz } from './api'
 import { useGoods } from './goods'
 import './SpeedQuizRoom.css'
@@ -14,7 +16,7 @@ const LANES = [14, 38, 62, 86]
 const DROP_DELAYS = [900, 0, 1500, 450]
 const WAVE_END_MS = FALL_MS + Math.max(...DROP_DELAYS) + CATCH_WINDOW_MS
 const ART = { '--speed-forest': `url(${forest})` }
-const LOBBY = { phase: 'lobby' }
+const BEST_KEY = 'forestudy:speed-quiz:drops-best'
 const READY_TO_START = { loading: false, error: '' }
 
 function shuffled(items) {
@@ -45,7 +47,7 @@ function recordCatch(game, choice, elapsed) {
 }
 
 function gameReducer(game, action) {
-  if (action.type === 'lobby') return LOBBY
+  if (action.type === 'lobby') return { phase: 'lobby', best: game.best }
   if (action.type === 'start') {
     return {
       phase: 'playing',
@@ -60,6 +62,7 @@ function gameReducer(game, action) {
       paused: false,
       attempts: [],
       feedback: null,
+      best: game.best,
     }
   }
   if (game.phase !== 'playing') return game
@@ -77,7 +80,7 @@ function gameReducer(game, action) {
   if (game.feedback) {
     if (elapsed < game.feedback.until) return updated
     if (!game.hearts || game.attempts.length === game.deck.length) {
-      return { ...updated, phase: 'result' }
+      return { ...updated, phase: 'result', best: Math.max(game.best, game.score) }
     }
     return { ...updated, index: game.index + 1, elapsed: 0, feedback: null }
   }
@@ -94,24 +97,33 @@ function formatScore(score) {
   return score.toLocaleString('ko-KR')
 }
 
-function StartRoundButton({ label, onStart, preparation }) {
+function readBest() {
+  try {
+    const score = Number(localStorage.getItem(BEST_KEY))
+    return Number.isFinite(score) && score > 0 ? score : 0
+  } catch {
+    return 0
+  }
+}
+
+function StartRoundButton({ label, image, onStart, preparation }) {
   return (
     <>
       <button
         type="button"
-        className="speed-primary"
+        className={image && !preparation.loading ? 'speed-start-button' : 'speed-primary'}
         onClick={onStart}
         disabled={preparation.loading}
         aria-busy={preparation.loading}
       >
-        {preparation.loading ? 'Solar가 문제를 만들고 있어요…' : label}
+        {preparation.loading ? 'Solar가 문제를 만들고 있어요…' : image || label}
       </button>
       {preparation.error && <p className="speed-generation-error" role="alert">{preparation.error}</p>}
     </>
   )
 }
 
-function QuizLobby({ onStart, onDecorate, preparation }) {
+function QuizLobby({ onStart, preparation }) {
   return (
     <div className="speed-lobby">
       <section className="speed-intro">
@@ -120,14 +132,14 @@ function QuizLobby({ onStart, onDecorate, preparation }) {
         <p>다람쥐를 움직여 정답 물방울을 받아요.</p>
       </section>
       <div className="speed-lobby-scene" aria-hidden="true">
-        <span className="speed-lobby-drop"><span className="speed-drop-shape" /></span>
         <img src={squirrel} alt="" />
       </div>
       <div className="speed-lobby-actions">
-        <StartRoundButton label="퀴즈 시작" onStart={onStart} preparation={preparation} />
-        <button type="button" className="speed-text-button" onClick={onDecorate}>
-          방 꾸미기 <ChevronRightIcon size={13} />
-        </button>
+        <StartRoundButton
+          image={<img src={quizStart} alt="퀴즈 시작" width={680} height={181} />}
+          onStart={onStart}
+          preparation={preparation}
+        />
       </div>
     </div>
   )
@@ -142,6 +154,53 @@ function Hearts({ count }) {
     </div>
   )
 }
+
+const DropLabel = memo(function DropLabel({ choice }) {
+  const labelRef = useRef(null)
+  const textRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const label = labelRef.current
+    const text = textRef.current
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    let active = true
+
+    const fit = () => {
+      if (!active || !label.clientWidth || !label.clientHeight) return
+
+      text.style.removeProperty('font-size')
+      text.style.removeProperty('overflow-wrap')
+      const frame = label.getBoundingClientRect()
+      const fits = () => {
+        const bounds = range.getBoundingClientRect()
+        return bounds.left >= frame.left - .5 && bounds.right <= frame.right + .5
+          && bounds.top >= frame.top - .5 && bounds.bottom <= frame.bottom + .5
+      }
+      let size = Number.parseFloat(getComputedStyle(text).fontSize)
+      while (size > 8 && !fits()) {
+        size = Math.max(8, size - .5)
+        text.style.fontSize = `${size}px`
+      }
+      if (!fits() && text.scrollWidth > label.clientWidth) text.style.overflowWrap = 'anywhere'
+    }
+
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(label)
+    document.fonts?.ready.then(fit)
+    return () => {
+      active = false
+      observer.disconnect()
+    }
+  }, [choice])
+
+  return (
+    <span className="speed-drop-label" ref={labelRef}>
+      <span className={choice.length <= 4 ? 'speed-drop-text is-short' : 'speed-drop-text'} ref={textRef}>{choice}</span>
+    </span>
+  )
+})
 
 function QuizRound({ game, onMove, onAim }) {
   const { deck, index, elapsed, lane, feedback, paused } = game
@@ -176,7 +235,7 @@ function QuizRound({ game, onMove, onAim }) {
                 onClick={() => onAim(position)}
               >
                 <span className="speed-drop-shape" aria-hidden="true" />
-                <span className={choice.length <= 4 ? 'speed-drop-text is-short' : 'speed-drop-text'}>{choice}</span>
+                <DropLabel choice={choice} />
               </button>
             )
           })}
@@ -206,16 +265,16 @@ function QuizRound({ game, onMove, onAim }) {
   )
 }
 
-function QuizResult({ game, onReplay, onLobby, preparation }) {
+function QuizResult({ game, onReplay, preparation }) {
   const review = game.attempts.filter((attempt) => !attempt.correct)
 
   return (
     <div className="speed-result">
       <section className="speed-result-card">
-        <span className="speed-result-medal" aria-hidden="true"><MedalIcon size={28} /></span>
         <h1>라운드 종료</h1>
         <p>{game.hearts ? '모든 문제가 끝났어요.' : '하트를 모두 써서 라운드가 끝났어요.'}</p>
         <strong className="speed-result-score">{formatScore(game.score)}<span>점</span></strong>
+        <p>최고 기록 {formatScore(game.best)}점</p>
         <dl className="speed-result-stats">
           <div><dt>맞힌 문제</dt><dd>{game.attempts.length - review.length} / {game.deck.length}</dd></div>
           <div><dt>놓치거나 틀린 문제</dt><dd>{review.length}</dd></div>
@@ -236,7 +295,6 @@ function QuizResult({ game, onReplay, onLobby, preparation }) {
       )}
       <div className="speed-result-actions">
         <StartRoundButton label="다시 하기" onStart={onReplay} preparation={preparation} />
-        <button type="button" className="speed-text-button" onClick={onLobby}>대기 화면으로</button>
       </div>
     </div>
   )
@@ -244,12 +302,12 @@ function QuizResult({ game, onReplay, onLobby, preparation }) {
 
 export default function SpeedQuizRoom({ onNavigate }) {
   const { wallet } = useGoods()
-  const [game, dispatch] = useReducer(gameReducer, LOBBY)
+  const [game, dispatch] = useReducer(gameReducer, undefined, () => ({ phase: 'lobby', best: readBest() }))
   const [preparation, setPreparation] = useState(READY_TO_START)
   const requestRef = useRef(null)
   const previousPrompts = useRef([])
   const playing = game.phase === 'playing'
-  const { paused } = game
+  const { paused, best } = game
   const dotori = formatScore(wallet)
 
   useEffect(() => () => {
@@ -293,6 +351,15 @@ export default function SpeedQuizRoom({ onNavigate }) {
     }
   }, [playing, paused])
 
+  useEffect(() => {
+    if (best <= readBest()) return
+    try {
+      localStorage.setItem(BEST_KEY, String(best))
+    } catch {
+      // The game is playable when browser storage is unavailable.
+    }
+  }, [best])
+
   const startRound = async () => {
     if (requestRef.current) return
     const controller = new AbortController()
@@ -331,33 +398,33 @@ export default function SpeedQuizRoom({ onNavigate }) {
     setPreparation(READY_TO_START)
     dispatch({ type: 'lobby' })
   }
-  const goBack = () => playing ? dispatch({ type: 'pause' }) : onNavigate('village')
-
   return (
     <main className="speed-room" style={ART}>
-      <header className="speed-header">
-        <button type="button" className="speed-icon-button speed-back" aria-label={playing ? '게임 메뉴' : '마을'} onClick={goBack} disabled={playing && paused}>
-          <BackIcon size={21} />
-        </button>
-        {playing ? (
-          <>
-            <Hearts count={game.hearts} />
-            <span className="speed-score">점수 <strong>{formatScore(game.score)}</strong></span>
-            <button type="button" className="speed-icon-button speed-pause" aria-label="일시정지" onClick={() => dispatch({ type: 'pause' })} disabled={paused}>
-              <span aria-hidden="true" />
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="speed-header-title">내 방</span>
+      {playing ? (
+        <header className="speed-header">
+          <button type="button" className="speed-icon-button speed-back" aria-label="게임 메뉴" onClick={() => dispatch({ type: 'pause' })} disabled={paused}>
+            <BackIcon size={21} />
+          </button>
+          <Hearts count={game.hearts} />
+          <span className="speed-score">점수 <strong>{formatScore(game.score)}</strong></span>
+          <button type="button" className="speed-icon-button speed-pause" aria-label="일시정지" onClick={() => dispatch({ type: 'pause' })} disabled={paused}>
+            <span aria-hidden="true" />
+          </button>
+        </header>
+      ) : (
+        <Header
+          title="물방울 게임"
+          onBack={() => onNavigate('village')}
+          action={(
             <span className="speed-dotori" role="group" aria-label={`도토리 ${dotori}개`}>
               <AcornIcon size={16} /> <strong>{dotori}</strong>
             </span>
-          </>
-        )}
-      </header>
+          )}
+          icon={<span aria-hidden="true"><BellIcon size={22} /></span>}
+        />
+      )}
       <div className={`speed-body${playing ? ' speed-playing' : ''}`} key={game.phase}>
-        {game.phase === 'lobby' && <QuizLobby onStart={startRound} onDecorate={() => onNavigate('room-decor')} preparation={preparation} />}
+        {game.phase === 'lobby' && <QuizLobby onStart={startRound} preparation={preparation} />}
         {playing && (
           <QuizRound
             game={game}
@@ -365,7 +432,7 @@ export default function SpeedQuizRoom({ onNavigate }) {
             onAim={(lane) => dispatch({ type: 'aim', lane })}
           />
         )}
-        {game.phase === 'result' && <QuizResult game={game} onReplay={startRound} onLobby={goToLobby} preparation={preparation} />}
+        {game.phase === 'result' && <QuizResult game={game} onReplay={startRound} preparation={preparation} />}
       </div>
       {playing && paused && (
         <div className="speed-overlay">

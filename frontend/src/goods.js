@@ -4,7 +4,7 @@
 // 예전에는 여기가 전부 localStorage였어서 기기를 바꾸면 사라졌다. 드래그처럼 매우 잦은 로컬
 // 조작은 여전히 즉시 반영하고, 토글/회전/드래그 종료 같은 "확정" 시점에만 백엔드로 동기화한다.
 import { useCallback, useEffect, useState } from 'react'
-import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getCurrentUser, getMyUser, spendMyDotori } from './api'
+import { ACCOUNT_CHANGED_EVENT, apiRequest, getAccountStorageKey, getCurrentUser, getMyUser } from './api'
 
 const WALLET_KEY = 'forestudy_acorns_v4'
 
@@ -87,15 +87,6 @@ export function readCustomItems() {
 
 // 기본 카탈로그에 없으면 AI 커스텀 아이템에서도 찾는다.
 export const getItem = (id) => CATALOG.find((item) => item.id === id) || globalCustomItems.find((item) => item.id === id)
-
-function readJson(key, fallback) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(key) || 'null')
-    return saved ?? fallback
-  } catch {
-    return fallback
-  }
-}
 
 const DEFAULT_EQUIPPED = { outfit: null, hat: null, pants: null, bag: null, accessory: null }
 const DEFAULT_ROOM = { wallpaper: null, floor: null, placed: [] }
@@ -260,14 +251,17 @@ export function useGoods() {
 
   const addCustomItem = useCallback(async (item) => {
     const userId = await getActiveGoodsUserId()
-    if (!userId) return
+    if (!userId) return false
+    const generation = goodsGeneration
     try {
       const state = await apiRequest(`/api/goods/${userId}/custom-items`, {
         method: 'POST',
         body: JSON.stringify({ item }),
       })
+      if (generation !== goodsGeneration || getCurrentUser()?.id !== userId) return false
       applyGoodsState(state)
     } catch {
+      if (generation !== goodsGeneration || getCurrentUser()?.id !== userId) return false
       // 실패해도 로컬에는 최소한 보이도록 낙관적으로 반영한다.
       globalCustomItems = globalCustomItems.some((saved) => saved.id === item.id)
         ? globalCustomItems
@@ -275,6 +269,7 @@ export function useGoods() {
       globalOwned = globalOwned.includes(item.id) ? globalOwned : [...globalOwned, item.id]
       notifyAll()
     }
+    return true
   }, [])
 
   // 커스텀 아이템 삭제: 커스텀 목록에서 지우고, 보유/착용/방 배치에 남은 참조도 함께 정리한다.

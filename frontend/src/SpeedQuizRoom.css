@@ -3,6 +3,14 @@
   --speed-paper: #fff6df;
   --speed-line: #c6a06e;
   --speed-shadow: #7a56332b;
+  /* Follow the sprite's feet and tail to hide the painted ground shadow. */
+  --speed-squirrel-outline: polygon(
+    0 0, 100% 0, 100% 84.6%, 80.5% 84.6%, 78.2% 85.6%, 75.9% 88.1%,
+    71.3% 91.2%, 66.7% 93.1%, 62.1% 94%, 52.9% 94.2%, 50.6% 95.4%,
+    46% 96.7%, 41.4% 97.1%, 39.1% 97.7%, 36.8% 97.5%, 34.5% 96.4%,
+    32.2% 95.8%, 23% 95.2%, 18.4% 94.8%, 16.1% 95.4%, 13.8% 95.4%,
+    11.5% 94.6%, 9.2% 92.5%, 6.9% 89.4%, 4.6% 90.2%, 0 90.2%
+  );
   position: relative;
   display: flex;
   flex: 1;
@@ -39,13 +47,8 @@
   padding: calc(11px + env(safe-area-inset-top, 0px)) 15px 8px;
 }
 
-.speed-header-title {
-  margin-left: 12px;
-  color: #3b291b;
-  font-size: 16px;
-  font-weight: 900;
-  text-shadow: 0 1px #fff9dd;
-}
+.speed-room > .screen-header { background: linear-gradient(#fbf3e7, #fbf3e7d9 58%, #fbf3e700); }
+.speed-room > .screen-header .header-badge { background: transparent; color: #2e2620; }
 
 .speed-room .speed-icon-button,
 .speed-hearts,
@@ -148,6 +151,7 @@
 .speed-board {
   --speed-sprite-size: clamp(91px, min(34vw, 20dvh), 149px);
   --speed-controls-height: 47px;
+  --speed-catcher-bottom: calc(var(--speed-controls-height) + clamp(24px, 7dvh, 62px));
   position: relative;
   flex: 1;
   min-height: 0;
@@ -156,7 +160,7 @@
 
 .speed-weather {
   position: absolute;
-  inset: 9px 0 calc(var(--speed-sprite-size) * 0.62 + var(--speed-controls-height));
+  inset: 9px 0 calc(var(--speed-sprite-size) * 0.62 + var(--speed-catcher-bottom));
   opacity: 0.7;
   background:
     repeating-linear-gradient(90deg, transparent 0 23px, #fff 24px, transparent 25px 62px),
@@ -168,18 +172,16 @@
 .speed-fall-zone {
   position: absolute;
   z-index: 1;
-  inset: 35px 0 calc(var(--speed-sprite-size) * 0.9 + var(--speed-controls-height)) 0;
+  inset: 35px 0 calc(var(--speed-sprite-size) * 0.82 + var(--speed-catcher-bottom)) 0;
 }
 
 .speed-room .speed-drop {
+  --speed-drop-height: clamp(56px, 10.1vh, 69px);
   position: absolute;
-  display: grid;
-  justify-items: center;
-  align-content: end;
   width: 23%;
   max-width: 86px;
-  height: clamp(47px, 10.1vh, 69px);
-  padding: 0 2px 8px;
+  height: var(--speed-drop-height);
+  padding: 0;
   transform: translate(-50%, -69%);
   user-select: none;
   border: 0;
@@ -193,25 +195,27 @@
   z-index: -1;
   left: 50%;
   bottom: 0;
-  width: min(79%, 52px);
-  aspect-ratio: 1;
-  transform: translateX(-50%) scaleY(1.12) rotate(45deg);
-  transform-origin: center;
-  border: 2px solid #4b92be;
-  border-radius: 4px 68% 55% 68%;
-  background: radial-gradient(ellipse at 23% 23%, #ffffffeb 2%, transparent 30%), linear-gradient(141deg, #d9f7ff, #9dd6f2 70%);
-  box-shadow: inset 0 0 0 2px #edfcff, 1px 2px 3px #3c789837;
+  width: min(90%, 55px);
+  height: 100%;
+  transform: translateX(-50%);
+  background: url('./assets/speed-quiz-drop-blue.webp') center bottom / contain no-repeat;
 }
 .speed-drop[aria-pressed="true"] .speed-drop-shape {
-  border-color: #bb861c;
-  background: radial-gradient(ellipse at 21% 22%, #fffdf0 2%, transparent 31%), linear-gradient(140deg, #fff1b2, #ffd066 72%);
-  box-shadow: inset 0 0 0 2px #ffffec, 0 0 10px #fff5a9;
+  background-image: url('./assets/speed-quiz-drop-gold.webp');
 }
 .speed-drop[aria-pressed="true"] { color: #61421c; }
 .speed-drop:enabled:hover .speed-drop-shape { filter: brightness(1.08); }
+.speed-drop-label {
+  position: absolute;
+  inset: 44% auto 16% 50%;
+  display: grid;
+  align-items: center;
+  width: min(80%, calc(var(--speed-drop-height) * .6));
+  transform: translateX(-50%);
+}
 .speed-drop-text {
   display: block;
-  max-width: 85%;
+  min-width: 0;
   text-shadow: 0 1px #ffffffbf;
   color: inherit;
   font-size: clamp(11px, 3.25vw, 14px);
@@ -219,7 +223,6 @@
   line-height: 1.1;
   letter-spacing: -0.025em;
   text-align: center;
-  overflow-wrap: anywhere;
   word-break: keep-all;
 }
 .speed-drop-text.is-short { font-size: clamp(13px, 4.2vw, 18px); }
@@ -227,19 +230,20 @@
 .speed-catcher {
   position: absolute;
   z-index: 2;
-  bottom: var(--speed-controls-height);
+  bottom: var(--speed-catcher-bottom);
   width: var(--speed-sprite-size);
   height: var(--speed-sprite-size);
-  transform: translateX(-45%);
+  transform: translateX(-38%);
   transition: left 140ms ease-out;
   pointer-events: none;
 }
 .speed-catcher img {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 3px 1px #46341f30);
+  margin-inline: auto;
+  clip-path: var(--speed-squirrel-outline);
 }
 
 .speed-controls {
@@ -304,7 +308,6 @@
   align-items: center;
   text-align: center;
 }
-.speed-intro,
 .speed-result-card,
 .speed-dialog {
   border: 2px solid #cba578;
@@ -313,8 +316,14 @@
   box-shadow: 0 4px 0 var(--speed-shadow), inset 0 1px #fffdf5;
 }
 .speed-intro {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  justify-content: center;
   width: 100%;
-  padding: 21px 10px 19px;
+  aspect-ratio: 2.15;
+  padding: 12% 10% 7%;
+  background: url('./assets/speed-quiz-intro.webp') center / 100% 100% no-repeat;
 }
 .speed-subject { color: #685b3e; font-size: 12px; font-weight: 850; }
 .speed-intro h1,
@@ -346,21 +355,22 @@
   min-width: 135px;
   height: auto;
   margin-bottom: 3px;
-  filter: drop-shadow(0 5px 2px #554a2d32);
+  clip-path: var(--speed-squirrel-outline);
+  translate: 14px -13px;
 }
-.speed-lobby-drop {
-  position: absolute;
-  left: 50%;
-  bottom: min(234px, 34dvh);
-  z-index: 2;
-  width: 55px;
-  height: 50px;
-  transform: translateX(-50%);
-}
-.speed-lobby-drop .speed-drop-shape { border-color: #c79434; background: linear-gradient(138deg, #fffddd, #ffd477); }
-
 .speed-lobby-actions,
 .speed-result-actions { display: grid; gap: 4px; width: 100%; margin-top: auto; padding-top: 10px; }
+.speed-result-actions { padding-bottom: 10px; }
+.speed-room .speed-start-button {
+  justify-self: center;
+  width: min(100%, 290px);
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+.speed-start-button img { display: block; width: 100%; height: auto; }
+.speed-start-button:active { transform: translateY(2px); }
 .speed-room .speed-primary {
   width: 100%;
   min-height: 48px;
@@ -405,16 +415,6 @@
 
 .speed-result { gap: 11px; }
 .speed-result-card { padding: 16px 12px 12px; text-align: center; }
-.speed-result-medal {
-  display: inline-grid;
-  width: 43px;
-  height: 43px;
-  place-items: center;
-  border: 1px solid #c6a061;
-  border-radius: 50%;
-  background: #ffe5a9;
-  color: #775222;
-}
 .speed-result h1 { font-size: 25px; }
 .speed-result-card p { color: #65472a; font-size: 12px; }
 .speed-result-score { display: block; color: #82511f; font-size: 46px; line-height: 1.2; font-weight: 950; }

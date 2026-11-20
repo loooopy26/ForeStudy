@@ -43,6 +43,13 @@
   box-shadow: inset 0 2px 10px rgba(102, 83, 42, 0.06);
 }
 
+.character-stage .character-edit-btn {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 4;
+}
+
 /* 아바타(고양이 + 착용 아이템) */
 .character-avatar {
   position: absolute;
@@ -204,3 +211,10 @@
   background: rgba(102, 83, 42, 0.28);
   border-radius: 999px;
 }
+
+.character-shop-actions {
+  display: grid;
+  flex-shrink: 0;
+}
+
+.character-shop-actions .ai-fab { margin-top: 8px; }
