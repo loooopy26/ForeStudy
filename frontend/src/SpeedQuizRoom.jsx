@@ -1,12 +1,11 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import forest from './assets/speed-quiz-forest.webp'
 import squirrel from './assets/speed-quiz-catcher.webp'
 import { AcornIcon, BackIcon, ChevronRightIcon, MedalIcon } from './icons'
+import { generateSpeedQuiz } from './api'
 import { useGoods } from './goods'
-import { SPEED_QUIZ_QUESTIONS } from './speedQuizQuestions'
 import './SpeedQuizRoom.css'
 
-const ROUND_SIZE = 8
 const MAX_HEARTS = 3
 const FALL_MS = 6900
 const CATCH_WINDOW_MS = 200
@@ -16,6 +15,7 @@ const DROP_DELAYS = [900, 0, 1500, 450]
 const WAVE_END_MS = FALL_MS + Math.max(...DROP_DELAYS) + CATCH_WINDOW_MS
 const ART = { '--speed-forest': `url(${forest})` }
 const LOBBY = { phase: 'lobby' }
+const READY_TO_START = { loading: false, error: '' }
 
 function shuffled(items) {
   const copy = [...items]
@@ -26,14 +26,6 @@ function shuffled(items) {
     copy[other] = item
   }
   return copy
-}
-
-function createDeck() {
-  const [first, ...remaining] = SPEED_QUIZ_QUESTIONS
-  return [first, ...shuffled(remaining).slice(0, ROUND_SIZE - 1)].map((question) => ({
-    ...question,
-    choices: shuffled([question.answer, ...question.distractors]),
-  }))
 }
 
 function recordCatch(game, choice, elapsed) {
@@ -102,7 +94,24 @@ function formatScore(score) {
   return score.toLocaleString('ko-KR')
 }
 
-function QuizLobby({ onStart, onDecorate }) {
+function StartRoundButton({ label, onStart, preparation }) {
+  return (
+    <>
+      <button
+        type="button"
+        className="speed-primary"
+        onClick={onStart}
+        disabled={preparation.loading}
+        aria-busy={preparation.loading}
+      >
+        {preparation.loading ? 'Solar가 문제를 만들고 있어요…' : label}
+      </button>
+      {preparation.error && <p className="speed-generation-error" role="alert">{preparation.error}</p>}
+    </>
+  )
+}
+
+function QuizLobby({ onStart, onDecorate, preparation }) {
   return (
     <div className="speed-lobby">
       <section className="speed-intro">
@@ -115,7 +124,7 @@ function QuizLobby({ onStart, onDecorate }) {
         <img src={squirrel} alt="" />
       </div>
       <div className="speed-lobby-actions">
-        <button type="button" className="speed-primary" onClick={onStart}>퀴즈 시작</button>
+        <StartRoundButton label="퀴즈 시작" onStart={onStart} preparation={preparation} />
         <button type="button" className="speed-text-button" onClick={onDecorate}>
           방 꾸미기 <ChevronRightIcon size={13} />
         </button>
@@ -197,7 +206,7 @@ function QuizRound({ game, onMove, onAim }) {
   )
 }
 
-function QuizResult({ game, onReplay, onLobby }) {
+function QuizResult({ game, onReplay, onLobby, preparation }) {
   const review = game.attempts.filter((attempt) => !attempt.correct)
 
   return (
@@ -226,7 +235,7 @@ function QuizResult({ game, onReplay, onLobby }) {
         </section>
       )}
       <div className="speed-result-actions">
-        <button type="button" className="speed-primary" onClick={onReplay}>다시 하기</button>
+        <StartRoundButton label="다시 하기" onStart={onReplay} preparation={preparation} />
         <button type="button" className="speed-text-button" onClick={onLobby}>대기 화면으로</button>
       </div>
     </div>
@@ -236,9 +245,18 @@ function QuizResult({ game, onReplay, onLobby }) {
 export default function SpeedQuizRoom({ onNavigate }) {
   const { wallet } = useGoods()
   const [game, dispatch] = useReducer(gameReducer, LOBBY)
+  const [preparation, setPreparation] = useState(READY_TO_START)
+  const requestRef = useRef(null)
+  const previousPrompts = useRef([])
   const playing = game.phase === 'playing'
   const { paused } = game
   const dotori = formatScore(wallet)
+
+  useEffect(() => () => {
+    const controller = requestRef.current
+    requestRef.current = null
+    controller?.abort()
+  }, [])
 
   useEffect(() => {
     if (!playing || paused) return
@@ -275,8 +293,44 @@ export default function SpeedQuizRoom({ onNavigate }) {
     }
   }, [playing, paused])
 
-  const startRound = () => dispatch({ type: 'start', deck: createDeck(), now: performance.now() })
-  const goToLobby = () => dispatch({ type: 'lobby' })
+  const startRound = async () => {
+    if (requestRef.current) return
+    const controller = new AbortController()
+    requestRef.current = controller
+    setPreparation({ loading: true, error: '' })
+    const timeout = window.setTimeout(() => controller.abort(), 45000)
+    try {
+      const { questions } = await generateSpeedQuiz(previousPrompts.current, controller.signal)
+      if (requestRef.current !== controller) return
+      controller.signal.throwIfAborted()
+      const deck = questions.map((question) => ({
+        ...question,
+        choices: shuffled([question.answer, ...question.distractors]),
+      }))
+      if (!deck.length) throw new Error('Empty round')
+      previousPrompts.current = questions.map((question) => question.prompt)
+      setPreparation(READY_TO_START)
+      dispatch({ type: 'start', deck, now: performance.now() })
+    } catch {
+      if (requestRef.current !== controller) return
+      setPreparation({
+        loading: false,
+        error: controller.signal.aborted
+          ? '문제 생성 시간이 초과됐어요. 다시 시도해 주세요.'
+          : 'Solar 문제를 불러오지 못했어요. 다시 시도해 주세요.',
+      })
+    } finally {
+      window.clearTimeout(timeout)
+      if (requestRef.current === controller) requestRef.current = null
+    }
+  }
+  const goToLobby = () => {
+    const controller = requestRef.current
+    requestRef.current = null
+    controller?.abort()
+    setPreparation(READY_TO_START)
+    dispatch({ type: 'lobby' })
+  }
   const goBack = () => playing ? dispatch({ type: 'pause' }) : onNavigate('village')
 
   return (
@@ -303,7 +357,7 @@ export default function SpeedQuizRoom({ onNavigate }) {
         )}
       </header>
       <div className={`speed-body${playing ? ' speed-playing' : ''}`} key={game.phase}>
-        {game.phase === 'lobby' && <QuizLobby onStart={startRound} onDecorate={() => onNavigate('room-decor')} />}
+        {game.phase === 'lobby' && <QuizLobby onStart={startRound} onDecorate={() => onNavigate('room-decor')} preparation={preparation} />}
         {playing && (
           <QuizRound
             game={game}
@@ -311,7 +365,7 @@ export default function SpeedQuizRoom({ onNavigate }) {
             onAim={(lane) => dispatch({ type: 'aim', lane })}
           />
         )}
-        {game.phase === 'result' && <QuizResult game={game} onReplay={startRound} onLobby={goToLobby} />}
+        {game.phase === 'result' && <QuizResult game={game} onReplay={startRound} onLobby={goToLobby} preparation={preparation} />}
       </div>
       {playing && paused && (
         <div className="speed-overlay">

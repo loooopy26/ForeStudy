@@ -287,8 +287,8 @@ export function isQuizGenerating(materialId) {
   return typeof startedAt === 'number' && Date.now() - startedAt <= QUIZ_GENERATING_STALE_MS
 }
 
-export async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+export async function apiRequest(path, { baseUrl = API_BASE, ...options } = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
@@ -600,6 +600,15 @@ export function prepareReviewQuiz(materialId) {
   return apiRequest(`/api/materials/${materialId}/review-quiz`, {
     method: 'POST',
     body: JSON.stringify({ reuse_pending: true }),
+  })
+}
+
+export function generateSpeedQuiz(previousPrompts, signal) {
+  return apiRequest('/api/speed-quiz/round', {
+    baseUrl: import.meta.env.DEV ? '' : API_BASE,
+    method: 'POST',
+    body: JSON.stringify({ previous_prompts: previousPrompts }),
+    signal,
   })
 }
 

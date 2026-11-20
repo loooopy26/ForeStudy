@@ -374,7 +374,18 @@
   font-weight: 950;
 }
 .speed-room .speed-primary:hover { background: #fff0bb; }
+.speed-room .speed-primary:disabled { opacity: 0.8; }
 .speed-room .speed-primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #855d3970; }
+.speed-generation-error {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--speed-paper);
+  color: #843923;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.5;
+  text-align: center;
+}
 .speed-room .speed-text-button {
   display: inline-flex;
   justify-content: center;

@@ -19,7 +19,8 @@ export default defineConfig({
   define: apiOrigin ? { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify('') } : undefined,
   server: {
     https,
-    proxy,
+    // Route room quiz generation to the local backend during development.
+    proxy: proxy ?? { '/api/speed-quiz/round': 'http://127.0.0.1:8000' },
     host: '0.0.0.0',
     port: Number(process.env.PORT) || 5173,
     fs: {
