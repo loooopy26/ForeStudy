@@ -137,10 +137,9 @@
   transform: translate(-50%, -50%);
 }
 .study-face-point.is-nose { background: #ffd285; }
-.study-camera-preview .study-camera-status {
+.study-camera-preview .study-camera-status,
+.study-camera-timer {
   position: absolute;
-  top: 10px;
-  left: 10px;
   z-index: 2;
   max-width: calc(100% - 20px);
   box-sizing: border-box;
@@ -148,10 +147,26 @@
   border-radius: 8px;
   background: rgb(16 24 19 / 84%);
   color: white;
-  font-size: .9375rem;
   font-weight: 700;
   line-height: 1.4;
   pointer-events: none;
+}
+.study-camera-preview .study-camera-status {
+  top: 10px;
+  left: 10px;
+  font-size: .9375rem;
+}
+.study-camera-timer {
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: .75rem;
+}
+.study-camera-timer strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 .study-camera button {
   justify-self: start;

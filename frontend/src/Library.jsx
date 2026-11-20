@@ -655,6 +655,12 @@ function Library({ onNavigate, materialId, onSelectMaterial, onSelectCertificate
             {(!previewVisible || focus.faceEnabled) && <span className="study-camera-status" role={previewVisible ? undefined : 'status'}>
               {previewVisible ? FACE_FOCUS_MESSAGES[focus.faceStatus] : camera.message}
             </span>}
+            {previewVisible && (
+              <div className="study-camera-timer" aria-hidden="true">
+                <span>{counting ? '남은 시간' : '일시정지'}</span>
+                <strong>{fmt(remaining)}</strong>
+              </div>
+            )}
           </div>
           {previewVisible && focus.faceEnabled &&
             <button type="button" onClick={focus.resetFace}>얼굴 기준 다시 잡기</button>
